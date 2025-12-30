@@ -68,7 +68,7 @@ export const handlers = [
     return HttpResponse.json(newChannel, { status: 201 })
   }),
 
-  http.patch('/api/v1/channels/:id/', async ({ params, request }) => {
+  http.patch('/api/v1/channels/:id', async ({ params, request }) => {
     const channel = mockChannels.items.find((c) => c.id === params.id)
     if (!channel) {
       return new HttpResponse(null, { status: 404 })
@@ -77,7 +77,7 @@ export const handlers = [
     return HttpResponse.json({ ...channel, ...body })
   }),
 
-  http.delete('/api/v1/channels/:id/', () => {
+  http.delete('/api/v1/channels/:id', () => {
     return new HttpResponse(null, { status: 204 })
   }),
 

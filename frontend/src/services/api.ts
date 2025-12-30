@@ -44,9 +44,9 @@ export const channelsApi = {
     api.post<Channel>('/channels/', data).then((r) => r.data),
 
   update: (id: string, data: ChannelUpdate) =>
-    api.patch<Channel>(`/channels/${id}/`, data).then((r) => r.data),
+    api.patch<Channel>(`/channels/${id}`, data).then((r) => r.data),
 
-  delete: (id: string) => api.delete(`/channels/${id}/`),
+  delete: (id: string) => api.delete(`/channels/${id}`),
 }
 
 export const healthApi = {
