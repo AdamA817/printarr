@@ -36,6 +36,7 @@ Before starting any task, familiarize yourself with these documents:
 | `UI_FLOWS.md` | User interface screens and interactions |
 | `DOCKER.md` | Container configuration and deployment |
 | `HINTS.md` | Commands, debug tips, and common patterns |
+| `TEST_CHANNELS.md` | Telegram channels for QA testing |
 
 ## Version-Based Development
 

@@ -407,6 +407,8 @@ Before approving any PR or verifying issue completion:
 - `## Docker` - Building, running, debugging containers
 - `## Troubleshooting` - Common issues and solutions
 
+**FOR TELEGRAM TESTING**: Use channels from `TEST_CHANNELS.md` - a curated list of public Telegram channels with 3D printable designs for testing ingestion, backfill, and design detection.
+
 **THEN: Check for assigned GitHub issues**
 ```bash
 gh issue list --label "agent:qa" --state open
