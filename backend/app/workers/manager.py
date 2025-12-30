@@ -1,0 +1,280 @@
+"""Worker manager for orchestrating background workers."""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timedelta
+from typing import Any, Type
+
+from app.core.config import settings
+from app.core.logging import get_logger
+from app.db.session import async_session_maker
+from app.services.job_queue import JobQueueService
+from app.workers.base import BaseWorker
+
+logger = get_logger(__name__)
+
+
+class WorkerManager:
+    """Orchestrates background workers for job processing.
+
+    Manages the lifecycle of workers, including:
+    - Starting workers in their own tasks
+    - Graceful shutdown of all workers
+    - Health monitoring and statistics
+    - Stale job recovery
+    """
+
+    def __init__(
+        self,
+        *,
+        stale_job_check_interval: int = 300,  # 5 minutes
+        stale_job_threshold_minutes: int = 30,
+    ):
+        """Initialize the worker manager.
+
+        Args:
+            stale_job_check_interval: Seconds between stale job checks.
+            stale_job_threshold_minutes: Jobs running longer than this
+                are considered stale.
+        """
+        self.stale_job_check_interval = stale_job_check_interval
+        self.stale_job_threshold_minutes = stale_job_threshold_minutes
+
+        self._workers: list[BaseWorker] = []
+        self._worker_tasks: list[asyncio.Task] = []
+        self._running = False
+        self._shutdown_event = asyncio.Event()
+        self._maintenance_task: asyncio.Task | None = None
+        self._started_at: datetime | None = None
+
+    def register_worker(
+        self,
+        worker_class: Type[BaseWorker],
+        *,
+        count: int = 1,
+        **kwargs: Any,
+    ) -> None:
+        """Register a worker class to be managed.
+
+        Args:
+            worker_class: The worker class to instantiate.
+            count: Number of worker instances to create.
+            **kwargs: Arguments to pass to worker constructor.
+        """
+        for i in range(count):
+            worker_id = f"{worker_class.__name__}-{i+1}"
+            worker = worker_class(worker_id=worker_id, **kwargs)
+            self._workers.append(worker)
+            logger.info(
+                "worker_registered",
+                worker_id=worker_id,
+                job_types=[jt.value for jt in worker.job_types],
+            )
+
+    async def start(self) -> None:
+        """Start all registered workers.
+
+        This method runs until shutdown is requested.
+        """
+        if self._running:
+            logger.warning("worker_manager_already_running")
+            return
+
+        self._running = True
+        self._started_at = datetime.utcnow()
+
+        logger.info(
+            "worker_manager_starting",
+            worker_count=len(self._workers),
+        )
+
+        # Start all workers as tasks
+        for worker in self._workers:
+            task = asyncio.create_task(
+                worker.run(),
+                name=f"worker-{worker.worker_id}",
+            )
+            self._worker_tasks.append(task)
+
+        # Start maintenance task (stale job recovery)
+        self._maintenance_task = asyncio.create_task(
+            self._maintenance_loop(),
+            name="worker-maintenance",
+        )
+
+        logger.info(
+            "worker_manager_started",
+            worker_count=len(self._workers),
+        )
+
+        # Wait for shutdown signal
+        await self._shutdown_event.wait()
+
+        # Shutdown workers
+        await self._shutdown_workers()
+
+    async def stop(self) -> None:
+        """Request graceful shutdown of all workers."""
+        if not self._running:
+            return
+
+        logger.info("worker_manager_stopping")
+        self._running = False
+        self._shutdown_event.set()
+
+    async def _shutdown_workers(self) -> None:
+        """Gracefully shut down all workers."""
+        logger.info("worker_manager_shutting_down_workers")
+
+        # Request shutdown from all workers
+        for worker in self._workers:
+            worker.request_shutdown()
+
+        # Cancel maintenance task
+        if self._maintenance_task:
+            self._maintenance_task.cancel()
+            try:
+                await self._maintenance_task
+            except asyncio.CancelledError:
+                pass
+
+        # Wait for worker tasks to complete (with timeout)
+        if self._worker_tasks:
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._worker_tasks, return_exceptions=True),
+                    timeout=30.0,  # 30 second timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "worker_shutdown_timeout",
+                    pending_workers=len([t for t in self._worker_tasks if not t.done()]),
+                )
+                # Cancel remaining tasks
+                for task in self._worker_tasks:
+                    if not task.done():
+                        task.cancel()
+
+        logger.info("worker_manager_shutdown_complete")
+
+    async def _maintenance_loop(self) -> None:
+        """Background loop for maintenance tasks."""
+        while self._running:
+            try:
+                await asyncio.sleep(self.stale_job_check_interval)
+
+                if not self._running:
+                    break
+
+                # Check for stale jobs
+                await self._requeue_stale_jobs()
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(
+                    "maintenance_loop_error",
+                    error=str(e),
+                    exc_info=True,
+                )
+
+    async def _requeue_stale_jobs(self) -> None:
+        """Check for and requeue stale jobs."""
+        async with async_session_maker() as db:
+            queue = JobQueueService(db)
+            count = await queue.requeue_stale_jobs(
+                stale_minutes=self.stale_job_threshold_minutes,
+            )
+            await db.commit()
+
+            if count > 0:
+                logger.info(
+                    "stale_jobs_recovered",
+                    count=count,
+                )
+
+    async def get_stats(self) -> dict[str, Any]:
+        """Get statistics about the worker manager and all workers.
+
+        Returns:
+            Dictionary with manager and worker stats.
+        """
+        # Get queue stats
+        async with async_session_maker() as db:
+            queue = JobQueueService(db)
+            queue_stats = await queue.get_queue_stats()
+
+        return {
+            "manager": {
+                "running": self._running,
+                "worker_count": len(self._workers),
+                "uptime_seconds": self._uptime_seconds(),
+            },
+            "queue": queue_stats,
+            "workers": [w.stats for w in self._workers],
+        }
+
+    def _uptime_seconds(self) -> int:
+        """Calculate manager uptime in seconds."""
+        if self._started_at:
+            return int((datetime.utcnow() - self._started_at).total_seconds())
+        return 0
+
+    @property
+    def is_running(self) -> bool:
+        """Check if manager is running."""
+        return self._running
+
+    @property
+    def worker_count(self) -> int:
+        """Get number of registered workers."""
+        return len(self._workers)
+
+
+# Global worker manager instance
+_manager: WorkerManager | None = None
+
+
+def get_worker_manager() -> WorkerManager:
+    """Get the global worker manager instance.
+
+    Creates a new instance if one doesn't exist.
+
+    Returns:
+        The WorkerManager instance.
+    """
+    global _manager
+    if _manager is None:
+        _manager = WorkerManager()
+    return _manager
+
+
+async def start_workers() -> None:
+    """Start the global worker manager.
+
+    This is intended to be called from the application startup.
+    """
+    manager = get_worker_manager()
+
+    # Import and register all worker types here
+    # These imports are deferred to avoid circular imports
+    # and to allow workers to be added incrementally
+
+    # Example (will be added when workers are implemented):
+    # from app.workers.download import DownloadWorker
+    # manager.register_worker(DownloadWorker, count=2)
+
+    logger.info("starting_workers")
+    await manager.start()
+
+
+async def stop_workers() -> None:
+    """Stop the global worker manager.
+
+    This is intended to be called from the application shutdown.
+    """
+    global _manager
+    if _manager is not None:
+        await _manager.stop()
+        _manager = None
