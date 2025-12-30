@@ -1,7 +1,9 @@
 import { useLocation } from 'react-router-dom'
+import { TelegramStatusIndicator } from '@/components/common/TelegramStatusIndicator'
 
 interface HeaderProps {
   onMenuClick: () => void
+  onTelegramAuthClick?: () => void
 }
 
 const pageTitles: Record<string, string> = {
@@ -10,7 +12,7 @@ const pageTitles: Record<string, string> = {
   '/settings': 'Settings',
 }
 
-export function Header({ onMenuClick }: HeaderProps) {
+export function Header({ onMenuClick, onTelegramAuthClick }: HeaderProps) {
   const location = useLocation()
   const title = pageTitles[location.pathname] || 'Printarr'
 
@@ -42,6 +44,10 @@ export function Header({ onMenuClick }: HeaderProps) {
 
       {/* Status indicators */}
       <div className="flex items-center gap-4">
+        {/* Telegram Status */}
+        <TelegramStatusIndicator onClickDisconnected={onTelegramAuthClick} />
+
+        {/* System Health */}
         <div className="flex items-center gap-2">
           <span
             className="w-2 h-2 rounded-full bg-accent-success"
@@ -51,7 +57,9 @@ export function Header({ onMenuClick }: HeaderProps) {
             Healthy
           </span>
         </div>
-        <span className="text-sm text-text-muted">v0.1</span>
+
+        {/* Version */}
+        <span className="text-sm text-text-muted">v0.2</span>
       </div>
     </header>
   )

@@ -1,5 +1,13 @@
 import axios from 'axios'
 import type { Channel, ChannelCreate, ChannelList } from '@/types/channel'
+import type {
+  AuthStatusResponse,
+  AuthStartRequest,
+  AuthStartResponse,
+  AuthVerifyRequest,
+  AuthVerifyResponse,
+  AuthLogoutResponse,
+} from '@/types/telegram'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -36,4 +44,18 @@ export const channelsApi = {
 
 export const healthApi = {
   check: () => api.get<{ status: string }>('/health').then((r) => r.data),
+}
+
+export const telegramApi = {
+  getAuthStatus: () =>
+    api.get<AuthStatusResponse>('/telegram/auth/status').then((r) => r.data),
+
+  startAuth: (data: AuthStartRequest) =>
+    api.post<AuthStartResponse>('/telegram/auth/start', data).then((r) => r.data),
+
+  verifyAuth: (data: AuthVerifyRequest) =>
+    api.post<AuthVerifyResponse>('/telegram/auth/verify', data).then((r) => r.data),
+
+  logout: () =>
+    api.post<AuthLogoutResponse>('/telegram/auth/logout').then((r) => r.data),
 }
