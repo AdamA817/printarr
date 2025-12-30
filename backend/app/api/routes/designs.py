@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from pydantic import BaseModel
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.logging import get_logger
 from app.db import get_db
 from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType
 from app.schemas.design import (
@@ -19,6 +23,17 @@ from app.schemas.design import (
     DesignSourceResponse,
     ExternalMetadataResponse,
 )
+
+logger = get_logger(__name__)
+
+
+class RefreshMetadataResponse(BaseModel):
+    """Response for metadata refresh endpoint."""
+
+    design_id: str
+    sources_refreshed: int
+    sources_failed: int
+
 
 router = APIRouter(prefix="/designs", tags=["designs"])
 
@@ -199,3 +214,146 @@ async def get_design(
         sources=sources,
         external_metadata=external_metadata,
     )
+
+
+@router.post("/{design_id}/refresh-metadata", response_model=RefreshMetadataResponse)
+async def refresh_metadata(
+    design_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> RefreshMetadataResponse:
+    """Refresh external metadata for a design.
+
+    Fetches metadata from Thangs API for any external links that haven't
+    been fetched yet or need refreshing.
+    """
+    # Get design with external sources
+    query = (
+        select(Design)
+        .options(selectinload(Design.external_metadata_sources))
+        .where(Design.id == design_id)
+    )
+    result = await db.execute(query)
+    design = result.scalar_one_or_none()
+
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Collect sources that need fetching (Thangs only for now)
+    thangs_sources = [
+        em for em in design.external_metadata_sources
+        if em.source_type == ExternalSourceType.THANGS
+    ]
+
+    if not thangs_sources:
+        return RefreshMetadataResponse(
+            design_id=design_id,
+            sources_refreshed=0,
+            sources_failed=0,
+        )
+
+    # Prepare for httpx calls - collect source info before closing DB
+    sources_to_fetch = [
+        {"id": s.id, "external_id": s.external_id}
+        for s in thangs_sources
+    ]
+
+    # Commit current transaction to avoid greenlet conflicts
+    await db.commit()
+
+    # Fetch metadata using httpx (outside DB context)
+    fetched_results = []
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for source_info in sources_to_fetch:
+            try:
+                metadata = await _fetch_thangs_metadata(client, source_info["external_id"])
+                fetched_results.append({
+                    "source_id": source_info["id"],
+                    "success": True,
+                    "metadata": metadata,
+                })
+            except Exception as e:
+                logger.warning(
+                    "thangs_fetch_failed",
+                    source_id=source_info["id"],
+                    error=str(e),
+                )
+                fetched_results.append({
+                    "source_id": source_info["id"],
+                    "success": False,
+                    "metadata": None,
+                })
+
+    # Update database with fetched metadata
+    sources_refreshed = 0
+    sources_failed = 0
+
+    for result_item in fetched_results:
+        if result_item["success"] and result_item["metadata"]:
+            metadata = result_item["metadata"]
+            await db.execute(
+                update(ExternalMetadataSource)
+                .where(ExternalMetadataSource.id == result_item["source_id"])
+                .values(
+                    fetched_title=metadata.get("title"),
+                    fetched_designer=metadata.get("designer"),
+                    fetched_tags=",".join(metadata.get("tags", [])) if metadata.get("tags") else None,
+                    last_fetched_at=datetime.utcnow(),
+                )
+            )
+            sources_refreshed += 1
+        else:
+            sources_failed += 1
+
+    await db.commit()
+
+    logger.info(
+        "metadata_refreshed",
+        design_id=design_id,
+        refreshed=sources_refreshed,
+        failed=sources_failed,
+    )
+
+    return RefreshMetadataResponse(
+        design_id=design_id,
+        sources_refreshed=sources_refreshed,
+        sources_failed=sources_failed,
+    )
+
+
+async def _fetch_thangs_metadata(client: httpx.AsyncClient, model_id: str) -> dict | None:
+    """Fetch metadata from Thangs API."""
+    url = f"https://api.thangs.com/models/{model_id}"
+
+    response = await client.get(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": "Printarr/1.0",
+        },
+    )
+
+    if response.status_code == 200:
+        data = response.json()
+        designer = None
+        if "owner" in data and isinstance(data["owner"], dict):
+            designer = data["owner"].get("username") or data["owner"].get("name")
+        elif "creator" in data and isinstance(data["creator"], dict):
+            designer = data["creator"].get("username") or data["creator"].get("name")
+        elif "author" in data:
+            designer = data["author"]
+
+        return {
+            "title": data.get("name") or data.get("title"),
+            "designer": designer,
+            "tags": data.get("tags", []),
+        }
+    elif response.status_code == 404:
+        logger.warning("thangs_model_not_found", model_id=model_id)
+        return None
+    else:
+        logger.warning(
+            "thangs_api_error",
+            model_id=model_id,
+            status=response.status_code,
+        )
+        return None
