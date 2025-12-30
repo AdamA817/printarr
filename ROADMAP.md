@@ -160,23 +160,32 @@ Channels like Wicked STL post designs across multiple messages:
 
 ---
 
-## v0.6 - Live Monitoring
-**Goal**: Continuous ingestion of new posts
+## v0.6 - Live Monitoring & Channel Discovery
+**Goal**: Continuous ingestion of new posts and discover related channels
 
 ### Scope
 - [ ] Live channel monitoring (polling or subscription)
 - [ ] New posts ingested automatically
 - [ ] Per-channel download modes (manual, auto-new, auto-all)
 - [ ] Dashboard with stats
+- [ ] **Channel Discovery**:
+  - [ ] Track forwarded messages and their source channels
+  - [ ] Detect @mentions and t.me links in captions
+  - [ ] "Discovered Channels" page showing referenced channels
+  - [ ] Reference count and content indicators per discovered channel
+  - [ ] One-click "Add Channel" from discovered list
+  - [ ] Filter: already added, reference count, last seen
 
 ### Success Criteria
 - New post appears in Telegram
 - Design appears in Printarr within minutes
 - Auto-download mode triggers download
+- Forwarded messages show source channel in "Discovered" list
+- Can add a discovered channel with one click
 
 ### Not Included
-- Suggested channels
 - Full backfill options
+- Network graph visualization
 
 ---
 
@@ -231,9 +240,6 @@ Channels like Wicked STL post designs across multiple messages:
 - System handles Telegram rate limits gracefully
 - Failed jobs can be retried
 
-### Not Included
-- Suggested channels (future consideration)
-
 ---
 
 ## v1.0 - Production Ready
@@ -258,7 +264,6 @@ Channels like Wicked STL post designs across multiple messages:
 ---
 
 ## Future Considerations (Post v1.0)
-- Channel suggestion system
 - Printer profile awareness
 - Slicer metadata extraction
 - Export to slicer-friendly libraries
@@ -285,7 +290,7 @@ Channels like Wicked STL post designs across multiple messages:
 | v0.3 | Ingestion | 🔜 Next | Parse + detect designs + Thangs auto-link |
 | v0.4 | Catalog UI | - | Radarr-style browsing + Thangs search UI |
 | v0.5 | Downloads | - | Job queue + library |
-| v0.6 | Live Monitoring | - | Continuous ingestion |
+| v0.6 | Live Monitoring & Discovery | - | Continuous ingestion + channel discovery |
 | v0.7 | Previews & Metadata | - | Images + tags + Thangs enrichment |
 | v0.8 | Deduplication | - | Handle duplicates |
 | v1.0 | Production | - | Full release |

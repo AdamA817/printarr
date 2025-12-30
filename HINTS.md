@@ -15,6 +15,7 @@ This file contains useful commands, debug tips, and common patterns to help agen
 | [Troubleshooting](#troubleshooting) | All | Common issues and solutions |
 | [QA Testing Tips](#qa-testing-tips) | QA, Web Dev | Browser caching, React gotchas, Vitest config |
 | [MCP_DOCKER Browser Testing](#mcp_docker-browser-testing) | QA | Using Playwright browser tools with host IP |
+| [Channel Profiling](#channel-profiling) | QA, Architect | Profile test channels for feature coverage |
 
 **Tip**: Use `grep -n "## Section Name" HINTS.md` to find a section quickly.
 
@@ -662,3 +663,55 @@ await page.goto('http://10.0.0.27:3333/');  // Replace with your actual IP
 - Your IP may change (DHCP). Always verify it before starting a browser session.
 - Use `browser_snapshot()` instead of `browser_take_screenshot()` for element refs.
 - Close browser when done: `mcp__MCP_DOCKER__browser_close()`
+
+---
+
+### Channel Profiling
+
+The `scripts/profile_channels.py` script analyzes Telegram channels from `TEST_CHANNELS.md` and generates profiles showing what features each channel has.
+
+#### Prerequisites
+- Telegram session must be authenticated (run the app first)
+- `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` in environment or `.env`
+
+#### Basic Usage
+```bash
+# Profile all channels in TEST_CHANNELS.md (100 messages each)
+python scripts/profile_channels.py
+
+# Profile specific channels
+python scripts/profile_channels.py --channels wickedstl,gambody
+
+# Sample more messages for better accuracy
+python scripts/profile_channels.py --messages 500
+
+# Skip channels already profiled
+python scripts/profile_channels.py --skip-existing
+```
+
+#### Output Files
+- `channel_profiles/<channel>.json` - Individual channel profiles
+- `channel_profiles/SUMMARY.md` - Markdown summary with suitability matrix
+- `channel_profiles/all_profiles.json` - All profiles in one file
+
+#### What It Detects
+
+| Category | Details |
+|----------|---------|
+| **File Types** | STL, 3MF, OBJ, STEP, ZIP, RAR, 7Z, images |
+| **External Links** | Thangs, Printables, Thingiverse URLs |
+| **Channel Discovery** | Forwarded messages, @mentions, t.me links |
+| **Multi-part Files** | Split RAR archives (.part1, .part2) |
+| **Image/File Pairs** | Posts with "(Images)" / "(Non Supported)" patterns |
+| **Activity** | Last post date, posts per week |
+| **Captions** | Hashtags, average length |
+
+#### Suitability Flags
+Each profile includes suitability flags for testing:
+- `v0.3_ingestion` - Has design files (STL, 3MF, archives)
+- `v0.3_thangs` - Has Thangs URLs in captions
+- `v0.4_multipart` - Has split archives or image/file pairs
+- `v0.6_active` - Posted in last 30 days
+- `v0.6_discovery` - Has channel references (forwards, mentions)
+- `v0.7_previews` - Has images in posts
+- `v0.7_3mf` - Has 3MF files (for embedded thumbnails)

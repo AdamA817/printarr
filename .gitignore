@@ -61,3 +61,6 @@ coverage/
 
 # Docker
 docker-compose.override.yml
+
+# Generated profiles
+channel_profiles/
