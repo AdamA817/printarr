@@ -81,8 +81,25 @@ All work is tracked via GitHub Issues. Each issue contains:
 3. Check `HINTS.md` for useful commands
 4. Implement the solution
 5. Write/update tests
-6. Create a PR with clear description
-7. Request review (QA agent or human)
+6. Commit and push your changes
+7. **Close the issue** with a comment summarizing what was done
+8. Create issues for any follow-up work or to notify other agents
+
+### Closing Issues
+When you complete an issue:
+```bash
+gh issue close <number> --comment "Completed. Summary of changes:
+- [list key changes]
+- Files: [key files created/modified]
+- Ready for: [next agent/step]"
+```
+
+Or close via commit message:
+```
+feat(scope): description
+
+Closes #<number>
+```
 
 ### Commit Standards
 ```
