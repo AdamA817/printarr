@@ -485,3 +485,321 @@ class TestProcessDesignUrls:
 
         assert sources == []
         await adapter.close()
+
+
+# =============================================================================
+# Search API Tests
+# =============================================================================
+
+
+from app.db import get_db
+from app.main import app
+from app.services.thangs import (
+    ThangsSearchResult,
+    ThangsSearchResponse,
+    ThangsRateLimitError,
+    ThangsUpstreamError,
+    _search_cache,
+)
+
+
+class TestThangsSearch:
+    """Tests for ThangsAdapter.search method."""
+
+    @pytest.fixture
+    async def db_engine(self):
+        """Create an in-memory test database engine."""
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        yield engine
+        await engine.dispose()
+
+    @pytest.fixture
+    async def db_session(self, db_engine):
+        """Create a test database session."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            yield session
+
+    @pytest.fixture
+    def clear_cache(self):
+        """Clear the search cache before and after each test."""
+        _search_cache.clear()
+        yield
+        _search_cache.clear()
+
+    @pytest.mark.asyncio
+    async def test_search_success(self, db_session, clear_cache):
+        """Test successful search returns results."""
+        adapter = ThangsAdapter(db_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "results": [
+                {
+                    "id": "12345",
+                    "name": "Cool Batman Model",
+                    "owner": {"username": "designer1"},
+                    "thumbnail": "https://thangs.com/img/12345.jpg",
+                },
+                {
+                    "id": "67890",
+                    "name": "Superman Figure",
+                    "owner": {"username": "designer2"},
+                },
+            ],
+            "total": 2,
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        adapter._client = mock_client
+
+        result = await adapter.search("batman", limit=10)
+
+        assert isinstance(result, ThangsSearchResponse)
+        assert len(result.results) == 2
+        assert result.total == 2
+        assert result.results[0].model_id == "12345"
+        assert result.results[0].title == "Cool Batman Model"
+        assert result.results[0].designer == "designer1"
+        assert result.results[0].thumbnail_url == "https://thangs.com/img/12345.jpg"
+        assert result.results[0].url == "https://thangs.com/m/12345"
+
+        await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_search_query_too_short(self, db_session):
+        """Test search with query less than 3 chars raises error."""
+        adapter = ThangsAdapter(db_session)
+
+        with pytest.raises(ValueError, match="at least 3 characters"):
+            await adapter.search("ab")
+
+        await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_search_caching(self, db_session, clear_cache):
+        """Test search results are cached."""
+        adapter = ThangsAdapter(db_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "results": [{"id": "111", "name": "Test"}],
+            "total": 1,
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        adapter._client = mock_client
+
+        # First call - should hit API
+        await adapter.search("test", limit=10)
+        assert mock_client.get.call_count == 1
+
+        # Second call - should use cache
+        await adapter.search("test", limit=10)
+        assert mock_client.get.call_count == 1  # Still 1
+
+        await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_search_rate_limit(self, db_session, clear_cache):
+        """Test rate limit error handling."""
+        adapter = ThangsAdapter(db_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.headers = {"Retry-After": "120"}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        adapter._client = mock_client
+
+        with pytest.raises(ThangsRateLimitError) as exc_info:
+            await adapter.search("test")
+
+        assert exc_info.value.retry_after == 120
+
+        await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_search_upstream_error(self, db_session, clear_cache):
+        """Test upstream error handling."""
+        adapter = ThangsAdapter(db_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        adapter._client = mock_client
+
+        with pytest.raises(ThangsUpstreamError) as exc_info:
+            await adapter.search("test")
+
+        assert exc_info.value.status_code == 500
+
+        await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_search_limit_clamping(self, db_session, clear_cache):
+        """Test that limit is clamped to 1-50 range."""
+        adapter = ThangsAdapter(db_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"results": [], "total": 0}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        adapter._client = mock_client
+
+        # Test limit > 50 is clamped
+        await adapter.search("test", limit=100, use_cache=False)
+        call_args = mock_client.get.call_args
+        assert call_args[1]["params"]["limit"] == 50
+
+        # Test limit < 1 is clamped
+        await adapter.search("test", limit=0, use_cache=False)
+        call_args = mock_client.get.call_args
+        assert call_args[1]["params"]["limit"] == 1
+
+        await adapter.close()
+
+
+class TestThangsSearchAPI:
+    """Tests for GET /api/v1/thangs/search endpoint."""
+
+    @pytest.fixture
+    async def db_engine(self):
+        """Create an in-memory test database engine."""
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        yield engine
+        await engine.dispose()
+
+    @pytest.fixture
+    async def client(self, db_engine):
+        """Create a test client with overridden database dependency."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+
+        async def override_get_db():
+            async with async_session() as session:
+                try:
+                    yield session
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
+
+        app.dependency_overrides[get_db] = override_get_db
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            yield client
+
+        app.dependency_overrides.clear()
+
+    @pytest.fixture
+    def clear_cache(self):
+        """Clear the search cache before and after each test."""
+        _search_cache.clear()
+        yield
+        _search_cache.clear()
+
+    @pytest.mark.asyncio
+    async def test_search_endpoint_success(self, client, clear_cache):
+        """Test search endpoint returns results."""
+        with patch("app.api.routes.thangs.ThangsAdapter") as MockAdapter:
+            mock_adapter = AsyncMock()
+            mock_adapter.search = AsyncMock(
+                return_value=ThangsSearchResponse(
+                    results=[
+                        ThangsSearchResult(
+                            model_id="12345",
+                            title="Test Model",
+                            designer="TestDesigner",
+                            thumbnail_url="https://example.com/thumb.jpg",
+                            url="https://thangs.com/m/12345",
+                        )
+                    ],
+                    total=1,
+                )
+            )
+            mock_adapter.close = AsyncMock()
+            MockAdapter.return_value = mock_adapter
+
+            response = await client.get("/api/v1/thangs/search?q=test")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data["results"]) == 1
+            assert data["total"] == 1
+            assert data["results"][0]["model_id"] == "12345"
+            assert data["results"][0]["title"] == "Test Model"
+
+    @pytest.mark.asyncio
+    async def test_search_endpoint_query_too_short(self, client):
+        """Test search endpoint rejects query < 3 chars."""
+        response = await client.get("/api/v1/thangs/search?q=ab")
+
+        assert response.status_code == 422  # Validation error
+
+    @pytest.mark.asyncio
+    async def test_search_endpoint_rate_limited(self, client, clear_cache):
+        """Test search endpoint returns 429 on rate limit."""
+        with patch("app.api.routes.thangs.ThangsAdapter") as MockAdapter:
+            mock_adapter = AsyncMock()
+            mock_adapter.search = AsyncMock(
+                side_effect=ThangsRateLimitError(retry_after=60)
+            )
+            mock_adapter.close = AsyncMock()
+            MockAdapter.return_value = mock_adapter
+
+            response = await client.get("/api/v1/thangs/search?q=test")
+
+            assert response.status_code == 429
+            assert "Retry-After" in response.headers
+            assert response.headers["Retry-After"] == "60"
+
+    @pytest.mark.asyncio
+    async def test_search_endpoint_upstream_error(self, client, clear_cache):
+        """Test search endpoint returns 502 on upstream error."""
+        with patch("app.api.routes.thangs.ThangsAdapter") as MockAdapter:
+            mock_adapter = AsyncMock()
+            mock_adapter.search = AsyncMock(
+                side_effect=ThangsUpstreamError("API Error", 500)
+            )
+            mock_adapter.close = AsyncMock()
+            MockAdapter.return_value = mock_adapter
+
+            response = await client.get("/api/v1/thangs/search?q=test")
+
+            assert response.status_code == 502
+
+    @pytest.mark.asyncio
+    async def test_search_endpoint_custom_limit(self, client, clear_cache):
+        """Test search endpoint respects limit parameter."""
+        with patch("app.api.routes.thangs.ThangsAdapter") as MockAdapter:
+            mock_adapter = AsyncMock()
+            mock_adapter.search = AsyncMock(
+                return_value=ThangsSearchResponse(results=[], total=0)
+            )
+            mock_adapter.close = AsyncMock()
+            MockAdapter.return_value = mock_adapter
+
+            response = await client.get("/api/v1/thangs/search?q=test&limit=25")
+
+            assert response.status_code == 200
+            mock_adapter.search.assert_called_once_with(query="test", limit=25)

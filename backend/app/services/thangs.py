@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -24,6 +26,54 @@ if TYPE_CHECKING:
 
 # Rate limiting: delay between Thangs API calls (in seconds)
 THANGS_API_DELAY = 0.5
+
+# Cache TTL for search results (5 minutes)
+SEARCH_CACHE_TTL = 300
+
+
+@dataclass
+class ThangsSearchResult:
+    """A single search result from Thangs API."""
+
+    model_id: str
+    title: str
+    designer: str | None
+    thumbnail_url: str | None
+    url: str
+
+
+@dataclass
+class ThangsSearchResponse:
+    """Response from Thangs search."""
+
+    results: list[ThangsSearchResult]
+    total: int
+
+
+class ThangsSearchError(Exception):
+    """Base exception for Thangs search errors."""
+
+    pass
+
+
+class ThangsRateLimitError(ThangsSearchError):
+    """Raised when Thangs API rate limit is hit."""
+
+    def __init__(self, retry_after: int = 60):
+        self.retry_after = retry_after
+        super().__init__(f"Rate limited. Retry after {retry_after} seconds.")
+
+
+class ThangsUpstreamError(ThangsSearchError):
+    """Raised when Thangs API returns an error."""
+
+    def __init__(self, message: str, status_code: int):
+        self.status_code = status_code
+        super().__init__(message)
+
+
+# Simple in-memory cache for search results
+_search_cache: dict[str, tuple[float, ThangsSearchResponse]] = {}
 
 logger = get_logger(__name__)
 
@@ -369,6 +419,147 @@ class ThangsAdapter:
 
         await self.db.flush()
         return source
+
+    async def search(
+        self,
+        query: str,
+        limit: int = 10,
+        use_cache: bool = True,
+    ) -> ThangsSearchResponse:
+        """Search Thangs for 3D models.
+
+        Args:
+            query: Search query (min 3 characters).
+            limit: Maximum number of results (1-50).
+            use_cache: Whether to use cached results.
+
+        Returns:
+            ThangsSearchResponse with results and total count.
+
+        Raises:
+            ThangsRateLimitError: If rate limited by Thangs.
+            ThangsUpstreamError: If Thangs API returns an error.
+        """
+        if len(query) < 3:
+            raise ValueError("Search query must be at least 3 characters")
+
+        limit = max(1, min(50, limit))
+
+        # Check cache
+        cache_key = f"{query}:{limit}"
+        if use_cache and cache_key in _search_cache:
+            cached_time, cached_response = _search_cache[cache_key]
+            if time.time() - cached_time < SEARCH_CACHE_TTL:
+                logger.debug(
+                    "thangs_search_cache_hit",
+                    query=query,
+                    results_count=len(cached_response.results),
+                )
+                return cached_response
+
+        try:
+            client = await self._get_client()
+
+            # Thangs search API endpoint
+            # Note: This is based on the expected Thangs API structure
+            url = f"{self.API_BASE}/search"
+            params = {
+                "q": query,
+                "limit": limit,
+                "type": "models",
+            }
+
+            logger.debug("thangs_search_request", query=query, limit=limit)
+            response = await client.get(url, params=params)
+
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", "60"))
+                logger.warning("thangs_rate_limited", retry_after=retry_after)
+                raise ThangsRateLimitError(retry_after=retry_after)
+
+            if response.status_code >= 500:
+                logger.error(
+                    "thangs_upstream_error",
+                    status_code=response.status_code,
+                    response=response.text[:200],
+                )
+                raise ThangsUpstreamError(
+                    f"Thangs API returned {response.status_code}",
+                    status_code=response.status_code,
+                )
+
+            if response.status_code != 200:
+                logger.warning(
+                    "thangs_search_error",
+                    status_code=response.status_code,
+                    response=response.text[:200],
+                )
+                raise ThangsUpstreamError(
+                    f"Thangs API returned {response.status_code}",
+                    status_code=response.status_code,
+                )
+
+            data = response.json()
+            results = []
+
+            # Parse results - adapt to actual Thangs API response structure
+            items = data.get("results", data.get("models", data.get("items", [])))
+            total = data.get("total", data.get("count", len(items)))
+
+            for item in items[:limit]:
+                model_id = str(item.get("id", item.get("modelId", "")))
+                if not model_id:
+                    continue
+
+                # Extract thumbnail URL
+                thumbnail_url = None
+                if "thumbnail" in item:
+                    thumbnail_url = item["thumbnail"]
+                elif "thumbnailUrl" in item:
+                    thumbnail_url = item["thumbnailUrl"]
+                elif "images" in item and item["images"]:
+                    thumbnail_url = item["images"][0] if isinstance(item["images"][0], str) else item["images"][0].get("url")
+
+                results.append(
+                    ThangsSearchResult(
+                        model_id=model_id,
+                        title=item.get("name", item.get("title", "Unknown")),
+                        designer=self._extract_designer(item),
+                        thumbnail_url=thumbnail_url,
+                        url=f"https://thangs.com/m/{model_id}",
+                    )
+                )
+
+            search_response = ThangsSearchResponse(results=results, total=total)
+
+            # Cache results
+            _search_cache[cache_key] = (time.time(), search_response)
+
+            # Clean old cache entries
+            self._clean_cache()
+
+            logger.info(
+                "thangs_search_complete",
+                query=query,
+                results_count=len(results),
+                total=total,
+            )
+
+            return search_response
+
+        except httpx.HTTPError as e:
+            logger.error("thangs_search_http_error", query=query, error=str(e))
+            raise ThangsUpstreamError(f"HTTP error: {e}", status_code=502)
+
+    def _clean_cache(self) -> None:
+        """Remove expired entries from the search cache."""
+        now = time.time()
+        expired_keys = [
+            key for key, (cached_time, _) in _search_cache.items()
+            if now - cached_time >= SEARCH_CACHE_TTL
+        ]
+        for key in expired_keys:
+            del _search_cache[key]
 
     async def fetch_unfetched_metadata(
         self,
