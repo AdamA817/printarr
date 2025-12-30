@@ -263,12 +263,16 @@ async def start_workers() -> None:
 
     from app.workers.download import DownloadWorker
     from app.workers.extract import ExtractArchiveWorker
+    from app.workers.library_import import ImportToLibraryWorker
 
     # Register download workers (configurable count)
     manager.register_worker(DownloadWorker, count=settings.max_concurrent_downloads)
 
     # Register extract workers (single worker is sufficient for CPU-bound extraction)
     manager.register_worker(ExtractArchiveWorker, count=1)
+
+    # Register import workers (single worker to avoid race conditions)
+    manager.register_worker(ImportToLibraryWorker, count=1)
 
     logger.info("starting_workers", worker_count=manager.worker_count)
     await manager.start()

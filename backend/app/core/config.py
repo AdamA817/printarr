@@ -57,6 +57,12 @@ class Settings(BaseSettings):
         description="Maximum concurrent download workers",
     )
 
+    # Library settings
+    library_template_global: str = Field(
+        default="{designer}/{channel}/{title}",
+        description="Global template for library folder structure",
+    )
+
     # Database
     database_url: str = Field(
         default="sqlite+aiosqlite:///./config/printarr.db",
