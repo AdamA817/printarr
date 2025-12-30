@@ -1,6 +1,20 @@
 import axios from 'axios'
 import type { Channel, ChannelCreate, ChannelUpdate, ChannelList } from '@/types/channel'
-import type { DesignList, DesignListParams, DesignDetail } from '@/types/design'
+import type {
+  DesignList,
+  DesignListParams,
+  DesignDetail,
+  ThangsLinkRequest,
+  ThangsLinkByUrlRequest,
+  ThangsLinkResponse,
+  RefreshMetadataResponse,
+  DesignUpdateRequest,
+  ThangsSearchResponse,
+  MergeDesignsRequest,
+  MergeDesignsResponse,
+  UnmergeDesignRequest,
+  UnmergeDesignResponse,
+} from '@/types/design'
 import type {
   AuthStatusResponse,
   AuthStartRequest,
@@ -100,4 +114,37 @@ export const designsApi = {
 
   get: (id: string) =>
     api.get<DesignDetail>(`/designs/${id}`).then((r) => r.data),
+
+  update: (id: string, data: DesignUpdateRequest) =>
+    api.patch<DesignDetail>(`/designs/${id}`, data).then((r) => r.data),
+
+  // Thangs link operations
+  linkToThangs: (id: string, data: ThangsLinkRequest) =>
+    api.post<ThangsLinkResponse>(`/designs/${id}/thangs-link`, data).then((r) => r.data),
+
+  linkToThangsByUrl: (id: string, data: ThangsLinkByUrlRequest) =>
+    api.post<ThangsLinkResponse>(`/designs/${id}/thangs-link-by-url`, data).then((r) => r.data),
+
+  unlinkFromThangs: (id: string) =>
+    api.delete(`/designs/${id}/thangs-link`),
+
+  refreshMetadata: (id: string) =>
+    api.post<RefreshMetadataResponse>(`/designs/${id}/refresh-metadata`).then((r) => r.data),
+
+  // Merge/Unmerge operations
+  merge: (id: string, data: MergeDesignsRequest) =>
+    api.post<MergeDesignsResponse>(`/designs/${id}/merge`, data).then((r) => r.data),
+
+  unmerge: (id: string, data: UnmergeDesignRequest) =>
+    api.post<UnmergeDesignResponse>(`/designs/${id}/unmerge`, data).then((r) => r.data),
+}
+
+export interface ThangsSearchParams {
+  q: string
+  limit?: number
+}
+
+export const thangsApi = {
+  search: (params: ThangsSearchParams) =>
+    api.get<ThangsSearchResponse>('/thangs/search', { params }).then((r) => r.data),
 }

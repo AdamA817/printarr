@@ -104,3 +104,79 @@ export interface DesignListParams {
   sort_by?: SortField
   sort_order?: SortOrder
 }
+
+// Request/Response types for Thangs link operations
+export interface ThangsLinkRequest {
+  model_id: string
+  url: string
+}
+
+export interface ThangsLinkByUrlRequest {
+  url: string
+}
+
+export interface ThangsLinkResponse {
+  id: string
+  design_id: string
+  source_type: string
+  external_id: string
+  external_url: string
+  confidence_score: number
+  match_method: string
+  is_user_confirmed: boolean
+  fetched_title: string | null
+  fetched_designer: string | null
+  fetched_tags: string | null
+  last_fetched_at: string | null
+  created_at: string
+}
+
+export interface RefreshMetadataResponse {
+  design_id: string
+  sources_refreshed: number
+  sources_failed: number
+}
+
+// Request types for design update
+export interface DesignUpdateRequest {
+  title_override?: string | null
+  designer_override?: string | null
+  multicolor_override?: MulticolorStatus | null
+  notes?: string | null
+  status?: DesignStatus
+}
+
+// Thangs search types
+export interface ThangsSearchResult {
+  model_id: string
+  title: string
+  designer: string | null
+  thumbnail_url: string | null
+  url: string
+}
+
+export interface ThangsSearchResponse {
+  results: ThangsSearchResult[]
+  total: number
+}
+
+// Merge/Unmerge types
+export interface MergeDesignsRequest {
+  source_design_ids: string[]
+}
+
+export interface MergeDesignsResponse {
+  merged_design_id: string
+  merged_source_count: number
+  deleted_design_ids: string[]
+}
+
+export interface UnmergeDesignRequest {
+  source_ids: string[]
+}
+
+export interface UnmergeDesignResponse {
+  original_design_id: string
+  new_design_id: string
+  moved_source_count: number
+}
