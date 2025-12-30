@@ -66,7 +66,7 @@ export const channelsApi = {
 }
 
 export const healthApi = {
-  check: () => api.get<{ status: string }>('/health').then((r) => r.data),
+  check: () => api.get<{ status: string; version: string }>('/health').then((r) => r.data),
 }
 
 export const telegramApi = {

@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom'
 import { TelegramStatusIndicator } from '@/components/common/TelegramStatusIndicator'
+import { useHealth } from '@/hooks/useHealth'
 
 interface HeaderProps {
   onMenuClick: () => void
@@ -14,6 +15,7 @@ const pageTitles: Record<string, string> = {
 
 export function Header({ onMenuClick, onTelegramAuthClick }: HeaderProps) {
   const location = useLocation()
+  const { data: health, isError } = useHealth()
   const title = pageTitles[location.pathname] || 'Printarr'
 
   return (
@@ -50,16 +52,18 @@ export function Header({ onMenuClick, onTelegramAuthClick }: HeaderProps) {
         {/* System Health */}
         <div className="flex items-center gap-2">
           <span
-            className="w-2 h-2 rounded-full bg-accent-success"
-            title="System healthy"
+            className={`w-2 h-2 rounded-full ${isError ? 'bg-accent-danger' : 'bg-accent-success'}`}
+            title={isError ? 'System unhealthy' : 'System healthy'}
           />
           <span className="text-sm text-text-secondary hidden sm:inline">
-            Healthy
+            {isError ? 'Unhealthy' : 'Healthy'}
           </span>
         </div>
 
         {/* Version */}
-        <span className="text-sm text-text-muted">v0.2</span>
+        <span className="text-sm text-text-muted">
+          {health?.version ? `v${health.version}` : '...'}
+        </span>
       </div>
     </header>
   )
