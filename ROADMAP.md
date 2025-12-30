@@ -65,18 +65,18 @@ Each version should be:
 
 ---
 
-## v0.3 - Message Ingestion
+## v0.3 - Message Ingestion ✅
 **Goal**: Parse messages, detect design candidates, and enrich with Thangs metadata
 
 ### Scope
-- [ ] Store TelegramMessage records
-- [ ] Parse attachments (detect file types)
-- [ ] Identify "design posts" (has STL/3MF/archive)
-- [ ] Create Design records from detected posts
-- [ ] Basic backfill (last N messages per channel)
-- [ ] **Thangs URL detection** in captions (auto-link with confidence=1.0)
-- [ ] **Thangs metadata fetch** (designer, title) via background job post-ingestion
-- [ ] ExternalMetadataSource table for storing Thangs links
+- [x] Store TelegramMessage records
+- [x] Parse attachments (detect file types)
+- [x] Identify "design posts" (has STL/3MF/archive)
+- [x] Create Design records from detected posts
+- [x] Basic backfill (last N messages per channel)
+- [x] **Thangs URL detection** in captions (auto-link with confidence=1.0)
+- [x] **Thangs metadata fetch** (designer, title) via background job post-ingestion
+- [x] ExternalMetadataSource table for storing Thangs links
 
 ### Success Criteria
 - Add a channel with 3D designs
@@ -275,7 +275,7 @@ Channels like Wicked STL post designs across multiple messages:
 
 ## Current Status
 
-**Active Version**: v0.3 (next)
+**Active Version**: v0.4 (next)
 
 **Last Updated**: 2025-12-30
 
@@ -287,8 +287,8 @@ Channels like Wicked STL post designs across multiple messages:
 |---------|-------|--------|-------|
 | v0.1 | Hello World | ✅ Complete | Foundation + Docker/Unraid |
 | v0.2 | Telegram | ✅ Complete | Auth + connection |
-| v0.3 | Ingestion | 🔜 Next | Parse + detect designs + Thangs auto-link |
-| v0.4 | Catalog UI | - | Radarr-style browsing + Thangs search UI |
+| v0.3 | Ingestion | ✅ Complete | Parse + detect designs + Thangs auto-link |
+| v0.4 | Catalog UI | 🔜 Next | Radarr-style browsing + Thangs search UI |
 | v0.5 | Downloads | - | Job queue + library |
 | v0.6 | Live Monitoring & Discovery | - | Continuous ingestion + channel discovery |
 | v0.7 | Previews & Metadata | - | Images + tags + Thangs enrichment |
