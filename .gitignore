@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+ENV/
+.eggs/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+.npm
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Data directories (for local dev)
+data/
+!data/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Telegram session (sensitive)
+*.session
+*.session-journal
+
+# Build artifacts
+*.pyc
+build/
+*.egg
+
+# Test
+coverage/
+.nyc_output/
+
+# Docker
+docker-compose.override.yml

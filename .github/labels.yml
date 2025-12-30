@@ -1,0 +1,130 @@
+# Priority Labels
+- name: priority:high
+  color: "b60205"
+  description: "High priority - do first"
+
+- name: priority:medium
+  color: "fbca04"
+  description: "Medium priority"
+
+- name: priority:low
+  color: "0e8a16"
+  description: "Low priority - nice to have"
+
+# Type Labels
+- name: type:feature
+  color: "1d76db"
+  description: "New feature or enhancement"
+
+- name: type:bug
+  color: "d73a4a"
+  description: "Something isn't working"
+
+- name: type:task
+  color: "6f42c1"
+  description: "Development task"
+
+- name: type:refactor
+  color: "5319e7"
+  description: "Code refactoring"
+
+- name: type:docs
+  color: "0075ca"
+  description: "Documentation"
+
+- name: type:test
+  color: "bfd4f2"
+  description: "Testing related"
+
+- name: type:chore
+  color: "d4c5f9"
+  description: "Maintenance tasks"
+
+# Component Labels
+- name: component:api
+  color: "c5def5"
+  description: "Backend API"
+
+- name: component:ui
+  color: "bfdadc"
+  description: "Frontend UI"
+
+- name: component:telegram
+  color: "0088cc"
+  description: "Telegram integration"
+
+- name: component:docker
+  color: "2496ed"
+  description: "Docker/deployment"
+
+- name: component:db
+  color: "e6c200"
+  description: "Database"
+
+- name: component:workers
+  color: "d4a373"
+  description: "Background workers"
+
+# Complexity Labels
+- name: complexity:small
+  color: "c2e0c6"
+  description: "Small task (< 1 day)"
+
+- name: complexity:medium
+  color: "fef2c0"
+  description: "Medium task (1-3 days)"
+
+- name: complexity:large
+  color: "f9d0c4"
+  description: "Large task (> 3 days)"
+
+# Agent Labels
+- name: agent:architect
+  color: "7057ff"
+  description: "Assigned to Architect agent"
+
+- name: agent:backend
+  color: "008672"
+  description: "Assigned to Backend Dev agent"
+
+- name: agent:web
+  color: "d876e3"
+  description: "Assigned to Web Dev agent"
+
+- name: agent:qa
+  color: "ffc0cb"
+  description: "Assigned to QA agent"
+
+- name: agent:devops
+  color: "ff7f50"
+  description: "Assigned to DevOps agent"
+
+# Status Labels
+- name: status:in-progress
+  color: "fbca04"
+  description: "Currently being worked on"
+
+- name: status:blocked
+  color: "b60205"
+  description: "Blocked by dependency"
+
+- name: status:needs-review
+  color: "0e8a16"
+  description: "Ready for review"
+
+- name: status:needs-triage
+  color: "ededed"
+  description: "Needs initial review/triage"
+
+# Milestone Labels
+- name: milestone:mvp
+  color: "006b75"
+  description: "Required for MVP"
+
+- name: milestone:v1
+  color: "1d76db"
+  description: "Version 1.0 release"
+
+- name: milestone:future
+  color: "c5def5"
+  description: "Future consideration"

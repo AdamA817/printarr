@@ -1,0 +1,80 @@
+name: Development Task
+description: A task assigned to an agent
+title: "[Task]: "
+labels: ["type:task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template is for creating development tasks for agents.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: Brief description of what needs to be done
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: Background
+      description: Context and why this task is needed
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: How will we know when this is complete?
+      placeholder: |
+        - [ ] Criterion 1
+        - [ ] Criterion 2
+        - [ ] Criterion 3
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical-notes
+    attributes:
+      label: Technical Notes
+      description: Implementation guidance, file references, etc.
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Assigned Agent
+      description: Which agent should work on this?
+      options:
+        - Architect
+        - Backend Dev
+        - Web Dev
+        - QA
+        - DevOps
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+
+  - type: input
+    id: depends
+    attributes:
+      label: Dependencies
+      description: Other issues this depends on
+      placeholder: "#1, #2"
+
+  - type: input
+    id: blocks
+    attributes:
+      label: Blocks
+      description: Issues blocked by this
+      placeholder: "#5, #6"
