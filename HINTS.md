@@ -14,6 +14,7 @@ This file contains useful commands, debug tips, and common patterns to help agen
 | [Git Workflow](#git-workflow) | All | Branch naming, commit messages |
 | [Troubleshooting](#troubleshooting) | All | Common issues and solutions |
 | [QA Testing Tips](#qa-testing-tips) | QA, Web Dev | Browser caching, React gotchas, Vitest config |
+| [MCP_DOCKER Browser Testing](#mcp_docker-browser-testing) | QA | Using Playwright browser tools with host IP |
 
 **Tip**: Use `grep -n "## Section Name" HINTS.md` to find a section quickly.
 
@@ -594,3 +595,70 @@ docker exec printarr bash -c 'grep -c "ComponentName" /app/frontend/dist/assets/
 # 4. Rebuild if code is stale
 docker-compose build --no-cache && docker-compose up -d
 ```
+
+### MCP_DOCKER Browser Testing
+
+When using the MCP_DOCKER browser tools (Playwright) for UI testing, the browser runs inside a Docker container and **cannot access `localhost`**. You must use the host machine's IP address.
+
+#### Getting the Host IP Address
+```bash
+# macOS - get IP from en0 (usually WiFi) or en1 (Ethernet)
+ifconfig en0 | grep "inet " | awk '{print $2}'
+
+# Linux
+hostname -I | awk '{print $1}'
+
+# Alternative: check what IP your machine has
+ip route get 1 | awk '{print $7}'
+```
+
+#### Using the Browser Tools
+```javascript
+// WRONG - browser can't reach localhost from inside Docker
+await page.goto('http://localhost:3333/');  // Will fail with ERR_CONNECTION_REFUSED
+
+// CORRECT - use the host machine's IP
+await page.goto('http://10.0.0.27:3333/');  // Replace with your actual IP
+```
+
+#### Typical Browser Testing Workflow
+1. **Get your host IP first**:
+   ```bash
+   ifconfig en0 | grep "inet " | awk '{print $2}'
+   # Example output: 10.0.0.27
+   ```
+
+2. **Navigate using the IP**:
+   ```javascript
+   // Use browser_navigate with host IP
+   mcp__MCP_DOCKER__browser_navigate({ url: "http://10.0.0.27:3333/channels" })
+   ```
+
+3. **Wait for content to load**:
+   ```javascript
+   mcp__MCP_DOCKER__browser_wait_for({ time: 2 })
+   ```
+
+4. **Take snapshots to see page state**:
+   ```javascript
+   mcp__MCP_DOCKER__browser_snapshot()
+   ```
+
+5. **Interact with elements using refs from snapshot**:
+   ```javascript
+   mcp__MCP_DOCKER__browser_click({ element: "Add Channel button", ref: "e50" })
+   ```
+
+#### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| `ERR_CONNECTION_REFUSED` | Using localhost instead of host IP |
+| Element outside viewport | Use `browser_run_code` with `scrollIntoViewIfNeeded()` |
+| Button click timeout | Try `element.evaluate(el => el.click())` via `browser_run_code` |
+| IP changed | Re-run `ifconfig en0` to get current IP |
+
+#### Pro Tips
+- Your IP may change (DHCP). Always verify it before starting a browser session.
+- Use `browser_snapshot()` instead of `browser_take_screenshot()` for element refs.
+- Close browser when done: `mcp__MCP_DOCKER__browser_close()`
