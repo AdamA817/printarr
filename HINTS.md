@@ -51,11 +51,12 @@ pip install -r requirements-dev.txt
 
 ### Running the Backend
 ```bash
-# Development server with hot reload
-uvicorn app.main:app --reload --port 7878
+# Development server with hot reload (port 3333 per DEC-006)
+cd backend
+uvicorn app.main:app --reload --port 3333
 
 # Run with specific log level
-uvicorn app.main:app --reload --log-level debug
+uvicorn app.main:app --reload --port 3333 --log-level debug
 
 # Run workers separately (in production)
 python -m app.workers.ingestion
@@ -65,8 +66,12 @@ python -m app.workers.preview
 
 ### Database Commands
 ```bash
-# Run migrations
+# Run migrations (uses PRINTARR_CONFIG_PATH env var, defaults to /config)
+cd backend
 alembic upgrade head
+
+# For local development, set the config path first:
+PRINTARR_CONFIG_PATH=./config alembic upgrade head
 
 # Create new migration
 alembic revision --autogenerate -m "description"
@@ -77,6 +82,8 @@ alembic downgrade -1
 # Reset database (CAUTION: destroys data)
 alembic downgrade base && alembic upgrade head
 ```
+
+**Important**: Alembic uses `PRINTARR_CONFIG_PATH` to find the database. In Docker this defaults to `/config`. For local development, set it to `./config` or the path where you want your database.
 
 ### Testing
 ```bash
@@ -256,19 +263,55 @@ docker build -t printarr:dev .
 docker build --no-cache -t printarr:dev .
 ```
 
-### Running
+### Running with docker-compose
 ```bash
-# Run with docker-compose (recommended for dev)
+# Start the container (recommended for local testing)
 docker-compose up -d
 
 # View logs
 docker-compose logs -f
 
-# Restart specific service
-docker-compose restart backend
+# Stop and remove
+docker-compose down
+
+# Rebuild and restart
+docker-compose up -d --build
+```
+
+### Running Standalone Container
+```bash
+# Create data directories first
+mkdir -p data/{config,data,staging,library,cache}
+
+# Run container with volume mounts
+docker run -d --name printarr \
+  -p 3333:3333 \
+  -v $(pwd)/data/config:/config \
+  -v $(pwd)/data/data:/data \
+  -v $(pwd)/data/staging:/staging \
+  -v $(pwd)/data/library:/library \
+  -v $(pwd)/data/cache:/cache \
+  printarr:dev
 
 # Shell into container
-docker exec -it printarr-backend /bin/bash
+docker exec -it printarr /bin/bash
+```
+
+### Testing Endpoints
+```bash
+# Health check
+curl http://localhost:3333/api/health
+
+# List channels
+curl http://localhost:3333/api/v1/channels/
+
+# Create a channel
+curl -X POST http://localhost:3333/api/v1/channels/ \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Test", "username": "test"}'
+
+# Frontend (should return HTML)
+curl http://localhost:3333/
 ```
 
 ### Debugging Container Issues
@@ -279,12 +322,59 @@ docker ps -a
 # View container logs
 docker logs printarr --tail 100
 
+# Follow logs in real-time
+docker logs -f printarr
+
 # Inspect container
 docker inspect printarr
 
 # Check resource usage
 docker stats printarr
+
+# Check if migrations ran (look for "Running upgrade")
+docker logs printarr 2>&1 | grep -i migration
 ```
+
+### Common Docker Issues
+
+| Issue | Solution |
+|-------|----------|
+| `no such table: channels` | Database path mismatch. Ensure PRINTARR_CONFIG_PATH=/config is set |
+| API returns HTML instead of JSON | Static file catch-all intercepting routes. Check main.py routing |
+| Container starts but health check fails | Wait for startup (5-10s) or check logs for errors |
+| Migration runs but no tables created | Check database path in alembic/env.py matches app config |
+| Permission denied on volumes | Check host directory permissions, may need `chmod 777` on data dirs |
+
+### Volume Mounts (Critical!)
+All persistent data must be in mounted volumes:
+- `/config` - Database, Telegram session, app config
+- `/data` - Internal state
+- `/staging` - Temporary downloads
+- `/library` - Organized 3D model files
+- `/cache` - Thumbnails and previews
+
+### Unraid Deployment
+```bash
+# On Unraid server, clone repo and set up deploy script
+git clone https://github.com/AdamA817/printarr.git
+cd printarr
+cp scripts/deploy.conf.example scripts/deploy.conf
+
+# Edit deploy.conf with your paths
+nano scripts/deploy.conf
+
+# Run deploy script
+./scripts/deploy.sh
+
+# Build only (don't restart container)
+./scripts/deploy.sh --build
+```
+
+The deploy script will:
+1. Pull latest code from git
+2. Build Docker image
+3. Stop/remove existing container
+4. Start new container with configured volumes
 
 ---
 
@@ -361,8 +451,8 @@ npm run lint
 ### Backend Won't Start
 1. Check virtual environment is activated
 2. Verify all dependencies installed: `pip install -r requirements.txt`
-3. Check database connection: `alembic upgrade head`
-4. Look for port conflicts: `lsof -i :7878`
+3. Check database connection: `PRINTARR_CONFIG_PATH=./config alembic upgrade head`
+4. Look for port conflicts: `lsof -i :3333`
 
 ### Frontend Won't Start
 1. Clear node_modules: `rm -rf node_modules && npm install`
