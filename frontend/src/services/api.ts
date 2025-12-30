@@ -30,6 +30,13 @@ import type {
   MessagesResponse,
 } from '@/types/telegram'
 import type { StatsResponse } from '@/types/stats'
+import type {
+  QueueList,
+  QueueListParams,
+  QueueStats,
+  ActivityList,
+  ActivityListParams,
+} from '@/types/queue'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -160,4 +167,28 @@ export interface ThangsSearchParams {
 export const thangsApi = {
   search: (params: ThangsSearchParams) =>
     api.get<ThangsSearchResponse>('/thangs/search', { params }).then((r) => r.data),
+}
+
+// Queue API (v0.5)
+export const queueApi = {
+  list: (params?: QueueListParams) =>
+    api.get<QueueList>('/queue/', { params }).then((r) => r.data),
+
+  stats: () =>
+    api.get<QueueStats>('/queue/stats').then((r) => r.data),
+
+  updatePriority: (jobId: string, priority: number) =>
+    api.patch(`/queue/${jobId}`, { priority }).then((r) => r.data),
+
+  cancel: (jobId: string) =>
+    api.delete(`/queue/${jobId}`).then((r) => r.data),
+}
+
+// Activity API (v0.5)
+export const activityApi = {
+  list: (params?: ActivityListParams) =>
+    api.get<ActivityList>('/activity/', { params }).then((r) => r.data),
+
+  remove: (jobId: string) =>
+    api.delete(`/activity/${jobId}`).then((r) => r.data),
 }
