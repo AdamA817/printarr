@@ -75,7 +75,7 @@ Each version should be:
 - [ ] Create Design records from detected posts
 - [ ] Basic backfill (last N messages per channel)
 - [ ] **Thangs URL detection** in captions (auto-link with confidence=1.0)
-- [ ] **Thangs metadata fetch** (designer, title) for auto-linked designs
+- [ ] **Thangs metadata fetch** (designer, title) via background job post-ingestion
 - [ ] ExternalMetadataSource table for storing Thangs links
 
 ### Success Criteria
