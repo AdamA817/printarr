@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { Channel, ChannelCreate, ChannelList } from '@/types/channel'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -15,33 +16,19 @@ api.interceptors.response.use(
   }
 )
 
-export interface Channel {
-  id: string
-  identifier: string
-  title: string
-  telegram_id?: number
-  status: 'PENDING' | 'ACTIVE' | 'ERROR' | 'DISABLED'
-  download_mode: 'MANUAL' | 'NEW' | 'ALL'
-  created_at: string
-  updated_at: string
-}
-
-export interface PaginatedResponse<T> {
-  items: T[]
-  total: number
-  page: number
-  limit: number
+export interface ChannelListParams {
+  page?: number
+  page_size?: number
+  is_enabled?: boolean
 }
 
 export const channelsApi = {
-  list: (params?: { page?: number; limit?: number }) =>
-    api
-      .get<PaginatedResponse<Channel>>('/channels', { params })
-      .then((r) => r.data),
+  list: (params?: ChannelListParams) =>
+    api.get<ChannelList>('/channels', { params }).then((r) => r.data),
 
   get: (id: string) => api.get<Channel>(`/channels/${id}`).then((r) => r.data),
 
-  create: (data: { identifier: string }) =>
+  create: (data: ChannelCreate) =>
     api.post<Channel>('/channels', data).then((r) => r.data),
 
   delete: (id: string) => api.delete(`/channels/${id}`),
