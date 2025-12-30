@@ -21,6 +21,7 @@ from app.db.models import (
     MulticolorStatus,
     TelegramMessage,
 )
+from app.services.thangs import ThangsAdapter
 
 if TYPE_CHECKING:
     from app.db.models import Channel
@@ -300,7 +301,39 @@ class IngestService:
             file_types=file_types,
         )
 
+        # Process external URLs (Thangs, Printables, Thingiverse)
+        # This is non-blocking - errors are logged but don't fail ingestion
+        await self._process_external_urls(design, caption_text)
+
         return design
+
+    async def _process_external_urls(self, design: Design, caption: str) -> None:
+        """Process caption for external platform URLs and create links.
+
+        This is async but non-blocking - errors are logged but don't fail ingestion.
+        """
+        if not caption:
+            return
+
+        try:
+            adapter = ThangsAdapter(self.db)
+            sources = await adapter.process_design_urls(design, caption)
+
+            if sources:
+                logger.info(
+                    "external_urls_processed",
+                    design_id=design.id,
+                    count=len(sources),
+                )
+
+            await adapter.close()
+        except Exception as e:
+            # Log but don't fail - external URL processing is best-effort
+            logger.warning(
+                "external_url_processing_failed",
+                design_id=design.id,
+                error=str(e),
+            )
 
     def _extract_title(self, caption: str, message: TelegramMessage) -> str:
         """Extract a title from caption or fallback to filename."""
