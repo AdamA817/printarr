@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.db import get_db
 from app.db.base import Base
-from app.db.models import Channel
 from app.main import app
 
 

@@ -9,8 +9,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.db.models import (
-    Channel,
     BackfillMode,
+    Channel,
     DownloadMode,
 )
 

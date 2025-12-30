@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Enum, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -31,8 +31,8 @@ class Channel(Base):
     # Telegram identification
     telegram_peer_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    invite_link: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    invite_link: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_private: Mapped[bool] = mapped_column(Boolean, default=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -44,18 +44,18 @@ class Channel(Base):
     download_mode: Mapped[DownloadMode] = mapped_column(
         Enum(DownloadMode), default=DownloadMode.MANUAL
     )
-    library_template_override: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    title_source_override: Mapped[Optional[TitleSource]] = mapped_column(
+    library_template_override: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    title_source_override: Mapped[TitleSource | None] = mapped_column(
         Enum(TitleSource), nullable=True
     )
-    designer_source_override: Mapped[Optional[DesignerSource]] = mapped_column(
+    designer_source_override: Mapped[DesignerSource | None] = mapped_column(
         Enum(DesignerSource), nullable=True
     )
 
     # Sync state
-    last_ingested_message_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    last_backfill_checkpoint: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    last_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_ingested_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_backfill_checkpoint: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -64,13 +64,13 @@ class Channel(Base):
     )
 
     # Relationships
-    messages: Mapped[list["TelegramMessage"]] = relationship(
+    messages: Mapped[list[TelegramMessage]] = relationship(
         "TelegramMessage", back_populates="channel", cascade="all, delete-orphan"
     )
-    design_sources: Mapped[list["DesignSource"]] = relationship(
+    design_sources: Mapped[list[DesignSource]] = relationship(
         "DesignSource", back_populates="channel"
     )
-    jobs: Mapped[list["Job"]] = relationship("Job", back_populates="channel")
+    jobs: Mapped[list[Job]] = relationship("Job", back_populates="channel")
 
     # Indexes
     __table_args__ = (Index("ix_channels_enabled_sync", "is_enabled", "last_sync_at"),)

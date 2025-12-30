@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -41,15 +41,15 @@ class DesignSource(Base):
     # Source metadata
     source_rank: Mapped[int] = mapped_column(Integer, default=0)
     is_preferred: Mapped[bool] = mapped_column(Boolean, default=False)
-    caption_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    caption_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    design: Mapped["Design"] = relationship("Design", back_populates="sources")
-    channel: Mapped["Channel"] = relationship("Channel", back_populates="design_sources")
-    message: Mapped["TelegramMessage"] = relationship(
+    design: Mapped[Design] = relationship("Design", back_populates="sources")
+    channel: Mapped[Channel] = relationship("Channel", back_populates="design_sources")
+    message: Mapped[TelegramMessage] = relationship(
         "TelegramMessage", back_populates="design_source"
     )
 

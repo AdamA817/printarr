@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -29,7 +28,7 @@ router = APIRouter(prefix="/channels", tags=["channels"])
 async def list_channels(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    is_enabled: Optional[bool] = Query(None, description="Filter by enabled status"),
+    is_enabled: bool | None = Query(None, description="Filter by enabled status"),
     db: AsyncSession = Depends(get_db),
 ) -> ChannelList:
     """List all channels with pagination."""

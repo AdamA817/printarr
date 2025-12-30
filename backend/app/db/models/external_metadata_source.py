@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -56,18 +56,18 @@ class ExternalMetadataSource(Base):
     is_user_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Fetched metadata from external source
-    fetched_title: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    fetched_designer: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    fetched_tags: Mapped[Optional[str]] = mapped_column(
+    fetched_title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    fetched_designer: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    fetched_tags: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # JSON array stored as text
 
     # Timestamps
-    last_fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    design: Mapped["Design"] = relationship("Design", back_populates="external_metadata_sources")
+    design: Mapped[Design] = relationship("Design", back_populates="external_metadata_sources")
 
     # Constraints and indexes
     __table_args__ = (

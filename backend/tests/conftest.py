@@ -11,10 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 # Set config path BEFORE importing app modules
 os.environ["PRINTARR_CONFIG_PATH"] = str(Path(__file__).parent / "test_config")
 
-from app.db.base import Base
 from app.db import get_db
+from app.db.base import Base
 from app.main import app
-
 
 # Create test database engine
 TEST_DB_PATH = Path(__file__).parent / "test_config" / "test_printarr.db"

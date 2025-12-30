@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -16,11 +14,9 @@ from app.db.models import (
     DesignSource,
     DesignStatus,
     MediaType,
-    MulticolorStatus,
     TelegramMessage,
 )
-from app.services.ingest import IngestService, DESIGN_EXTENSIONS
-
+from app.services.ingest import DESIGN_EXTENSIONS, IngestService
 
 # =============================================================================
 # Fixtures

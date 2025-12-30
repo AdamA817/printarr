@@ -69,6 +69,12 @@ class Settings(BaseSettings):
         description="Telegram API Hash from my.telegram.org",
     )
 
+    # FlareSolverr (optional, for bypassing Cloudflare on Thangs)
+    flaresolverr_url: str | None = Field(
+        default=None,
+        description="FlareSolverr URL (e.g., http://flaresolverr:8191/v1)",
+    )
+
     @property
     def telegram_session_path(self) -> Path:
         """Get the Telegram session file path."""

@@ -22,7 +22,6 @@ from app.db.models import (
 )
 from app.main import app
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -1108,7 +1107,8 @@ class TestSorting:
 # Thangs Link/Unlink Tests (Issue #59)
 # =============================================================================
 
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from sqlalchemy import select
 
 

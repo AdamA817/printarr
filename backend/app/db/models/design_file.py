@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -31,7 +31,7 @@ class DesignFile(Base):
     design_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("designs.id", ondelete="CASCADE"), nullable=False
     )
-    source_attachment_id: Mapped[Optional[str]] = mapped_column(
+    source_attachment_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("attachments.id", ondelete="SET NULL"), nullable=True
     )
 
@@ -39,8 +39,8 @@ class DesignFile(Base):
     relative_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     ext: Mapped[str] = mapped_column(String(32), nullable=False)
-    size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # File classification
     file_kind: Mapped[FileKind] = mapped_column(Enum(FileKind), default=FileKind.OTHER)
@@ -48,7 +48,7 @@ class DesignFile(Base):
 
     # Archive handling
     is_from_archive: Mapped[bool] = mapped_column(Boolean, default=False)
-    archive_parent_id: Mapped[Optional[str]] = mapped_column(
+    archive_parent_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("design_files.id", ondelete="SET NULL"), nullable=True
     )
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -57,11 +57,11 @@ class DesignFile(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    design: Mapped["Design"] = relationship("Design", back_populates="files")
-    source_attachment: Mapped[Optional["Attachment"]] = relationship(
+    design: Mapped[Design] = relationship("Design", back_populates="files")
+    source_attachment: Mapped[Attachment | None] = relationship(
         "Attachment", back_populates="design_files"
     )
-    archive_parent: Mapped[Optional["DesignFile"]] = relationship(
+    archive_parent: Mapped[DesignFile | None] = relationship(
         "DesignFile", remote_side=[id], backref="extracted_files"
     )
 

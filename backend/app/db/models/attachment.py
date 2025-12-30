@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, Enum, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -34,15 +34,15 @@ class Attachment(Base):
     )
 
     # Telegram file identification
-    telegram_file_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    telegram_unique_file_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    telegram_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    telegram_unique_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # File metadata
     media_type: Mapped[MediaType] = mapped_column(Enum(MediaType), default=MediaType.DOCUMENT)
-    filename: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    mime_type: Mapped[Optional[str]] = mapped_column(String(127), nullable=True)
-    size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    ext: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(String(127), nullable=True)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    ext: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # Design file detection
     is_candidate_design_file: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -51,8 +51,8 @@ class Attachment(Base):
     download_status: Mapped[AttachmentDownloadStatus] = mapped_column(
         Enum(AttachmentDownloadStatus), default=AttachmentDownloadStatus.NOT_DOWNLOADED
     )
-    download_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    download_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -60,13 +60,13 @@ class Attachment(Base):
     )
 
     # Relationships
-    message: Mapped["TelegramMessage"] = relationship(
+    message: Mapped[TelegramMessage] = relationship(
         "TelegramMessage", back_populates="attachments"
     )
-    design_files: Mapped[list["DesignFile"]] = relationship(
+    design_files: Mapped[list[DesignFile]] = relationship(
         "DesignFile", back_populates="source_attachment"
     )
-    preview_assets: Mapped[list["PreviewAsset"]] = relationship(
+    preview_assets: Mapped[list[PreviewAsset]] = relationship(
         "PreviewAsset", back_populates="source_attachment"
     )
 

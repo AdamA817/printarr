@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -33,7 +32,7 @@ class DesignSourceResponse(BaseModel):
     message_id: str
     source_rank: int
     is_preferred: bool
-    caption_snapshot: Optional[str] = None
+    caption_snapshot: str | None = None
     created_at: datetime
 
     # Include channel info
@@ -52,10 +51,10 @@ class ExternalMetadataResponse(BaseModel):
     confidence_score: float
     match_method: MatchMethod
     is_user_confirmed: bool
-    fetched_title: Optional[str] = None
-    fetched_designer: Optional[str] = None
-    fetched_tags: Optional[str] = None
-    last_fetched_at: Optional[datetime] = None
+    fetched_title: str | None = None
+    fetched_designer: str | None = None
+    fetched_tags: str | None = None
+    last_fetched_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -74,7 +73,7 @@ class DesignListItem(BaseModel):
     updated_at: datetime
 
     # Summary of first source channel
-    channel: Optional[ChannelSummary] = None
+    channel: ChannelSummary | None = None
 
     # Whether design has Thangs link
     has_thangs_link: bool = False
@@ -90,18 +89,18 @@ class DesignDetail(BaseModel):
     canonical_designer: str
     status: DesignStatus
     multicolor: MulticolorStatus
-    primary_file_types: Optional[str] = None
-    total_size_bytes: Optional[int] = None
+    primary_file_types: str | None = None
+    total_size_bytes: int | None = None
 
     # User overrides
-    title_override: Optional[str] = None
-    designer_override: Optional[str] = None
-    multicolor_override: Optional[MulticolorStatus] = None
-    notes: Optional[str] = None
+    title_override: str | None = None
+    designer_override: str | None = None
+    multicolor_override: MulticolorStatus | None = None
+    notes: str | None = None
 
     # Metadata authority
     metadata_authority: MetadataAuthority
-    metadata_confidence: Optional[float] = None
+    metadata_confidence: float | None = None
 
     # Computed display values
     display_title: str

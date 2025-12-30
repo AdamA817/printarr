@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -33,33 +33,33 @@ class Job(Base):
     priority: Mapped[int] = mapped_column(Integer, default=0)
 
     # Optional references
-    channel_id: Mapped[Optional[str]] = mapped_column(
+    channel_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True
     )
-    design_id: Mapped[Optional[str]] = mapped_column(
+    design_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("designs.id", ondelete="SET NULL"), nullable=True
     )
 
     # Job payload (JSON stored as text for SQLite compatibility)
-    payload_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Progress tracking
-    progress_current: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    progress_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    progress_current: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    progress_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Retry handling
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, default=3)
-    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Relationships
-    channel: Mapped[Optional["Channel"]] = relationship("Channel", back_populates="jobs")
-    design: Mapped[Optional["Design"]] = relationship("Design", back_populates="jobs")
+    channel: Mapped[Channel | None] = relationship("Channel", back_populates="jobs")
+    design: Mapped[Design | None] = relationship("Design", back_populates="jobs")
 
     # Indexes
     __table_args__ = (
@@ -69,7 +69,7 @@ class Job(Base):
     )
 
     @property
-    def progress_percent(self) -> Optional[float]:
+    def progress_percent(self) -> float | None:
         """Calculate progress percentage."""
         if self.progress_total and self.progress_total > 0:
             return (self.progress_current or 0) / self.progress_total * 100

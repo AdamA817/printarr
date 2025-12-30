@@ -2,25 +2,21 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from httpx import ASGITransport, AsyncClient, Response
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.db.base import Base
 from app.db.models import (
-    Channel,
     Design,
-    DesignSource,
     DesignStatus,
-    ExternalMetadataSource,
     ExternalSourceType,
     MatchMethod,
     MulticolorStatus,
-    TelegramMessage,
 )
 from app.services.thangs import ThangsAdapter
-
 
 # =============================================================================
 # URL Detection Tests (Static Methods - No DB Required)
@@ -495,9 +491,9 @@ class TestProcessDesignUrls:
 from app.db import get_db
 from app.main import app
 from app.services.thangs import (
-    ThangsSearchResult,
-    ThangsSearchResponse,
     ThangsRateLimitError,
+    ThangsSearchResponse,
+    ThangsSearchResult,
     ThangsUpstreamError,
     _search_cache,
 )

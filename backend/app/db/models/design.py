@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -42,34 +42,34 @@ class Design(Base):
     )
 
     # Derived data
-    primary_file_types: Mapped[Optional[str]] = mapped_column(
+    primary_file_types: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )  # Comma-separated list
-    total_size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    total_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     # User overrides
-    title_override: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    designer_override: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    multicolor_override: Mapped[Optional[MulticolorStatus]] = mapped_column(
+    title_override: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    designer_override: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    multicolor_override: Mapped[MulticolorStatus | None] = mapped_column(
         Enum(MulticolorStatus), nullable=True
     )
 
     # Notes (user-provided)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Split archive detection
     is_split_archive: Mapped[bool] = mapped_column(Boolean, default=False)
-    split_archive_base_name: Mapped[Optional[str]] = mapped_column(
+    split_archive_base_name: Mapped[str | None] = mapped_column(
         String(512), nullable=True
     )
-    detected_parts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    expected_parts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    detected_parts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    expected_parts: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Metadata authority (source of truth for canonical metadata)
     metadata_authority: Mapped[MetadataAuthority] = mapped_column(
         Enum(MetadataAuthority), default=MetadataAuthority.TELEGRAM
     )
-    metadata_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    metadata_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -78,20 +78,20 @@ class Design(Base):
     )
 
     # Relationships
-    sources: Mapped[list["DesignSource"]] = relationship(
+    sources: Mapped[list[DesignSource]] = relationship(
         "DesignSource", back_populates="design", cascade="all, delete-orphan"
     )
-    files: Mapped[list["DesignFile"]] = relationship(
+    files: Mapped[list[DesignFile]] = relationship(
         "DesignFile", back_populates="design", cascade="all, delete-orphan"
     )
-    design_tags: Mapped[list["DesignTag"]] = relationship(
+    design_tags: Mapped[list[DesignTag]] = relationship(
         "DesignTag", back_populates="design", cascade="all, delete-orphan"
     )
-    preview_assets: Mapped[list["PreviewAsset"]] = relationship(
+    preview_assets: Mapped[list[PreviewAsset]] = relationship(
         "PreviewAsset", back_populates="design", cascade="all, delete-orphan"
     )
-    jobs: Mapped[list["Job"]] = relationship("Job", back_populates="design")
-    external_metadata_sources: Mapped[list["ExternalMetadataSource"]] = relationship(
+    jobs: Mapped[list[Job]] = relationship("Job", back_populates="design")
+    external_metadata_sources: Mapped[list[ExternalMetadataSource]] = relationship(
         "ExternalMetadataSource", back_populates="design", cascade="all, delete-orphan"
     )
 

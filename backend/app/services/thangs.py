@@ -30,6 +30,13 @@ THANGS_API_DELAY = 0.5
 # Cache TTL for search results (5 minutes)
 SEARCH_CACHE_TTL = 300
 
+# FlareSolverr timeout (60 seconds)
+FLARESOLVERR_TIMEOUT = 60000
+
+# Max retries for transient failures
+MAX_RETRIES = 3
+RETRY_DELAY = 2.0
+
 
 @dataclass
 class ThangsSearchResult:
@@ -67,9 +74,16 @@ class ThangsRateLimitError(ThangsSearchError):
 class ThangsUpstreamError(ThangsSearchError):
     """Raised when Thangs API returns an error."""
 
-    def __init__(self, message: str, status_code: int):
+    def __init__(self, message: str, status_code: int = 502):
         self.status_code = status_code
         super().__init__(message)
+
+
+class FlareSolverrError(ThangsSearchError):
+    """Raised when FlareSolverr returns an error."""
+
+    def __init__(self, message: str):
+        super().__init__(f"FlareSolverr error: {message}")
 
 
 # Simple in-memory cache for search results

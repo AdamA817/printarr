@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -14,8 +13,8 @@ class ChannelBase(BaseModel):
     """Base schema for channel data."""
 
     title: str = Field(..., min_length=1, max_length=255)
-    username: Optional[str] = Field(None, max_length=255)
-    invite_link: Optional[str] = Field(None, max_length=512)
+    username: str | None = Field(None, max_length=255)
+    invite_link: str | None = Field(None, max_length=512)
     is_private: bool = False
 
 
@@ -24,7 +23,7 @@ class ChannelCreate(ChannelBase):
 
     # For v0.1, we accept a telegram_peer_id or generate one
     # In v0.2+, this will be resolved from Telegram
-    telegram_peer_id: Optional[str] = Field(
+    telegram_peer_id: str | None = Field(
         None,
         max_length=64,
         description="Telegram peer ID (optional for v0.1, will be auto-generated if not provided)",
@@ -34,19 +33,19 @@ class ChannelCreate(ChannelBase):
 class ChannelUpdate(BaseModel):
     """Schema for updating a channel (all fields optional)."""
 
-    title: Optional[str] = Field(None, min_length=1, max_length=255)
-    username: Optional[str] = Field(None, max_length=255)
-    invite_link: Optional[str] = Field(None, max_length=512)
-    is_private: Optional[bool] = None
-    is_enabled: Optional[bool] = None
+    title: str | None = Field(None, min_length=1, max_length=255)
+    username: str | None = Field(None, max_length=255)
+    invite_link: str | None = Field(None, max_length=512)
+    is_private: bool | None = None
+    is_enabled: bool | None = None
 
     # Channel settings
-    backfill_mode: Optional[BackfillMode] = None
-    backfill_value: Optional[int] = Field(None, ge=1)
-    download_mode: Optional[DownloadMode] = None
-    library_template_override: Optional[str] = Field(None, max_length=512)
-    title_source_override: Optional[TitleSource] = None
-    designer_source_override: Optional[DesignerSource] = None
+    backfill_mode: BackfillMode | None = None
+    backfill_value: int | None = Field(None, ge=1)
+    download_mode: DownloadMode | None = None
+    library_template_override: str | None = Field(None, max_length=512)
+    title_source_override: TitleSource | None = None
+    designer_source_override: DesignerSource | None = None
 
 
 class ChannelResponse(ChannelBase):
@@ -60,14 +59,14 @@ class ChannelResponse(ChannelBase):
     backfill_mode: BackfillMode
     backfill_value: int
     download_mode: DownloadMode
-    library_template_override: Optional[str] = None
-    title_source_override: Optional[TitleSource] = None
-    designer_source_override: Optional[DesignerSource] = None
+    library_template_override: str | None = None
+    title_source_override: TitleSource | None = None
+    designer_source_override: DesignerSource | None = None
 
     # Sync state
-    last_ingested_message_id: Optional[int] = None
-    last_backfill_checkpoint: Optional[int] = None
-    last_sync_at: Optional[datetime] = None
+    last_ingested_message_id: int | None = None
+    last_backfill_checkpoint: int | None = None
+    last_sync_at: datetime | None = None
 
     # Timestamps
     created_at: datetime
@@ -89,11 +88,11 @@ class ChannelList(BaseModel):
 class BackfillRequest(BaseModel):
     """Schema for backfill request parameters."""
 
-    mode: Optional[str] = Field(
+    mode: str | None = Field(
         None,
         description="Override backfill mode: ALL_HISTORY, LAST_N_MESSAGES, LAST_N_DAYS",
     )
-    value: Optional[int] = Field(
+    value: int | None = Field(
         None, ge=1, description="Override backfill value (N messages or N days)"
     )
 
@@ -113,8 +112,8 @@ class BackfillStatusResponse(BaseModel):
     """Schema for backfill status response."""
 
     channel_id: str
-    last_backfill_checkpoint: Optional[int] = None
-    last_ingested_message_id: Optional[int] = None
-    last_sync_at: Optional[str] = None
+    last_backfill_checkpoint: int | None = None
+    last_ingested_message_id: int | None = None
+    last_sync_at: str | None = None
     backfill_mode: str
     backfill_value: int

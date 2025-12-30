@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -78,10 +77,10 @@ class ThangsLinkResponse(BaseModel):
     confidence_score: float
     match_method: str
     is_user_confirmed: bool
-    fetched_title: Optional[str] = None
-    fetched_designer: Optional[str] = None
-    fetched_tags: Optional[str] = None
-    last_fetched_at: Optional[datetime] = None
+    fetched_title: str | None = None
+    fetched_designer: str | None = None
+    fetched_tags: str | None = None
+    last_fetched_at: datetime | None = None
     created_at: datetime
 
 
@@ -120,13 +119,13 @@ router = APIRouter(prefix="/designs", tags=["designs"])
 async def list_designs(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    channel_id: Optional[str] = Query(None, description="Filter by channel ID"),
-    file_type: Optional[str] = Query(None, description="Filter by primary file type (STL, 3MF, OBJ, etc.)"),
-    multicolor: Optional[MulticolorStatus] = Query(None, description="Filter by multicolor status"),
-    has_thangs_link: Optional[bool] = Query(None, description="Filter by Thangs link status"),
-    designer: Optional[str] = Query(None, description="Filter by designer (partial match)"),
-    q: Optional[str] = Query(None, description="Full-text search on title and designer"),
+    status: str | None = Query(None, description="Filter by status"),
+    channel_id: str | None = Query(None, description="Filter by channel ID"),
+    file_type: str | None = Query(None, description="Filter by primary file type (STL, 3MF, OBJ, etc.)"),
+    multicolor: MulticolorStatus | None = Query(None, description="Filter by multicolor status"),
+    has_thangs_link: bool | None = Query(None, description="Filter by Thangs link status"),
+    designer: str | None = Query(None, description="Filter by designer (partial match)"),
+    q: str | None = Query(None, description="Full-text search on title and designer"),
     sort_by: SortField = Query(SortField.CREATED_AT, description="Field to sort by"),
     sort_order: SortOrder = Query(SortOrder.DESC, description="Sort order (ASC or DESC)"),
     db: AsyncSession = Depends(get_db),
@@ -860,7 +859,7 @@ async def unmerge_design(
 
     # Create new design for the split sources
     # Use the first source to derive initial metadata
-    first_source = sources_to_move[0]
+    sources_to_move[0]
     new_design = Design(
         canonical_title=design.canonical_title,
         canonical_designer=design.canonical_designer,

@@ -32,6 +32,6 @@ class Tag(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    design_tags: Mapped[list["DesignTag"]] = relationship(
+    design_tags: Mapped[list[DesignTag]] = relationship(
         "DesignTag", back_populates="tag", cascade="all, delete-orphan"
     )

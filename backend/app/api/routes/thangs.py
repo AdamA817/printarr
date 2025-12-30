@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,8 +24,8 @@ class ThangsSearchResultResponse(BaseModel):
 
     model_id: str
     title: str
-    designer: Optional[str] = None
-    thumbnail_url: Optional[str] = None
+    designer: str | None = None
+    thumbnail_url: str | None = None
     url: str
 
 

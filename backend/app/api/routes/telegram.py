@@ -19,8 +19,8 @@ from app.schemas.telegram import (
     ChannelResolveResponse,
     Message,
     MessageAttachment,
-    MessagesResponse,
     MessageSender,
+    MessagesResponse,
     TelegramErrorResponse,
     TelegramUser,
 )
