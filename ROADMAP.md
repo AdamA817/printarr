@@ -48,10 +48,10 @@ Each version should be:
 **Goal**: Connect to Telegram and prove we can read data
 
 ### Scope
-- [ ] Telegram authentication flow (phone, code, 2FA)
-- [ ] Session persistence across restarts
-- [ ] Resolve channel from t.me link
-- [ ] Fetch last 10 messages from a channel (display raw in UI)
+- [x] Telegram authentication flow (phone, code, 2FA)
+- [x] Session persistence across restarts
+- [x] Resolve channel from t.me link
+- [x] Fetch last 10 messages from a channel (display raw in UI)
 
 ### Success Criteria
 - Log in with Telegram account via UI
@@ -236,9 +236,9 @@ Each version should be:
 
 ## Current Status
 
-**Active Version**: v0.2 (next)
+**Active Version**: v0.3 (next)
 
-**Last Updated**: 2024-12-30
+**Last Updated**: 2025-12-30
 
 ---
 
@@ -247,8 +247,8 @@ Each version should be:
 | Version | Focus | Status | Notes |
 |---------|-------|--------|-------|
 | v0.1 | Hello World | ✅ Complete | Foundation + Docker/Unraid |
-| v0.2 | Telegram | 🔜 Next | Auth + connection |
-| v0.3 | Ingestion | - | Parse + detect designs |
+| v0.2 | Telegram | ✅ Complete | Auth + connection |
+| v0.3 | Ingestion | 🔜 Next | Parse + detect designs |
 | v0.4 | Catalog UI | - | Radarr-style browsing |
 | v0.5 | Downloads | - | Job queue + library |
 | v0.6 | Live Monitoring | - | Continuous ingestion |
