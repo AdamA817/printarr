@@ -384,7 +384,12 @@ The backend is the **source of truth** for all type definitions.
 
 ## Getting Started
 
-**FIRST: Check for assigned GitHub issues**
+**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Pay special attention to:
+- Backend setup and commands (lines 37-156)
+- Database commands and migration tips (lines 68-87)
+- Telegram integration troubleshooting (lines 381-413)
+
+**THEN: Check for assigned GitHub issues**
 ```bash
 gh issue list --label "agent:backend" --state open
 ```

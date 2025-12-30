@@ -402,7 +402,12 @@ Before approving any PR or verifying issue completion:
 
 ## Getting Started
 
-**FIRST: Check for assigned GitHub issues**
+**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Pay special attention to:
+- QA Testing Tips section (lines 474-582) - Browser caching, Docker rebuild, React gotchas
+- Testing commands for backend and frontend (lines 89-107, 183-195)
+- Docker debugging tips (lines 317-378)
+
+**THEN: Check for assigned GitHub issues**
 ```bash
 gh issue list --label "agent:qa" --state open
 ```

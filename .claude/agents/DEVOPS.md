@@ -611,7 +611,12 @@ echo "✓ Deployment verified"
 
 ## Getting Started
 
-**FIRST: Check for assigned GitHub issues**
+**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Pay special attention to:
+- Docker section (lines 255-378) - Building, running, debugging containers
+- Unraid deployment (lines 356-378)
+- Common Docker issues table (lines 340-347)
+
+**THEN: Check for assigned GitHub issues**
 ```bash
 gh issue list --label "agent:devops" --state open
 ```
