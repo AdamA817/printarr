@@ -36,13 +36,14 @@ const mockChannel: Channel = {
 
 function renderChannelCard(
   channel: Channel = mockChannel,
+  onEdit = vi.fn(),
   onDelete = vi.fn(),
   isDeleting = false
 ) {
   const queryClient = createTestQueryClient()
   return render(
     <QueryClientProvider client={queryClient}>
-      <ChannelCard channel={channel} onDelete={onDelete} isDeleting={isDeleting} />
+      <ChannelCard channel={channel} onEdit={onEdit} onDelete={onDelete} isDeleting={isDeleting} />
     </QueryClientProvider>
   )
 }
@@ -78,7 +79,7 @@ describe('ChannelCard', () => {
 
   it('calls onDelete when delete button clicked', () => {
     const onDelete = vi.fn()
-    renderChannelCard(mockChannel, onDelete)
+    renderChannelCard(mockChannel, vi.fn(), onDelete)
 
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     fireEvent.click(deleteButton)
@@ -87,7 +88,7 @@ describe('ChannelCard', () => {
   })
 
   it('disables delete button when isDeleting is true', () => {
-    renderChannelCard(mockChannel, vi.fn(), true)
+    renderChannelCard(mockChannel, vi.fn(), vi.fn(), true)
 
     const deleteButton = screen.getByRole('button', { name: /delete/i })
     expect(deleteButton).toBeDisabled()
@@ -105,7 +106,18 @@ describe('ChannelCard', () => {
     renderChannelCard(channelWithoutTelegramId)
 
     const buttons = screen.getAllByRole('button')
-    // Should only have delete button, not expand
-    expect(buttons).toHaveLength(1)
+    // Should have edit and delete buttons, but not expand
+    expect(buttons).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: /expand|collapse/i })).not.toBeInTheDocument()
+  })
+
+  it('calls onEdit when edit button clicked', () => {
+    const onEdit = vi.fn()
+    renderChannelCard(mockChannel, onEdit)
+
+    const editButton = screen.getByRole('button', { name: /edit/i })
+    fireEvent.click(editButton)
+
+    expect(onEdit).toHaveBeenCalledWith(mockChannel)
   })
 })

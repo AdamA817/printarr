@@ -1,17 +1,21 @@
 import { useState } from 'react'
-import { useChannels, useCreateChannel, useDeleteChannel } from '@/hooks/useChannels'
+import { useChannels, useCreateChannel, useUpdateChannel, useDeleteChannel } from '@/hooks/useChannels'
 import { ChannelCard } from '@/components/channels/ChannelCard'
+import { ChannelCardSkeleton } from '@/components/channels/ChannelCardSkeleton'
 import { AddChannelModal } from '@/components/channels/AddChannelModal'
+import { EditChannelModal } from '@/components/channels/EditChannelModal'
 import { DeleteConfirmModal } from '@/components/channels/DeleteConfirmModal'
 import { OPEN_TELEGRAM_AUTH_EVENT } from '@/components/layout/Layout'
-import type { Channel, ChannelCreate } from '@/types/channel'
+import type { Channel, ChannelCreate, ChannelUpdate } from '@/types/channel'
 
 export function Channels() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<Channel | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Channel | null>(null)
 
   const { data, isLoading, error } = useChannels()
   const createChannel = useCreateChannel()
+  const updateChannel = useUpdateChannel()
   const deleteChannel = useDeleteChannel()
 
   const handleAddChannel = (formData: ChannelCreate) => {
@@ -21,6 +25,18 @@ export function Channels() {
         createChannel.reset()
       },
     })
+  }
+
+  const handleEditChannel = (id: string, data: ChannelUpdate) => {
+    updateChannel.mutate(
+      { id, data },
+      {
+        onSuccess: () => {
+          setEditTarget(null)
+          updateChannel.reset()
+        },
+      }
+    )
   }
 
   const handleDeleteClick = (id: string) => {
@@ -67,29 +83,10 @@ export function Channels() {
 
       {/* Loading state */}
       {isLoading && (
-        <div className="bg-bg-secondary rounded-lg p-8 flex justify-center">
-          <div className="flex items-center gap-3 text-text-secondary">
-            <svg
-              className="animate-spin h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-            <span>Loading channels...</span>
-          </div>
+        <div className="space-y-3">
+          <ChannelCardSkeleton />
+          <ChannelCardSkeleton />
+          <ChannelCardSkeleton />
         </div>
       )}
 
@@ -128,6 +125,7 @@ export function Channels() {
             <ChannelCard
               key={channel.id}
               channel={channel}
+              onEdit={setEditTarget}
               onDelete={handleDeleteClick}
               isDeleting={deleteChannel.isPending && deleteTarget?.id === channel.id}
             />
@@ -151,6 +149,23 @@ export function Channels() {
             : null
         }
         onAuthClick={handleAuthClick}
+      />
+
+      {/* Edit channel modal */}
+      <EditChannelModal
+        isOpen={!!editTarget}
+        channel={editTarget}
+        onClose={() => {
+          setEditTarget(null)
+          updateChannel.reset()
+        }}
+        onSubmit={handleEditChannel}
+        isSubmitting={updateChannel.isPending}
+        error={
+          updateChannel.error
+            ? (updateChannel.error as Error).message || 'Failed to update channel'
+            : null
+        }
       />
 
       {/* Delete confirmation modal */}

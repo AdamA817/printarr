@@ -4,11 +4,12 @@ import { MessagesPanel } from './MessagesPanel'
 
 interface ChannelCardProps {
   channel: Channel
+  onEdit: (channel: Channel) => void
   onDelete: (id: string) => void
   isDeleting: boolean
 }
 
-export function ChannelCard({ channel, onDelete, isDeleting }: ChannelCardProps) {
+export function ChannelCard({ channel, onEdit, onDelete, isDeleting }: ChannelCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   // Parse telegram_peer_id to number if present
@@ -56,6 +57,15 @@ export function ChannelCard({ channel, onDelete, isDeleting }: ChannelCardProps)
           )}
 
           <button
+            onClick={() => onEdit(channel)}
+            className="p-2 text-text-secondary hover:text-accent-primary hover:bg-bg-tertiary rounded transition-colors"
+            aria-label="Edit channel"
+            title="Edit channel"
+          >
+            <EditIcon className="w-5 h-5" />
+          </button>
+
+          <button
             onClick={() => onDelete(channel.id)}
             disabled={isDeleting}
             className="p-2 text-text-secondary hover:text-accent-danger hover:bg-bg-tertiary rounded transition-colors disabled:opacity-50"
@@ -90,6 +100,24 @@ function ChevronIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M19 9l-7 7-7-7"
+      />
+    </svg>
+  )
+}
+
+function EditIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
       />
     </svg>
   )

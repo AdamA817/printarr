@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { channelsApi, type ChannelListParams } from '@/services/api'
-import type { ChannelCreate } from '@/types/channel'
+import type { ChannelCreate, ChannelUpdate } from '@/types/channel'
 
 export function useChannels(params?: ChannelListParams) {
   return useQuery({
@@ -22,6 +22,18 @@ export function useCreateChannel() {
 
   return useMutation({
     mutationFn: (data: ChannelCreate) => channelsApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['channels'] })
+    },
+  })
+}
+
+export function useUpdateChannel() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: ChannelUpdate }) =>
+      channelsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['channels'] })
     },

@@ -33,6 +33,20 @@ export interface ChannelCreate {
   telegram_peer_id?: string
 }
 
+export interface ChannelUpdate {
+  title?: string
+  username?: string
+  invite_link?: string
+  is_private?: boolean
+  is_enabled?: boolean
+  backfill_mode?: BackfillMode
+  backfill_value?: number
+  download_mode?: DownloadMode
+  library_template_override?: string | null
+  title_source_override?: TitleSource | null
+  designer_source_override?: DesignerSource | null
+}
+
 export interface ChannelList {
   items: Channel[]
   total: number
