@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 
 class TelegramError(Exception):
     """Base exception for Telegram-related errors."""
@@ -80,7 +78,7 @@ class TelegramPasswordInvalidError(TelegramAuthenticationError):
 class TelegramRateLimitError(TelegramError):
     """Raised when rate limited by Telegram."""
 
-    def __init__(self, retry_after: int, message: Optional[str] = None):
+    def __init__(self, retry_after: int, message: str | None = None):
         self.retry_after = retry_after
         msg = message or f"Rate limited by Telegram. Retry after {retry_after} seconds"
         super().__init__(msg, "RATE_LIMITED")

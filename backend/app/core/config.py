@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -60,11 +60,11 @@ class Settings(BaseSettings):
     )
 
     # Telegram MTProto (from https://my.telegram.org)
-    telegram_api_id: Optional[int] = Field(
+    telegram_api_id: int | None = Field(
         default=None,
         description="Telegram API ID from my.telegram.org",
     )
-    telegram_api_hash: Optional[str] = Field(
+    telegram_api_hash: str | None = Field(
         default=None,
         description="Telegram API Hash from my.telegram.org",
     )

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING
 
 from telethon import TelegramClient
 from telethon.errors import (
@@ -52,7 +52,7 @@ class TelegramService:
             ...
     """
 
-    _instance: Optional[TelegramService] = None
+    _instance: TelegramService | None = None
     _lock: asyncio.Lock = asyncio.Lock()
 
     def __init__(self) -> None:
@@ -60,10 +60,10 @@ class TelegramService:
 
         Note: Use TelegramService.get_instance() instead of direct instantiation.
         """
-        self._client: Optional[TelegramClient] = None
+        self._client: TelegramClient | None = None
         self._connected: bool = False
-        self._phone_code_hash: Optional[str] = None
-        self._pending_phone: Optional[str] = None
+        self._phone_code_hash: str | None = None
+        self._pending_phone: str | None = None
 
     @classmethod
     def get_instance(cls) -> TelegramService:
@@ -216,7 +216,7 @@ class TelegramService:
         except Exception:
             return False
 
-    async def get_current_user(self) -> Optional[User]:
+    async def get_current_user(self) -> User | None:
         """Get the currently authenticated user.
 
         Returns:
@@ -274,7 +274,7 @@ class TelegramService:
         phone: str,
         code: str,
         phone_code_hash: str,
-        password: Optional[str] = None,
+        password: str | None = None,
     ) -> dict:
         """Complete authentication with the verification code.
 
