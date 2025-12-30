@@ -79,3 +79,16 @@ export function useDeleteChannel() {
     },
   })
 }
+
+export function useTriggerBackfill() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (channelId: string) => channelsApi.triggerBackfill(channelId),
+    onSuccess: () => {
+      // Invalidate designs and stats since backfill may have created new designs
+      queryClient.invalidateQueries({ queryKey: ['designs'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
+}
