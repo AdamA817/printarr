@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.routes import channels, health
+from app.api.routes import channels, health, telegram
 
 api_router = APIRouter(prefix="/api")
 
@@ -12,5 +12,6 @@ api_router.include_router(health.router)
 # V1 API routes
 v1_router = APIRouter(prefix="/v1")
 v1_router.include_router(channels.router)
+v1_router.include_router(telegram.router)
 
 api_router.include_router(v1_router)
