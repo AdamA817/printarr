@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -58,6 +58,26 @@ class Settings(BaseSettings):
         default=["*"],
         description="Allowed CORS origins",
     )
+
+    # Telegram MTProto (from https://my.telegram.org)
+    telegram_api_id: Optional[int] = Field(
+        default=None,
+        description="Telegram API ID from my.telegram.org",
+    )
+    telegram_api_hash: Optional[str] = Field(
+        default=None,
+        description="Telegram API Hash from my.telegram.org",
+    )
+
+    @property
+    def telegram_session_path(self) -> Path:
+        """Get the Telegram session file path."""
+        return self.config_path / "telegram.session"
+
+    @property
+    def telegram_configured(self) -> bool:
+        """Check if Telegram API credentials are configured."""
+        return self.telegram_api_id is not None and self.telegram_api_hash is not None
 
     @property
     def db_path(self) -> Path:

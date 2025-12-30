@@ -17,3 +17,6 @@ pydantic-settings>=2.1.0
 
 # Logging
 structlog>=24.1.0
+
+# Telegram MTProto Client
+telethon>=1.36.0

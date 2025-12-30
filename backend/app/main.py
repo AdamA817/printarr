@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
+from app.telegram import TelegramService
 
 # Frontend static files directory
 FRONTEND_DIR = Path(__file__).parent.parent.parent / "frontend" / "dist"
@@ -31,7 +32,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         host=settings.host,
         port=settings.port,
     )
+
+    # Initialize Telegram service if configured
+    telegram_service = TelegramService.get_instance()
+    if settings.telegram_configured:
+        try:
+            result = await telegram_service.connect()
+            logger.info(
+                "telegram_startup_complete",
+                authenticated=result.get("authenticated", False),
+            )
+        except Exception as e:
+            # Log but don't fail startup - Telegram can be connected later
+            logger.warning("telegram_startup_failed", error=str(e))
+    else:
+        logger.info("telegram_not_configured")
+
     yield
+
+    # Disconnect Telegram on shutdown
+    if telegram_service.is_connected():
+        await telegram_service.disconnect()
+
     logger.info("shutting_down_application")
 
 
