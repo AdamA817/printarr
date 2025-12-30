@@ -379,6 +379,27 @@ k6 run scripts/load-test-downloads.js
 - Filter change: < 100ms
 - API response: < 100ms (cached)
 
+## Integration Testing Checklist (DEC-012)
+
+Before approving any PR or verifying issue completion:
+
+### Frontend-Backend Integration
+- [ ] Frontend can successfully call all relevant API endpoints
+- [ ] No 404 errors in browser console
+- [ ] No CORS issues
+- [ ] Error responses handled gracefully in UI
+
+### Smoke Test Procedure
+1. Start the full application (`docker-compose up`)
+2. Navigate to each affected page
+3. Check browser console for errors
+4. Verify data loads correctly
+5. Test the specific feature/fix
+
+### API Convention Check
+- [ ] Collection endpoints use trailing slash (`/channels/`)
+- [ ] Single resource endpoints have no trailing slash (`/channels/{id}`)
+
 ## Key Reminders
 
 1. **Test edge cases** - empty states, errors, limits
@@ -387,3 +408,4 @@ k6 run scripts/load-test-downloads.js
 4. **Document issues clearly** - reproduction steps matter
 5. **Be constructive** - suggest solutions, not just problems
 6. **Prioritize** - critical bugs first, nice-to-haves later
+7. **Run integration tests** - don't just review code, test it running

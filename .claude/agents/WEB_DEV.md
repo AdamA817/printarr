@@ -512,6 +512,22 @@ describe('DesignCard', () => {
 });
 ```
 
+## API Conventions
+
+### Trailing Slash Convention (DEC-011)
+When calling collection endpoints, always include the trailing slash:
+- `GET /api/v1/channels/` (list)
+- `POST /api/v1/channels/` (create)
+- `GET /api/v1/channels/{id}` (no trailing slash for single resource)
+
+## Integration Testing Before Closing Issues (DEC-012)
+
+Before closing any issue involving API calls:
+1. **Test against running backend** - not just TypeScript compilation
+2. **Run `npm run dev` with backend running** - verify API calls work
+3. **Check browser console** - no network errors or 404s
+4. **Don't rely only on mocked tests** - real integration matters
+
 ## Key Reminders
 
 1. **Follow Radarr UX patterns** - users expect familiar interactions
@@ -520,3 +536,5 @@ describe('DesignCard', () => {
 4. **Debounce filter inputs** - don't spam the API
 5. **Cache aggressively** - React Query handles this well
 6. **Mobile responsive** - test on small screens
+7. **Use trailing slashes for collections** - see DEC-011
+8. **Test against real backend** - see DEC-012

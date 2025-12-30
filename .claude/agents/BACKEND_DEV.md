@@ -354,6 +354,25 @@ async def printarr_exception_handler(request, exc):
     )
 ```
 
+## API Conventions
+
+### Trailing Slash Convention (DEC-011)
+Always use trailing slashes for collection endpoints:
+- `GET /api/v1/channels/` (list)
+- `POST /api/v1/channels/` (create)
+- `GET /api/v1/channels/{id}` (no trailing slash for single resource)
+- `PUT /api/v1/channels/{id}` (no trailing slash for single resource)
+- `DELETE /api/v1/channels/{id}` (no trailing slash for single resource)
+
+Configure FastAPI with `redirect_slashes=True` as a safety net.
+
+## Integration Testing Before Closing Issues (DEC-012)
+
+Before closing any issue involving API endpoints:
+1. **Verify endpoints work** via FastAPI OpenAPI docs (`/docs`) or curl
+2. **Test with actual requests** - don't just rely on unit tests
+3. **Document the endpoint** in your issue close comment
+
 ## Key Reminders
 
 1. **Always use async** for I/O operations
@@ -362,3 +381,4 @@ async def printarr_exception_handler(request, exc):
 4. **Use transactions** for multi-step database operations
 5. **Log job progress** for debugging
 6. **Never expose Telegram credentials** in logs or responses
+7. **Follow trailing slash convention** - see DEC-011

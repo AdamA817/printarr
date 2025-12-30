@@ -246,6 +246,51 @@ Clone repo on Unraid and build directly. A deploy script on the Unraid server wi
 
 ---
 
+### DEC-011: API Trailing Slash Convention
+**Date**: 2024-12-29
+**Status**: Accepted
+
+**Context**
+A bug occurred where backend routes used `/channels/` but frontend called `/channels`, causing 404 errors. Need a consistent convention.
+
+**Decision**
+Always use trailing slashes for collection endpoints:
+- `GET /api/v1/channels/` (list)
+- `POST /api/v1/channels/` (create)
+- `GET /api/v1/channels/{id}` (no trailing slash for single resource)
+- `PUT /api/v1/channels/{id}` (no trailing slash for single resource)
+- `DELETE /api/v1/channels/{id}` (no trailing slash for single resource)
+
+Additionally, FastAPI should be configured with `redirect_slashes=True` as a safety net.
+
+**Consequences**
+- Consistent URL patterns across frontend and backend
+- Less debugging of routing issues
+- Documentation must reflect this convention
+
+---
+
+### DEC-012: Integration Testing Before Issue Closure
+**Date**: 2024-12-29
+**Status**: Accepted
+
+**Context**
+Agents were testing in isolation (frontend with mocks, backend with curl). Bugs only appeared when components were integrated.
+
+**Decision**
+Before closing any issue that involves API endpoints:
+- Backend Dev: Verify endpoints work via OpenAPI docs or curl
+- Web Dev: Test against running backend, not just TypeScript compilation
+- QA: Run integration checks across frontend and backend
+- DevOps: Verify deployment with browser console check
+
+**Consequences**
+- Catches integration bugs before issues are closed
+- Slightly slower issue completion
+- Higher quality at each handoff
+
+---
+
 ## Pending Decisions
 
 ### To Decide: Telegram Client Library

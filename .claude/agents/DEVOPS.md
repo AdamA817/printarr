@@ -581,6 +581,34 @@ logger.error("job.failed", job_id=job.id, error=str(e))
 {"timestamp": "2024-01-15T10:30:00Z", "level": "info", "event": "job.started", "job_id": "abc123", "job_type": "DOWNLOAD_DESIGN"}
 ```
 
+## Post-Deployment Verification (DEC-012)
+
+After deploying, perform basic E2E verification:
+
+### Verification Checklist
+1. **Health check passes** - `curl http://localhost:3333/api/health`
+2. **UI loads** - open browser to `http://localhost:3333`
+3. **No console errors** - check browser developer tools
+4. **Key pages work** - navigate to Dashboard, Channels, Designs
+5. **API accessible** - check `/docs` for OpenAPI documentation
+
+### Quick Smoke Test Script
+```bash
+#!/bin/bash
+# verify-deployment.sh
+
+echo "Checking health endpoint..."
+curl -sf http://localhost:3333/api/health || exit 1
+
+echo "Checking UI loads..."
+curl -sf http://localhost:3333/ | grep -q "Printarr" || exit 1
+
+echo "Checking API docs..."
+curl -sf http://localhost:3333/docs | grep -q "swagger" || exit 1
+
+echo "✓ Deployment verified"
+```
+
 ## Key Reminders
 
 1. **Keep images small** - use multi-stage builds, alpine where possible
@@ -590,3 +618,4 @@ logger.error("job.failed", job_id=job.id, error=str(e))
 5. **Version tags** - semantic versioning for releases
 6. **Security** - no secrets in images, use env vars
 7. **Documentation** - update Unraid template for new env vars
+8. **Verify after deploy** - run smoke tests, not just health check
