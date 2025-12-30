@@ -42,8 +42,35 @@ When starting a new version:
 1. Read `ROADMAP.md` for version scope
 2. Create GitHub milestone (e.g., "v0.1")
 3. Break scope into issues with clear acceptance criteria
-4. Assign issues to appropriate agents
-5. Track progress in milestone
+4. **Create issues for ALL agent types** (see checklist below)
+5. Assign issues to appropriate agents with `agent:*` labels
+6. Track progress in milestone
+
+### Version Planning Checklist
+
+**CRITICAL**: Before closing a planning issue, verify you have created issues for ALL agents:
+
+- [ ] **Backend Dev** - API endpoints, services, database changes
+- [ ] **Web Dev** - UI components, pages, user interactions
+- [ ] **DevOps** - Docker changes, env vars, deployment updates, Unraid template
+- [ ] **QA** - End-to-end testing issue for the entire version
+- [ ] **Documentation** - Assign to appropriate agent (DevOps for setup docs, Backend for API docs)
+
+Every version should have work for:
+- Backend Dev: Always (unless pure UI version)
+- Web Dev: Always (unless pure backend version)
+- DevOps: If new dependencies, env vars, or Docker changes needed
+- QA: **Always** - every version needs E2E testing
+
+### Documentation Issues
+
+Documentation issues must ALWAYS have an agent label:
+- Setup/deployment docs → `agent:devops`
+- API documentation → `agent:backend`
+- UI/UX documentation → `agent:web`
+- Testing documentation → `agent:qa`
+
+**Never leave a documentation issue unassigned.**
 
 When completing a version:
 1. Verify all acceptance criteria met
