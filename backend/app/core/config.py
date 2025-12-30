@@ -46,6 +46,16 @@ class Settings(BaseSettings):
         default=Path("/cache"),
         description="Path for preview images and cache",
     )
+    staging_path: Path = Field(
+        default=Path("/staging"),
+        description="Path for staging downloaded files before import",
+    )
+
+    # Worker settings
+    max_concurrent_downloads: int = Field(
+        default=2,
+        description="Maximum concurrent download workers",
+    )
 
     # Database
     database_url: str = Field(

@@ -261,11 +261,12 @@ async def start_workers() -> None:
     # These imports are deferred to avoid circular imports
     # and to allow workers to be added incrementally
 
-    # Example (will be added when workers are implemented):
-    # from app.workers.download import DownloadWorker
-    # manager.register_worker(DownloadWorker, count=2)
+    from app.workers.download import DownloadWorker
 
-    logger.info("starting_workers")
+    # Register download workers (configurable count)
+    manager.register_worker(DownloadWorker, count=settings.max_concurrent_downloads)
+
+    logger.info("starting_workers", worker_count=manager.worker_count)
     await manager.start()
 
 
