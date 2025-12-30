@@ -77,6 +77,47 @@ class AuthLogoutResponse(BaseModel):
     status: str = Field(default="logged_out", description="Status: 'logged_out'")
 
 
+# === Channel Resolution Schemas ===
+
+
+class ChannelResolveRequest(BaseModel):
+    """Request to resolve a channel link."""
+
+    link: str = Field(
+        ...,
+        min_length=1,
+        max_length=512,
+        description="Channel link in various formats",
+        examples=[
+            "https://t.me/channelname",
+            "t.me/channelname",
+            "@channelname",
+            "https://t.me/+abcdef",
+        ],
+    )
+
+
+class ChannelResolveResponse(BaseModel):
+    """Response with resolved channel information."""
+
+    id: int | None = Field(
+        ..., description="Telegram channel ID (None for unjoined invite links)"
+    )
+    title: str = Field(..., description="Channel title")
+    username: str | None = Field(None, description="Channel username (if public)")
+    type: str = Field(
+        ..., description="Channel type: 'channel', 'supergroup', or 'group'"
+    )
+    members_count: int | None = Field(None, description="Member count (if available)")
+    photo_url: str | None = Field(None, description="Channel photo URL (if available)")
+    is_invite: bool = Field(
+        default=False, description="True if resolved from invite link without joining"
+    )
+    invite_hash: str | None = Field(
+        None, description="Invite hash for private channels"
+    )
+
+
 # === Error Response Schemas ===
 
 

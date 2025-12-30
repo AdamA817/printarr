@@ -8,18 +8,28 @@ from typing import TYPE_CHECKING
 from telethon import TelegramClient
 from telethon.errors import (
     AuthKeyError,
+    ChannelPrivateError,
     FloodWaitError,
+    InviteHashExpiredError,
+    InviteHashInvalidError,
     PhoneCodeExpiredError,
     PhoneCodeInvalidError,
     PhoneNumberInvalidError,
     SessionPasswordNeededError,
+    UsernameInvalidError,
+    UsernameNotOccupiedError,
 )
+from telethon.tl.functions.messages import CheckChatInviteRequest
+from telethon.tl.types import Channel, Chat, ChatInvite, ChatInviteAlready
 
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.telegram.exceptions import (
+    TelegramAccessDeniedError,
+    TelegramChannelNotFoundError,
     TelegramCodeExpiredError,
     TelegramCodeInvalidError,
+    TelegramInvalidLinkError,
     TelegramNotAuthenticatedError,
     TelegramNotConfiguredError,
     TelegramNotConnectedError,
@@ -373,6 +383,175 @@ class TelegramService:
         self._pending_phone = None
 
         return {"status": "logged_out"}
+
+    @staticmethod
+    def _parse_channel_link(link: str) -> tuple[str, str]:
+        """Parse a channel link into type and identifier.
+
+        Args:
+            link: Channel link in various formats.
+
+        Returns:
+            Tuple of (link_type, identifier) where link_type is one of:
+            - 'username': Public channel username
+            - 'invite': Invite hash for private channels
+            - 'joinchat': Old-style invite hash
+
+        Raises:
+            TelegramInvalidLinkError: If the link format is not recognized.
+        """
+        import re
+
+        link = link.strip()
+
+        # Handle @username format
+        if link.startswith("@"):
+            return ("username", link[1:])
+
+        # Remove protocol if present
+        if link.startswith("https://"):
+            link = link[8:]
+        elif link.startswith("http://"):
+            link = link[7:]
+
+        # Handle t.me links
+        if link.startswith("t.me/"):
+            path = link[5:]
+
+            # Private invite link: t.me/+hash
+            if path.startswith("+"):
+                return ("invite", path[1:])
+
+            # Old joinchat format: t.me/joinchat/hash
+            if path.startswith("joinchat/"):
+                return ("joinchat", path[9:])
+
+            # Public username: t.me/username
+            # May have trailing path like /123 for specific message
+            username = path.split("/")[0]
+            if username:
+                return ("username", username)
+
+        # If it looks like a plain username (alphanumeric + underscore)
+        if re.match(r"^[a-zA-Z][a-zA-Z0-9_]{3,30}$", link):
+            return ("username", link)
+
+        raise TelegramInvalidLinkError(f"Unrecognized link format: {link}")
+
+    async def resolve_channel(self, link: str) -> dict:
+        """Resolve a channel link to channel information.
+
+        Args:
+            link: Channel link in various formats:
+                - https://t.me/channelname
+                - t.me/channelname
+                - @channelname
+                - https://t.me/+abcdef (private invite)
+                - https://t.me/joinchat/abcdef (old invite format)
+
+        Returns:
+            Dict with channel information:
+            - id: Telegram channel ID
+            - title: Channel title
+            - username: Channel username (if public)
+            - type: 'channel', 'supergroup', or 'group'
+            - members_count: Member count (if available)
+            - photo_url: Photo URL (if available, currently None)
+
+        Raises:
+            TelegramNotConnectedError: If not connected.
+            TelegramNotAuthenticatedError: If not authenticated.
+            TelegramInvalidLinkError: If link format is invalid.
+            TelegramChannelNotFoundError: If channel doesn't exist.
+            TelegramAccessDeniedError: If user can't access the channel.
+            TelegramRateLimitError: If rate limited.
+        """
+        await self._ensure_authenticated()
+        assert self._client is not None
+
+        link_type, identifier = self._parse_channel_link(link)
+        logger.info("resolving_channel", link_type=link_type, identifier=identifier[:20])
+
+        try:
+            if link_type == "username":
+                # Resolve public channel by username
+                entity = await self._client.get_entity(identifier)
+
+            elif link_type in ("invite", "joinchat"):
+                # Check invite link without joining
+                try:
+                    result = await self._client(CheckChatInviteRequest(hash=identifier))
+
+                    if isinstance(result, ChatInviteAlready):
+                        # Already a member, get the actual chat
+                        entity = result.chat
+                    elif isinstance(result, ChatInvite):
+                        # Not a member, return info from invite
+                        return {
+                            "id": None,  # Can't get ID without joining
+                            "title": result.title,
+                            "username": None,
+                            "type": "channel" if result.channel else "group",
+                            "members_count": result.participants_count,
+                            "photo_url": None,
+                            "is_invite": True,
+                            "invite_hash": identifier,
+                        }
+                    else:
+                        entity = result
+                except InviteHashInvalidError:
+                    raise TelegramChannelNotFoundError("Invalid invite link")
+                except InviteHashExpiredError:
+                    raise TelegramChannelNotFoundError("Invite link has expired")
+            else:
+                raise TelegramInvalidLinkError(f"Unknown link type: {link_type}")
+
+            # Determine channel type
+            if isinstance(entity, Channel):
+                if entity.megagroup:
+                    channel_type = "supergroup"
+                else:
+                    channel_type = "channel"
+            elif isinstance(entity, Chat):
+                channel_type = "group"
+            else:
+                channel_type = "unknown"
+
+            # Get member count if available
+            members_count = None
+            if hasattr(entity, "participants_count"):
+                members_count = entity.participants_count
+
+            result = {
+                "id": entity.id,
+                "title": getattr(entity, "title", None) or getattr(entity, "name", "Unknown"),
+                "username": getattr(entity, "username", None),
+                "type": channel_type,
+                "members_count": members_count,
+                "photo_url": None,  # TODO: Implement photo URL extraction
+            }
+
+            logger.info(
+                "channel_resolved",
+                channel_id=result["id"],
+                title=result["title"],
+                type=result["type"],
+            )
+            return result
+
+        except (UsernameInvalidError, UsernameNotOccupiedError):
+            raise TelegramChannelNotFoundError(f"Channel not found: {identifier}")
+
+        except ChannelPrivateError:
+            raise TelegramAccessDeniedError("Cannot access private channel")
+
+        except FloodWaitError as e:
+            logger.warning("telegram_rate_limited", retry_after=e.seconds)
+            raise TelegramRateLimitError(e.seconds)
+
+        except ValueError as e:
+            # Telethon raises ValueError for various entity resolution issues
+            raise TelegramChannelNotFoundError(str(e))
 
     @property
     def client(self) -> TelegramClient:

@@ -14,13 +14,19 @@ from app.schemas.telegram import (
     AuthStatusResponse,
     AuthVerifyRequest,
     AuthVerifyResponse,
+    ChannelResolveRequest,
+    ChannelResolveResponse,
     TelegramErrorResponse,
     TelegramUser,
 )
 from app.telegram import (
+    TelegramAccessDeniedError,
+    TelegramChannelNotFoundError,
     TelegramCodeExpiredError,
     TelegramCodeInvalidError,
     TelegramError,
+    TelegramInvalidLinkError,
+    TelegramNotAuthenticatedError,
     TelegramNotConfiguredError,
     TelegramNotConnectedError,
     TelegramPasswordInvalidError,
@@ -51,8 +57,14 @@ def telegram_error_response(exc: TelegramError) -> JSONResponse:
         status_code = 503  # Service Unavailable
     elif isinstance(exc, TelegramNotConnectedError):
         status_code = 503
+    elif isinstance(exc, TelegramNotAuthenticatedError):
+        status_code = 401  # Unauthorized
     elif isinstance(exc, TelegramRateLimitError):
         status_code = 429  # Too Many Requests
+    elif isinstance(exc, TelegramAccessDeniedError):
+        status_code = 403  # Forbidden
+    elif isinstance(exc, TelegramChannelNotFoundError):
+        status_code = 404  # Not Found
 
     return JSONResponse(status_code=status_code, content=content.model_dump())
 
@@ -211,5 +223,71 @@ async def logout(
         return telegram_error_response(e)
 
 
-# Include auth router in main telegram router
+# === Channel Routes ===
+
+channels_router = APIRouter(prefix="/channels", tags=["telegram-channels"])
+
+
+@channels_router.post(
+    "/resolve",
+    response_model=ChannelResolveResponse,
+    responses={
+        400: {"model": TelegramErrorResponse},
+        401: {"model": TelegramErrorResponse},
+        403: {"model": TelegramErrorResponse},
+        404: {"model": TelegramErrorResponse},
+        429: {"model": TelegramErrorResponse},
+        503: {"model": TelegramErrorResponse},
+    },
+)
+async def resolve_channel(
+    request: ChannelResolveRequest,
+    telegram: TelegramService = Depends(get_telegram_service),
+) -> ChannelResolveResponse:
+    """Resolve a Telegram channel link to channel information.
+
+    Supports various link formats:
+    - https://t.me/channelname
+    - t.me/channelname
+    - @channelname
+    - https://t.me/+abcdef (private invite links)
+    - https://t.me/joinchat/abcdef (old invite format)
+
+    Returns channel metadata that can be used to add the channel to Printarr.
+    """
+    if not telegram.is_connected():
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram client is not connected",
+        )
+
+    try:
+        result = await telegram.resolve_channel(request.link)
+        return ChannelResolveResponse(
+            id=result.get("id"),
+            title=result["title"],
+            username=result.get("username"),
+            type=result["type"],
+            members_count=result.get("members_count"),
+            photo_url=result.get("photo_url"),
+            is_invite=result.get("is_invite", False),
+            invite_hash=result.get("invite_hash"),
+        )
+
+    except TelegramInvalidLinkError as e:
+        return telegram_error_response(e)
+    except TelegramChannelNotFoundError as e:
+        return telegram_error_response(e)
+    except TelegramAccessDeniedError as e:
+        return telegram_error_response(e)
+    except TelegramNotAuthenticatedError as e:
+        return telegram_error_response(e)
+    except TelegramRateLimitError as e:
+        return telegram_error_response(e)
+    except TelegramError as e:
+        return telegram_error_response(e)
+
+
+# Include sub-routers in main telegram router
 router.include_router(auth_router)
+router.include_router(channels_router)
