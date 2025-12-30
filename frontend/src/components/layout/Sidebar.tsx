@@ -1,16 +1,35 @@
 import { NavLink } from 'react-router-dom'
 
+interface SidebarProps {
+  isOpen: boolean
+  onClose: () => void
+}
+
 const navItems = [
   { to: '/', label: 'Dashboard', icon: '📊' },
   { to: '/channels', label: 'Channels', icon: '📡' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ]
 
-export function Sidebar() {
+export function Sidebar({ isOpen, onClose }: SidebarProps) {
   return (
-    <aside className="w-64 bg-bg-secondary border-r border-bg-tertiary flex flex-col">
-      <div className="p-4 border-b border-bg-tertiary">
+    <aside
+      className={`
+        fixed inset-y-0 left-0 z-30 w-64 bg-bg-secondary border-r border-bg-tertiary flex flex-col
+        transform transition-transform duration-200 ease-in-out
+        lg:relative lg:translate-x-0
+        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}
+    >
+      <div className="p-4 border-b border-bg-tertiary flex items-center justify-between">
         <h1 className="text-xl font-bold text-accent-primary">Printarr</h1>
+        <button
+          onClick={onClose}
+          className="lg:hidden text-text-secondary hover:text-text-primary"
+          aria-label="Close menu"
+        >
+          ✕
+        </button>
       </div>
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
@@ -18,6 +37,7 @@ export function Sidebar() {
             <li key={item.to}>
               <NavLink
                 to={item.to}
+                onClick={onClose}
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-4 py-2 rounded-lg transition-colors ${
                     isActive
