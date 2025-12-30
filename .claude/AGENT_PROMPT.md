@@ -28,12 +28,31 @@ Before starting any task, familiarize yourself with these documents:
 
 | Document | Purpose |
 |----------|---------|
-| `REQUIREMENTS.md` | Full feature requirements and constraints |
+| `ROADMAP.md` | **Current version scope and what to build** |
+| `DECISIONS.md` | Key architectural decisions made so far |
+| `REQUIREMENTS.md` | Full feature requirements (for v1.0) |
 | `ARCHITECTURE.md` | System design, components, and data flows |
 | `DATA_MODEL.md` | Database schema and entity relationships |
 | `UI_FLOWS.md` | User interface screens and interactions |
 | `DOCKER.md` | Container configuration and deployment |
 | `HINTS.md` | Commands, debug tips, and common patterns |
+
+## Version-Based Development
+
+We build incrementally from v0.1 to v1.0. **Check ROADMAP.md for the current active version.**
+
+### Key Principles
+1. **Only build what's in scope** - Don't implement features from future versions
+2. **Each version is deployable** - Must work on Unraid at every stage
+3. **Avoid rewrites** - Design for extensibility, but don't over-engineer
+4. **Test at each version** - User provides feedback before moving on
+
+### When to Update DECISIONS.md
+Add a decision entry when:
+- Choosing between competing libraries/approaches
+- Making architectural trade-offs
+- Deviating from the original requirements
+- Establishing patterns other agents should follow
 
 ## Your Role-Specific Prompt
 
