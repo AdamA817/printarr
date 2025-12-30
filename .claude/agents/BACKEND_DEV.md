@@ -373,6 +373,15 @@ Before closing any issue involving API endpoints:
 2. **Test with actual requests** - don't just rely on unit tests
 3. **Document the endpoint** in your issue close comment
 
+## Type Synchronization
+
+When adding or changing enums/schemas in `backend/app/db/models/enums.py`:
+1. **Create an issue for Web Dev** to update `frontend/src/types/`
+2. **List the exact changes** (old value → new value)
+3. **Don't close your issue** until frontend types are updated
+
+The backend is the **source of truth** for all type definitions.
+
 ## Key Reminders
 
 1. **Always use async** for I/O operations
@@ -382,3 +391,4 @@ Before closing any issue involving API endpoints:
 5. **Log job progress** for debugging
 6. **Never expose Telegram credentials** in logs or responses
 7. **Follow trailing slash convention** - see DEC-011
+8. **Notify Web Dev of type changes** - see Type Synchronization above

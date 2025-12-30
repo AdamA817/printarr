@@ -528,6 +528,19 @@ Before closing any issue involving API calls:
 3. **Check browser console** - no network errors or 404s
 4. **Don't rely only on mocked tests** - real integration matters
 
+## Type Synchronization
+
+Frontend types in `frontend/src/types/` must **exactly match** backend definitions.
+
+**Source of truth**: `backend/app/db/models/enums.py`
+
+When creating or updating types:
+1. **Read the backend enums.py first** - don't invent values
+2. **Copy enum values exactly** - case-sensitive (e.g., `'ALL_HISTORY'` not `'all_history'`)
+3. **Add a comment** referencing the backend file: `// Must match backend/app/db/models/enums.py`
+
+If backend types change, Backend Dev will create an issue for you.
+
 ## Key Reminders
 
 1. **Follow Radarr UX patterns** - users expect familiar interactions
@@ -538,3 +551,4 @@ Before closing any issue involving API calls:
 6. **Mobile responsive** - test on small screens
 7. **Use trailing slashes for collections** - see DEC-011
 8. **Test against real backend** - see DEC-012
+9. **Match backend types exactly** - see Type Synchronization above
