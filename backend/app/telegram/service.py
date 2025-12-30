@@ -553,6 +553,168 @@ class TelegramService:
             # Telethon raises ValueError for various entity resolution issues
             raise TelegramChannelNotFoundError(str(e))
 
+    async def get_messages(
+        self,
+        channel_id: int | str,
+        limit: int = 10,
+    ) -> dict:
+        """Fetch recent messages from a channel.
+
+        Args:
+            channel_id: Telegram channel ID or username.
+            limit: Maximum number of messages to fetch (1-100).
+
+        Returns:
+            Dict with 'messages' and 'channel' keys.
+
+        Raises:
+            TelegramNotConnectedError: If not connected.
+            TelegramNotAuthenticatedError: If not authenticated.
+            TelegramChannelNotFoundError: If channel doesn't exist.
+            TelegramAccessDeniedError: If user can't access the channel.
+            TelegramRateLimitError: If rate limited.
+        """
+        await self._ensure_authenticated()
+        assert self._client is not None
+
+        # Clamp limit
+        limit = max(1, min(100, limit))
+
+        try:
+            # Get the channel entity first
+            try:
+                entity = await self._client.get_entity(channel_id)
+            except (UsernameInvalidError, UsernameNotOccupiedError, ValueError):
+                raise TelegramChannelNotFoundError(f"Channel not found: {channel_id}")
+
+            # Fetch messages
+            messages_data = []
+            async for message in self._client.iter_messages(entity, limit=limit):
+                msg_data = await self._parse_message(message)
+                messages_data.append(msg_data)
+
+            # Get channel info
+            channel_info = {
+                "id": entity.id,
+                "title": getattr(entity, "title", None) or getattr(entity, "name", "Unknown"),
+            }
+
+            logger.info(
+                "messages_fetched",
+                channel_id=entity.id,
+                count=len(messages_data),
+            )
+
+            return {
+                "messages": messages_data,
+                "channel": channel_info,
+            }
+
+        except ChannelPrivateError:
+            raise TelegramAccessDeniedError("Cannot access private channel")
+
+        except FloodWaitError as e:
+            logger.warning("telegram_rate_limited", retry_after=e.seconds)
+            raise TelegramRateLimitError(e.seconds)
+
+    async def _parse_message(self, message) -> dict:
+        """Parse a Telegram message into a dict.
+
+        Args:
+            message: Telethon Message object.
+
+        Returns:
+            Dict with message data.
+        """
+        # Get sender info
+        sender = None
+        if message.sender:
+            sender = {
+                "id": message.sender.id,
+                "name": getattr(message.sender, "first_name", None)
+                or getattr(message.sender, "title", None)
+                or "Unknown",
+                "username": getattr(message.sender, "username", None),
+            }
+        elif message.post:
+            # Channel post - sender is the channel itself
+            if message.peer_id:
+                sender = {
+                    "id": message.peer_id.channel_id if hasattr(message.peer_id, "channel_id") else None,
+                    "name": "Channel",
+                    "username": None,
+                }
+
+        # Get attachments
+        attachments = []
+        has_media = False
+
+        if message.media:
+            has_media = True
+
+            if message.document:
+                doc = message.document
+                filename = None
+                # Try to get filename from attributes
+                for attr in doc.attributes:
+                    if hasattr(attr, "file_name"):
+                        filename = attr.file_name
+                        break
+
+                attachments.append({
+                    "type": "document",
+                    "filename": filename,
+                    "size": doc.size,
+                    "mime_type": doc.mime_type,
+                })
+
+            elif message.photo:
+                # Photo - get largest size
+                photo = message.photo
+                largest = max(photo.sizes, key=lambda s: getattr(s, "size", 0) if hasattr(s, "size") else 0)
+                attachments.append({
+                    "type": "photo",
+                    "filename": None,
+                    "size": getattr(largest, "size", None),
+                    "mime_type": "image/jpeg",
+                })
+
+            elif message.video:
+                video = message.video if hasattr(message, "video") else message.document
+                attachments.append({
+                    "type": "video",
+                    "filename": None,
+                    "size": getattr(video, "size", None),
+                    "mime_type": getattr(video, "mime_type", "video/mp4"),
+                })
+
+            elif message.audio:
+                audio = message.audio if hasattr(message, "audio") else message.document
+                attachments.append({
+                    "type": "audio",
+                    "filename": None,
+                    "size": getattr(audio, "size", None),
+                    "mime_type": getattr(audio, "mime_type", "audio/mpeg"),
+                })
+
+        # Get forward info
+        forward_from = None
+        if message.forward:
+            if message.forward.chat:
+                forward_from = getattr(message.forward.chat, "title", None)
+            elif message.forward.sender:
+                forward_from = getattr(message.forward.sender, "first_name", None)
+
+        return {
+            "id": message.id,
+            "date": message.date.isoformat() if message.date else None,
+            "text": message.text or message.message or "",
+            "sender": sender,
+            "attachments": attachments,
+            "has_media": has_media,
+            "forward_from": forward_from,
+        }
+
     @property
     def client(self) -> TelegramClient:
         """Get the underlying Telethon client.

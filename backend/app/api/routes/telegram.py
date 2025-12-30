@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
@@ -14,8 +14,13 @@ from app.schemas.telegram import (
     AuthStatusResponse,
     AuthVerifyRequest,
     AuthVerifyResponse,
+    ChannelInfo,
     ChannelResolveRequest,
     ChannelResolveResponse,
+    Message,
+    MessageAttachment,
+    MessagesResponse,
+    MessageSender,
     TelegramErrorResponse,
     TelegramUser,
 )
@@ -276,6 +281,68 @@ async def resolve_channel(
 
     except TelegramInvalidLinkError as e:
         return telegram_error_response(e)
+    except TelegramChannelNotFoundError as e:
+        return telegram_error_response(e)
+    except TelegramAccessDeniedError as e:
+        return telegram_error_response(e)
+    except TelegramNotAuthenticatedError as e:
+        return telegram_error_response(e)
+    except TelegramRateLimitError as e:
+        return telegram_error_response(e)
+    except TelegramError as e:
+        return telegram_error_response(e)
+
+
+@channels_router.get(
+    "/{channel_id}/messages/",
+    response_model=MessagesResponse,
+    responses={
+        401: {"model": TelegramErrorResponse},
+        403: {"model": TelegramErrorResponse},
+        404: {"model": TelegramErrorResponse},
+        429: {"model": TelegramErrorResponse},
+        503: {"model": TelegramErrorResponse},
+    },
+)
+async def get_channel_messages(
+    channel_id: int,
+    limit: int = Query(default=10, ge=1, le=100, description="Number of messages to fetch"),
+    telegram: TelegramService = Depends(get_telegram_service),
+) -> MessagesResponse:
+    """Fetch recent messages from a Telegram channel.
+
+    Returns the most recent messages from the specified channel.
+    The channel must be one that the authenticated user has access to.
+    """
+    if not telegram.is_connected():
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram client is not connected",
+        )
+
+    try:
+        result = await telegram.get_messages(channel_id, limit=limit)
+        return MessagesResponse(
+            messages=[
+                Message(
+                    id=msg["id"],
+                    date=msg.get("date"),
+                    text=msg.get("text", ""),
+                    sender=MessageSender(**msg["sender"]) if msg.get("sender") else None,
+                    attachments=[
+                        MessageAttachment(**att) for att in msg.get("attachments", [])
+                    ],
+                    has_media=msg.get("has_media", False),
+                    forward_from=msg.get("forward_from"),
+                )
+                for msg in result["messages"]
+            ],
+            channel=ChannelInfo(
+                id=result["channel"]["id"],
+                title=result["channel"]["title"],
+            ),
+        )
+
     except TelegramChannelNotFoundError as e:
         return telegram_error_response(e)
     except TelegramAccessDeniedError as e:

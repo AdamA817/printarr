@@ -118,6 +118,58 @@ class ChannelResolveResponse(BaseModel):
     )
 
 
+# === Message Schemas ===
+
+
+class MessageSender(BaseModel):
+    """Sender information for a message."""
+
+    id: int | None = Field(None, description="Sender ID")
+    name: str = Field(..., description="Sender display name")
+    username: str | None = Field(None, description="Sender username")
+
+
+class MessageAttachment(BaseModel):
+    """Attachment information for a message."""
+
+    type: str = Field(
+        ..., description="Attachment type: 'photo', 'document', 'video', 'audio'"
+    )
+    filename: str | None = Field(None, description="Filename if available")
+    size: int | None = Field(None, description="File size in bytes")
+    mime_type: str | None = Field(None, description="MIME type")
+
+
+class Message(BaseModel):
+    """A Telegram message."""
+
+    id: int = Field(..., description="Message ID")
+    date: str | None = Field(None, description="Message date in ISO format")
+    text: str = Field(default="", description="Message text content")
+    sender: MessageSender | None = Field(None, description="Message sender")
+    attachments: list[MessageAttachment] = Field(
+        default_factory=list, description="Message attachments"
+    )
+    has_media: bool = Field(default=False, description="Whether message has media")
+    forward_from: str | None = Field(
+        None, description="Original source if forwarded"
+    )
+
+
+class ChannelInfo(BaseModel):
+    """Basic channel information."""
+
+    id: int = Field(..., description="Channel ID")
+    title: str = Field(..., description="Channel title")
+
+
+class MessagesResponse(BaseModel):
+    """Response with channel messages."""
+
+    messages: list[Message] = Field(..., description="List of messages")
+    channel: ChannelInfo = Field(..., description="Channel information")
+
+
 # === Error Response Schemas ===
 
 
