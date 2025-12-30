@@ -264,8 +264,8 @@ class IngestService:
         caption_text: str,
     ) -> Design:
         """Create a Design record from a design post message."""
-        # Extract title from caption
-        title = self._extract_title(caption_text, message)
+        # Extract title from caption or filename
+        title = await self._extract_title(caption_text, message)
 
         # Get file types from attachments
         file_types = await self._get_file_types(message.id)
@@ -342,23 +342,62 @@ class IngestService:
                 error=str(e),
             )
 
-    def _extract_title(self, caption: str, message: TelegramMessage) -> str:
+    async def _extract_title(self, caption: str, message: TelegramMessage) -> str:
         """Extract a title from caption or fallback to filename."""
         if caption:
             # Use first non-empty line as title
             lines = caption.strip().split("\n")
             for line in lines:
                 line = line.strip()
-                # Skip URLs and very short lines
-                if line and not line.startswith("http") and len(line) > 3:
+                # Skip URLs, hashtag-only lines, and very short lines
+                if line and not line.startswith("http") and not line.startswith("#") and len(line) > 3:
+                    # Skip if line is only hashtags
+                    if all(word.startswith("#") for word in line.split()):
+                        continue
                     # Truncate if too long
                     if len(line) > 200:
                         line = line[:197] + "..."
                     return line
 
-        # Fallback: try to get first attachment filename without extension
-        # This requires loading attachments, which we may not have yet
+        # Fallback: get first candidate attachment filename without extension
+        filename = await self._get_first_attachment_filename(message.id)
+        if filename:
+            # Strip extension and return
+            title = self._strip_extension(filename)
+            if title and len(title) > 3:
+                return title
+
+        # Last fallback: generic date-based title
         return f"Design from {message.date_posted.strftime('%Y-%m-%d')}"
+
+    async def _get_first_attachment_filename(self, message_id: str) -> str | None:
+        """Get the filename of the first candidate design attachment."""
+        result = await self.db.execute(
+            select(Attachment.filename)
+            .where(
+                Attachment.message_id == message_id,
+                Attachment.is_candidate_design_file == True,  # noqa: E712
+                Attachment.filename.isnot(None),
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    def _strip_extension(self, filename: str) -> str:
+        """Strip file extension from filename for use as title."""
+        if not filename:
+            return ""
+        # Handle double extensions like .tar.gz
+        lower = filename.lower()
+        if lower.endswith(".tar.gz"):
+            return filename[:-7]
+        if lower.endswith(".tgz"):
+            return filename[:-4]
+        # Regular extension
+        dot_idx = filename.rfind(".")
+        if dot_idx > 0:
+            return filename[:dot_idx]
+        return filename
 
     async def _get_file_types(self, message_id: str) -> list[str]:
         """Get distinct file extensions for a message's attachments."""
