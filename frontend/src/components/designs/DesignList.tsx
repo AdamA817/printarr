@@ -65,7 +65,7 @@ export function DesignList({ designs, sortBy, sortOrder, onSort }: DesignListPro
           className="flex items-center gap-1 hover:text-text-primary transition-colors group"
         >
           {label}
-          <SortIndicator active={isActive} direction={isActive ? sortOrder : undefined} />
+          <SortIndicator active={isActive ?? false} direction={isActive ? sortOrder : undefined} />
         </button>
       </th>
     )

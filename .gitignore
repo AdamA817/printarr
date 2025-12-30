@@ -64,3 +64,5 @@ docker-compose.override.yml
 
 # Generated profiles
 channel_profiles/
+# Test artifacts
+backend/test_config/

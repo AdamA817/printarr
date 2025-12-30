@@ -14,7 +14,7 @@ export function SearchBox({
   debounceMs = 300,
 }: SearchBoxProps) {
   const [localValue, setLocalValue] = useState(value)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Sync local state when external value changes
   useEffect(() => {
