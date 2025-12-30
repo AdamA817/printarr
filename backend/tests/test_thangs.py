@@ -529,23 +529,26 @@ class TestThangsSearch:
 
     @pytest.mark.asyncio
     async def test_search_success(self, db_session, clear_cache):
-        """Test successful search returns results."""
+        """Test successful search returns results with actual Thangs API fields."""
         adapter = ThangsAdapter(db_session)
 
         mock_response = MagicMock()
         mock_response.status_code = 200
+        # Use actual Thangs API field names: modelTitle, ownerUsername, externalId
         mock_response.json.return_value = {
             "results": [
                 {
-                    "id": "12345",
-                    "name": "Cool Batman Model",
-                    "owner": {"username": "designer1"},
+                    "id": "d4ecddce-71b3-4d55-bec2-c6f3ae2ccb6f",  # UUID internal ID
+                    "externalId": "1135413",  # Numeric ID for linking
+                    "modelTitle": "Batwing over Gotham City - Batman - DC - Fan Art",
+                    "ownerUsername": "alext1",
                     "thumbnail": "https://thangs.com/img/12345.jpg",
                 },
                 {
-                    "id": "67890",
-                    "name": "Superman Figure",
-                    "owner": {"username": "designer2"},
+                    "id": "abc123-uuid",
+                    "externalId": "67890",
+                    "modelTitle": "Superman Figure",
+                    "ownerUsername": "designer2",
                 },
             ],
             "total": 2,
@@ -560,11 +563,12 @@ class TestThangsSearch:
         assert isinstance(result, ThangsSearchResponse)
         assert len(result.results) == 2
         assert result.total == 2
-        assert result.results[0].model_id == "12345"
-        assert result.results[0].title == "Cool Batman Model"
-        assert result.results[0].designer == "designer1"
+        # Should use externalId for model_id (numeric Thangs ID)
+        assert result.results[0].model_id == "1135413"
+        assert result.results[0].title == "Batwing over Gotham City - Batman - DC - Fan Art"
+        assert result.results[0].designer == "alext1"
         assert result.results[0].thumbnail_url == "https://thangs.com/img/12345.jpg"
-        assert result.results[0].url == "https://thangs.com/m/12345"
+        assert result.results[0].url == "https://thangs.com/m/1135413"
 
         await adapter.close()
 
@@ -586,7 +590,7 @@ class TestThangsSearch:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "results": [{"id": "111", "name": "Test"}],
+            "results": [{"externalId": "111", "modelTitle": "Test", "ownerUsername": "user1"}],
             "total": 1,
         }
 

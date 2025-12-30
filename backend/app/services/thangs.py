@@ -502,7 +502,11 @@ class ThangsAdapter:
 
     def _extract_designer(self, data: dict) -> str | None:
         """Extract designer name from Thangs API response."""
-        # Try various possible fields
+        # Try various possible fields (in order of preference)
+        # Search results use ownerUsername at top level
+        if "ownerUsername" in data:
+            return data["ownerUsername"]
+        # Model detail responses may use nested owner/creator
         if "owner" in data and isinstance(data["owner"], dict):
             return data["owner"].get("username") or data["owner"].get("name")
         if "creator" in data and isinstance(data["creator"], dict):
@@ -690,9 +694,25 @@ class ThangsAdapter:
             total = data.get("total", data.get("count", len(items)))
 
             for item in items[:limit]:
-                model_id = str(item.get("id", item.get("modelId", "")))
+                # Thangs API uses different field names:
+                # - externalId: numeric model ID for linking (preferred)
+                # - id: internal UUID (fallback)
+                # - modelId: alternative field name
+                model_id = str(
+                    item.get("externalId")
+                    or item.get("id")
+                    or item.get("modelId", "")
+                )
                 if not model_id:
                     continue
+
+                # Extract title - Thangs search uses modelTitle
+                title = (
+                    item.get("modelTitle")
+                    or item.get("name")
+                    or item.get("title")
+                    or "Unknown"
+                )
 
                 # Extract thumbnail URL
                 thumbnail_url = None
@@ -707,7 +727,7 @@ class ThangsAdapter:
                 results.append(
                     ThangsSearchResult(
                         model_id=model_id,
-                        title=item.get("name", item.get("title", "Unknown")),
+                        title=title,
                         designer=self._extract_designer(item),
                         thumbnail_url=thumbnail_url,
                         url=f"https://thangs.com/m/{model_id}",
