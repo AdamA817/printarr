@@ -84,3 +84,35 @@ class ChannelList(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class BackfillRequest(BaseModel):
+    """Schema for backfill request parameters."""
+
+    mode: Optional[str] = Field(
+        None,
+        description="Override backfill mode: ALL_HISTORY, LAST_N_MESSAGES, LAST_N_DAYS",
+    )
+    value: Optional[int] = Field(
+        None, ge=1, description="Override backfill value (N messages or N days)"
+    )
+
+
+class BackfillResponse(BaseModel):
+    """Schema for backfill response."""
+
+    channel_id: str
+    messages_processed: int
+    designs_created: int
+    last_message_id: int
+
+
+class BackfillStatusResponse(BaseModel):
+    """Schema for backfill status response."""
+
+    channel_id: str
+    last_backfill_checkpoint: Optional[int] = None
+    last_ingested_message_id: Optional[int] = None
+    last_sync_at: Optional[str] = None
+    backfill_mode: str
+    backfill_value: int

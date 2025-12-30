@@ -10,13 +10,17 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.db.models import Channel
+from app.db.models import BackfillMode, Channel
 from app.schemas.channel import (
+    BackfillRequest,
+    BackfillResponse,
+    BackfillStatusResponse,
     ChannelCreate,
     ChannelList,
     ChannelResponse,
     ChannelUpdate,
 )
+from app.services.backfill import BackfillService
 
 router = APIRouter(prefix="/channels", tags=["channels"])
 
@@ -147,3 +151,60 @@ async def delete_channel(
         raise HTTPException(status_code=404, detail="Channel not found")
 
     await db.delete(channel)
+
+
+@router.post("/{channel_id}/backfill", response_model=BackfillResponse)
+async def backfill_channel(
+    channel_id: str,
+    request: BackfillRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> BackfillResponse:
+    """Trigger a backfill for a channel.
+
+    This fetches historical messages from Telegram and processes them
+    through the ingestion pipeline.
+    """
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    service = BackfillService(db)
+
+    # Extract override parameters
+    mode = None
+    value = None
+    if request:
+        if request.mode:
+            mode = BackfillMode(request.mode)
+        value = request.value
+
+    try:
+        result_data = await service.backfill_channel(channel, mode=mode, value=value)
+        return BackfillResponse(
+            channel_id=channel_id,
+            messages_processed=result_data["messages_processed"],
+            designs_created=result_data["designs_created"],
+            last_message_id=result_data["last_message_id"],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Backfill failed: {str(e)}")
+
+
+@router.get("/{channel_id}/backfill/status", response_model=BackfillStatusResponse)
+async def get_backfill_status(
+    channel_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> BackfillStatusResponse:
+    """Get the current backfill status for a channel."""
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    service = BackfillService(db)
+    status = await service.get_backfill_status(channel)
+
+    return BackfillStatusResponse(**status)
