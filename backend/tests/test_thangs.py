@@ -252,7 +252,7 @@ class TestFetchThangsMetadata:
         assert result["designer"] == "designer123"
         assert result["tags"] == ["tag1", "tag2"]
 
-        mock_client.get.assert_called_once_with("https://api.thangs.com/models/12345")
+        mock_client.get.assert_called_once_with("https://thangs.com/api/models/12345")
         await adapter.close()
 
     @pytest.mark.asyncio
@@ -660,12 +660,13 @@ class TestThangsSearch:
         # Test limit > 50 is clamped
         await adapter.search("test", limit=100, use_cache=False)
         call_args = mock_client.get.call_args
-        assert call_args[1]["params"]["limit"] == 50
+        # URL format: .../search-by-text?searchTerm=test&pageSize=50&page=0
+        assert "pageSize=50" in call_args[0][0]
 
         # Test limit < 1 is clamped
         await adapter.search("test", limit=0, use_cache=False)
         call_args = mock_client.get.call_args
-        assert call_args[1]["params"]["limit"] == 1
+        assert "pageSize=1" in call_args[0][0]
 
         await adapter.close()
 
@@ -799,3 +800,202 @@ class TestThangsSearchAPI:
 
             assert response.status_code == 200
             mock_adapter.search.assert_called_once_with(query="test", limit=25)
+
+
+# =============================================================================
+# FlareSolverr Integration Tests
+# =============================================================================
+
+
+from app.services.thangs import FlareSolverrError
+
+
+class TestFlareSolverrIntegration:
+    """Tests for FlareSolverr integration in ThangsAdapter."""
+
+    @pytest.fixture
+    async def db_engine(self):
+        """Create an in-memory test database engine."""
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        yield engine
+        await engine.dispose()
+
+    @pytest.fixture
+    async def db_session(self, db_engine):
+        """Create a test database session."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            yield session
+
+    def test_is_flaresolverr_configured_false_by_default(self, db_session):
+        """Test FlareSolverr is not configured by default."""
+        adapter = ThangsAdapter(db_session)
+        # Default settings should have flaresolverr_url as None
+        assert adapter._is_flaresolverr_configured() is False
+
+    def test_extract_json_from_direct_json(self, db_session):
+        """Test extracting JSON from direct JSON response."""
+        adapter = ThangsAdapter(db_session)
+
+        json_str = '{"name": "Test Model", "id": "12345"}'
+        result = adapter._extract_json_from_response(json_str)
+
+        assert result == {"name": "Test Model", "id": "12345"}
+
+    def test_extract_json_from_pre_tags(self, db_session):
+        """Test extracting JSON from HTML with <pre> tags."""
+        adapter = ThangsAdapter(db_session)
+
+        html = '<html><body><pre>{"name": "Model", "tags": ["test"]}</pre></body></html>'
+        result = adapter._extract_json_from_response(html)
+
+        assert result == {"name": "Model", "tags": ["test"]}
+
+    def test_extract_json_from_embedded_json(self, db_session):
+        """Test extracting JSON embedded in HTML."""
+        adapter = ThangsAdapter(db_session)
+
+        html = '<html>Some text {"results": [{"id": "1"}]} more text</html>'
+        result = adapter._extract_json_from_response(html)
+
+        assert result == {"results": [{"id": "1"}]}
+
+    def test_extract_json_failure_raises(self, db_session):
+        """Test extraction failure raises ThangsUpstreamError."""
+        adapter = ThangsAdapter(db_session)
+
+        html = '<html>No JSON here!</html>'
+
+        with pytest.raises(ThangsUpstreamError) as exc_info:
+            adapter._extract_json_from_response(html)
+
+        assert "Failed to extract JSON" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_flaresolverr_request_success(self, db_session):
+        """Test successful FlareSolverr request."""
+        adapter = ThangsAdapter(db_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "ok",
+            "solution": {
+                "response": '{"name": "Test Model", "id": "12345"}'
+            }
+        }
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        adapter._flaresolverr_client = mock_client
+
+        with patch("app.services.thangs.settings") as mock_settings:
+            mock_settings.flaresolverr_url = "http://localhost:8191/v1"
+
+            result = await adapter._request_via_flaresolverr("https://thangs.com/test")
+
+        assert result == {"name": "Test Model", "id": "12345"}
+        await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_flaresolverr_request_error_status(self, db_session):
+        """Test FlareSolverr error status handling."""
+        adapter = ThangsAdapter(db_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "error",
+            "message": "Challenge failed"
+        }
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        adapter._flaresolverr_client = mock_client
+
+        with patch("app.services.thangs.settings") as mock_settings:
+            mock_settings.flaresolverr_url = "http://localhost:8191/v1"
+
+            with pytest.raises(FlareSolverrError) as exc_info:
+                await adapter._request_via_flaresolverr("https://thangs.com/test")
+
+        assert "Challenge failed" in str(exc_info.value)
+        await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_make_thangs_request_uses_flaresolverr_when_configured(self, db_session):
+        """Test that _make_thangs_request uses FlareSolverr when configured."""
+        adapter = ThangsAdapter(db_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "ok",
+            "solution": {
+                "response": '{"name": "Test"}'
+            }
+        }
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        adapter._flaresolverr_client = mock_client
+
+        with patch("app.services.thangs.settings") as mock_settings:
+            mock_settings.flaresolverr_url = "http://localhost:8191/v1"
+
+            result = await adapter._make_thangs_request("https://thangs.com/api/test")
+
+        assert result == {"name": "Test"}
+        mock_client.post.assert_called()
+        await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_make_thangs_request_falls_back_on_flaresolverr_error(self, db_session):
+        """Test fallback to direct request when FlareSolverr fails."""
+        adapter = ThangsAdapter(db_session)
+
+        # FlareSolverr fails
+        mock_fs_client = AsyncMock()
+        mock_fs_client.post = AsyncMock(side_effect=FlareSolverrError("Connection refused"))
+        adapter._flaresolverr_client = mock_fs_client
+
+        # Direct request succeeds
+        mock_direct_response = MagicMock()
+        mock_direct_response.status_code = 200
+        mock_direct_response.json.return_value = {"name": "Direct Success"}
+
+        mock_direct_client = AsyncMock()
+        mock_direct_client.get = AsyncMock(return_value=mock_direct_response)
+        adapter._client = mock_direct_client
+
+        with patch("app.services.thangs.settings") as mock_settings:
+            mock_settings.flaresolverr_url = "http://localhost:8191/v1"
+
+            result = await adapter._make_thangs_request("https://thangs.com/api/test")
+
+        assert result == {"name": "Direct Success"}
+        mock_direct_client.get.assert_called()
+        await adapter.close()
+
+    @pytest.mark.asyncio
+    async def test_cloudflare_403_suggests_flaresolverr(self, db_session):
+        """Test that 403 error suggests configuring FlareSolverr."""
+        adapter = ThangsAdapter(db_session)
+
+        mock_response = MagicMock()
+        mock_response.status_code = 403
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        adapter._client = mock_client
+
+        with pytest.raises(ThangsUpstreamError) as exc_info:
+            await adapter._make_thangs_request("https://thangs.com/api/test")
+
+        assert "Cloudflare" in str(exc_info.value)
+        assert "FlareSolverr" in str(exc_info.value)
+        await adapter.close()
