@@ -614,6 +614,7 @@ echo "✓ Deployment verified"
 **FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Check the Table of Contents and focus on:
 - `## Docker` - Building, running, debugging containers, Unraid deployment
 - `## Troubleshooting` - Common issues and solutions
+- `## MCP_DOCKER Browser Testing` - Using Playwright browser tools with host IP (not localhost)
 
 **THEN: Check for assigned GitHub issues**
 ```bash

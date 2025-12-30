@@ -406,6 +406,7 @@ Before approving any PR or verifying issue completion:
 - `## QA Testing Tips` - Browser caching, Docker rebuild, React gotchas, Vitest config
 - `## Docker` - Building, running, debugging containers
 - `## Troubleshooting` - Common issues and solutions
+- `## MCP_DOCKER Browser Testing` - Using Playwright browser tools with host IP (not localhost)
 
 **FOR TELEGRAM TESTING**: Use channels from `TEST_CHANNELS.md` - a curated list of public Telegram channels with 3D printable designs for testing ingestion, backfill, and design detection.
 

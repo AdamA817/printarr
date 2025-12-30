@@ -387,6 +387,7 @@ The backend is the **source of truth** for all type definitions.
 **FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Check the Table of Contents and focus on:
 - `## Backend (Python/FastAPI)` - Setup, running, testing, database commands
 - `## Telegram Integration` - Testing connection, common issues, rate limiting
+- `## MCP_DOCKER Browser Testing` - Using Playwright browser tools with host IP (not localhost)
 
 **THEN: Check for assigned GitHub issues**
 ```bash

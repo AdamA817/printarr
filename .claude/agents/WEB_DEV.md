@@ -546,6 +546,7 @@ If backend types change, Backend Dev will create an issue for you.
 **FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Check the Table of Contents and focus on:
 - `## Frontend (React/TypeScript)` - Setup, running, testing, linting
 - `## QA Testing Tips` - React gotchas, Vitest config, browser caching
+- `## MCP_DOCKER Browser Testing` - Using Playwright browser tools with host IP (not localhost)
 
 **THEN: Check for assigned GitHub issues**
 ```bash
