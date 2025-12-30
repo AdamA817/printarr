@@ -86,10 +86,21 @@ export interface DesignList {
   pages: number
 }
 
-// Query parameters for listing designs
+// Sort field options (must match backend SortField enum)
+export type SortField = 'created_at' | 'canonical_title' | 'canonical_designer' | 'total_size_bytes'
+export type SortOrder = 'ASC' | 'DESC'
+
+// Query parameters for listing designs (must match backend API)
 export interface DesignListParams {
   page?: number
   page_size?: number
   status?: DesignStatus
   channel_id?: string
+  file_type?: string
+  multicolor?: MulticolorStatus
+  has_thangs_link?: boolean
+  designer?: string
+  q?: string // Full-text search on title and designer
+  sort_by?: SortField
+  sort_order?: SortOrder
 }
