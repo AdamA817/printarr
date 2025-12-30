@@ -107,6 +107,11 @@ Each version should be:
 - [ ] **Link by URL** action (paste thangs.com URL)
 - [ ] **Unlink Thangs** action
 - [ ] Metadata provenance display (Telegram / Thangs / User)
+- [ ] **Multi-message design merging**:
+  - [ ] Auto-detect split RAR archives (`.part1`, `.part2`, etc.) - mandatory grouping
+  - [ ] Heuristic matching for `(Images)` / `(Non Supported)` suffix patterns
+  - [ ] Manual "Merge Designs" action in UI
+  - [ ] "Unmerge" action to split back if needed
 
 ### Success Criteria
 - Browse designs like Radarr
@@ -114,12 +119,20 @@ Each version should be:
 - Click design to see details
 - Can manually search and link designs to Thangs
 - Thangs metadata visible with clear provenance
+- Split RAR archives auto-grouped into single design
+- Can manually merge related designs (e.g., images + files posts)
 
 ### Not Included
 - Downloads
 - Preview images
 - Tagging
 - Thangs image caching (v0.7)
+
+### Known Multi-Message Patterns (from Wicked STL)
+Channels like Wicked STL post designs across multiple messages:
+1. **Split archives**: `Model.part1.rar`, `Model.part2.rar` - MUST download all parts
+2. **Images + Files**: `Thor (Images)` + `Thor (Non Supported)` - separate preview/STL posts
+3. **Diorama parts**: Complex scenes split across messages
 
 ---
 
