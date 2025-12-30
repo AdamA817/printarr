@@ -178,7 +178,30 @@ Set the FlareSolverr URL in the container settings (Advanced section):
 
 ---
 
-## 9. Unraid Template Notes
+## 9. System Dependencies
+
+The Docker image includes the following system-level dependencies:
+
+### Archive Extraction (v0.5+)
+
+| Package | Purpose | Supported Formats |
+|---------|---------|-------------------|
+| `unrar-free` | RAR archive extraction | .rar, multi-part .rar |
+| `p7zip-full` | 7-Zip archive extraction | .7z, multi-part .7z |
+
+These are required for the archive extraction service to handle compressed design files from Telegram.
+
+**Python packages:**
+- `rarfile` - Python interface to unrar
+- `py7zr` - Native Python 7z support
+
+**Bundled support (no extra dependencies):**
+- `.zip` files via Python stdlib `zipfile`
+- `.tar`, `.tar.gz`, `.tar.bz2` via Python stdlib `tarfile`
+
+---
+
+## 10. Unraid Template Notes
 
 - Provide Unraid template fields for:
   - Library path

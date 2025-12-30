@@ -23,3 +23,7 @@ telethon>=1.36.0
 
 # HTTP Client (for external APIs like Thangs)
 httpx>=0.27.0
+
+# Archive Extraction (v0.5)
+rarfile>=4.1
+py7zr>=0.20.0

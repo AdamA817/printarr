@@ -33,6 +33,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     supervisor \
+    # Archive extraction tools for v0.5
+    unrar-free \
+    p7zip-full \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python wheels and install
