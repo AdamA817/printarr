@@ -63,4 +63,8 @@
   <Config Name="Telegram API Hash" Target="TELEGRAM_API_HASH" Default=""
           Mode="" Description="Telegram API Hash from https://my.telegram.org (required)"
           Type="Variable" Display="always" Required="true" Mask="true"/>
+
+  <Config Name="FlareSolverr URL" Target="PRINTARR_FLARESOLVERR_URL" Default=""
+          Mode="" Description="Optional: URL to FlareSolverr instance for Thangs integration. Example: http://192.168.1.x:8191/v1. Leave blank if not using FlareSolverr."
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
 </Container>
