@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -20,6 +21,9 @@ from app.db.models import (
 
 if TYPE_CHECKING:
     pass
+
+# Rate limiting: delay between Thangs API calls (in seconds)
+THANGS_API_DELAY = 0.5
 
 logger = get_logger(__name__)
 
@@ -365,3 +369,121 @@ class ThangsAdapter:
 
         await self.db.flush()
         return source
+
+    async def fetch_unfetched_metadata(
+        self,
+        design_ids: list[str] | None = None,
+        limit: int = 100,
+    ) -> dict:
+        """Fetch metadata for unfetched Thangs sources.
+
+        This method queries for ExternalMetadataSource records that haven't
+        been fetched yet (last_fetched_at IS NULL) and fetches metadata from
+        the Thangs API for each one.
+
+        Args:
+            design_ids: Optional list of design IDs to limit the fetch to.
+                       If None, fetches all unfetched sources.
+            limit: Maximum number of sources to process in one batch.
+
+        Returns:
+            Dict with 'fetched', 'failed', 'skipped' counts.
+        """
+        # Build query for unfetched Thangs sources
+        query = (
+            select(ExternalMetadataSource)
+            .where(
+                ExternalMetadataSource.source_type == ExternalSourceType.THANGS,
+                ExternalMetadataSource.last_fetched_at.is_(None),
+            )
+            .limit(limit)
+        )
+
+        if design_ids:
+            query = query.where(ExternalMetadataSource.design_id.in_(design_ids))
+
+        result = await self.db.execute(query)
+        sources = result.scalars().all()
+
+        if not sources:
+            logger.debug("no_unfetched_thangs_sources")
+            return {"fetched": 0, "failed": 0, "skipped": 0}
+
+        logger.info(
+            "fetching_unfetched_metadata",
+            count=len(sources),
+        )
+
+        # Collect source info before committing current transaction
+        sources_to_fetch = [
+            {"id": s.id, "external_id": s.external_id}
+            for s in sources
+        ]
+
+        # Commit current transaction to avoid greenlet conflicts
+        await self.db.commit()
+
+        # Fetch metadata outside DB context
+        fetched = 0
+        failed = 0
+
+        for i, source_info in enumerate(sources_to_fetch):
+            # Rate limiting: delay between requests
+            if i > 0:
+                await asyncio.sleep(THANGS_API_DELAY)
+
+            try:
+                metadata = await self.fetch_thangs_metadata(source_info["external_id"])
+
+                if metadata:
+                    # Update source with fetched metadata
+                    await self.db.execute(
+                        update(ExternalMetadataSource)
+                        .where(ExternalMetadataSource.id == source_info["id"])
+                        .values(
+                            fetched_title=metadata.get("title"),
+                            fetched_designer=metadata.get("designer"),
+                            fetched_tags=",".join(metadata.get("tags", [])) if metadata.get("tags") else None,
+                            last_fetched_at=datetime.utcnow(),
+                        )
+                    )
+                    fetched += 1
+                    logger.debug(
+                        "metadata_fetched",
+                        source_id=source_info["id"],
+                        title=metadata.get("title"),
+                    )
+                else:
+                    # Mark as fetched but with no data (404 or error)
+                    await self.db.execute(
+                        update(ExternalMetadataSource)
+                        .where(ExternalMetadataSource.id == source_info["id"])
+                        .values(last_fetched_at=datetime.utcnow())
+                    )
+                    failed += 1
+                    logger.debug(
+                        "metadata_fetch_empty",
+                        source_id=source_info["id"],
+                    )
+
+            except Exception as e:
+                logger.warning(
+                    "metadata_fetch_error",
+                    source_id=source_info["id"],
+                    error=str(e),
+                )
+                failed += 1
+
+        await self.db.commit()
+
+        logger.info(
+            "unfetched_metadata_complete",
+            fetched=fetched,
+            failed=failed,
+        )
+
+        return {
+            "fetched": fetched,
+            "failed": failed,
+            "skipped": 0,
+        }

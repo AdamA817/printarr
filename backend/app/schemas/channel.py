@@ -105,6 +105,8 @@ class BackfillResponse(BaseModel):
     messages_processed: int
     designs_created: int
     last_message_id: int
+    metadata_fetched: int = 0
+    metadata_failed: int = 0
 
 
 class BackfillStatusResponse(BaseModel):

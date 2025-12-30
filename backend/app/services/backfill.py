@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.db.models import BackfillMode, Channel
 from app.services.ingest import IngestService
+from app.services.thangs import ThangsAdapter
 from app.telegram.service import TelegramService
 
 if TYPE_CHECKING:
@@ -149,10 +150,16 @@ class BackfillService:
                 last_message_id=last_message_id,
             )
 
+            # Post-backfill: Fetch metadata for any unfetched Thangs sources
+            # This runs outside the ingestion transaction to avoid greenlet conflicts
+            metadata_stats = await self._fetch_unfetched_metadata()
+
             return {
                 "messages_processed": messages_processed,
                 "designs_created": designs_created,
                 "last_message_id": last_message_id,
+                "metadata_fetched": metadata_stats.get("fetched", 0),
+                "metadata_failed": metadata_stats.get("failed", 0),
             }
 
         except Exception as e:
@@ -204,3 +211,32 @@ class BackfillService:
             "backfill_mode": channel.backfill_mode.value,
             "backfill_value": channel.backfill_value,
         }
+
+    async def _fetch_unfetched_metadata(self) -> dict:
+        """Fetch metadata for any unfetched Thangs sources.
+
+        This runs after backfill completes to enrich designs with
+        metadata from Thangs API.
+
+        Returns:
+            Dict with 'fetched', 'failed' counts.
+        """
+        try:
+            adapter = ThangsAdapter(self.db)
+            result = await adapter.fetch_unfetched_metadata()
+            await adapter.close()
+
+            if result["fetched"] > 0 or result["failed"] > 0:
+                logger.info(
+                    "post_backfill_metadata_fetch",
+                    fetched=result["fetched"],
+                    failed=result["failed"],
+                )
+
+            return result
+        except Exception as e:
+            logger.warning(
+                "post_backfill_metadata_error",
+                error=str(e),
+            )
+            return {"fetched": 0, "failed": 0}

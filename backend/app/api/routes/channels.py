@@ -188,6 +188,8 @@ async def backfill_channel(
             messages_processed=result_data["messages_processed"],
             designs_created=result_data["designs_created"],
             last_message_id=result_data["last_message_id"],
+            metadata_fetched=result_data.get("metadata_fetched", 0),
+            metadata_failed=result_data.get("metadata_failed", 0),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Backfill failed: {str(e)}")
