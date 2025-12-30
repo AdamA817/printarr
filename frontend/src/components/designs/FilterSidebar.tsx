@@ -4,6 +4,7 @@ import type { DesignListParams, DesignStatus, MulticolorStatus } from '@/types/d
 interface FilterSidebarProps {
   filters: DesignListParams
   onChange: (filters: DesignListParams) => void
+  onClearAll: () => void
   isOpen: boolean
   onClose: () => void
 }
@@ -31,7 +32,7 @@ const THANGS_OPTIONS: { value: boolean | undefined; label: string }[] = [
   { value: false, label: 'Not Linked' },
 ]
 
-export function FilterSidebar({ filters, onChange, isOpen, onClose }: FilterSidebarProps) {
+export function FilterSidebar({ filters, onChange, onClearAll, isOpen, onClose }: FilterSidebarProps) {
   const { data: channelsData } = useChannels({ page_size: 100 })
 
   const handleStatusChange = (status: DesignStatus) => {
@@ -71,15 +72,6 @@ export function FilterSidebar({ filters, onChange, isOpen, onClose }: FilterSide
       ...filters,
       has_thangs_link: hasLink,
       page: 1,
-    })
-  }
-
-  const handleClearAll = () => {
-    onChange({
-      page: 1,
-      page_size: filters.page_size,
-      sort_by: filters.sort_by,
-      sort_order: filters.sort_order,
     })
   }
 
@@ -218,7 +210,7 @@ export function FilterSidebar({ filters, onChange, isOpen, onClose }: FilterSide
         {hasActiveFilters && (
           <div className="p-4 border-t border-bg-tertiary">
             <button
-              onClick={handleClearAll}
+              onClick={onClearAll}
               className="w-full text-sm text-text-secondary hover:text-text-primary transition-colors"
             >
               Clear All Filters

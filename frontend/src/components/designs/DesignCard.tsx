@@ -4,6 +4,9 @@ import type { DesignListItem } from '@/types/design'
 
 interface DesignCardProps {
   design: DesignListItem
+  isSelected?: boolean
+  onToggleSelect?: (id: string) => void
+  selectionMode?: boolean
 }
 
 // File type icons (simple text representations)
@@ -27,11 +30,19 @@ function getFileTypeIcon(fileTypes: string[]): string {
   return '📄'
 }
 
-export function DesignCard({ design }: DesignCardProps) {
+export function DesignCard({ design, isSelected, onToggleSelect, selectionMode }: DesignCardProps) {
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    onToggleSelect?.(design.id)
+  }
+
   return (
     <Link
       to={`/designs/${design.id}`}
-      className="block bg-bg-secondary rounded-lg overflow-hidden hover:ring-2 hover:ring-accent-primary/50 transition-all group"
+      className={`block bg-bg-secondary rounded-lg overflow-hidden hover:ring-2 hover:ring-accent-primary/50 transition-all group ${
+        isSelected ? 'ring-2 ring-accent-primary' : ''
+      }`}
     >
       {/* Thumbnail placeholder */}
       <div className="aspect-square bg-bg-tertiary flex items-center justify-center relative">
@@ -39,15 +50,34 @@ export function DesignCard({ design }: DesignCardProps) {
           {getFileTypeIcon(design.file_types)}
         </span>
 
+        {/* Selection checkbox */}
+        {onToggleSelect && (
+          <div
+            onClick={handleCheckboxClick}
+            className={`absolute top-2 left-2 z-10 transition-opacity ${
+              selectionMode || isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => {}}
+              className="w-5 h-5 rounded border-2 border-white bg-black/30 text-accent-primary focus:ring-accent-primary cursor-pointer"
+            />
+          </div>
+        )}
+
         {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
           <span className="text-white text-sm font-medium">View Details</span>
         </div>
 
         {/* Thangs indicator */}
         {design.has_thangs_link && (
           <span
-            className="absolute top-2 right-2 text-accent-primary bg-bg-primary/80 rounded px-1.5 py-0.5 text-xs"
+            className={`absolute top-2 text-accent-primary bg-bg-primary/80 rounded px-1.5 py-0.5 text-xs ${
+              onToggleSelect ? 'right-2' : 'right-2'
+            }`}
             title="Linked to Thangs"
           >
             🔗

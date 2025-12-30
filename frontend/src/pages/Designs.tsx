@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { useDesigns } from '@/hooks/useDesigns'
+import { useDesigns, useMergeDesigns } from '@/hooks/useDesigns'
 import { useDesignFilters } from '@/hooks/useDesignFilters'
 import { useChannels } from '@/hooks/useChannels'
 import {
@@ -14,7 +14,7 @@ import {
   SortControls,
   type ViewMode,
 } from '@/components/designs'
-import type { SortField, SortOrder } from '@/types/design'
+import type { SortField, SortOrder, DesignListItem } from '@/types/design'
 
 const VIEW_STORAGE_KEY = 'printarr-designs-view'
 
@@ -41,12 +41,17 @@ function setStoredView(view: ViewMode) {
 export function Designs() {
   const [view, setView] = useState<ViewMode>(getStoredView)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showMergeModal, setShowMergeModal] = useState(false)
 
   // Page size based on view
   const pageSize = view === 'grid' ? 24 : 20
 
   // Get filters from URL params
-  const { filters, setFilters, removeFilter, setPage } = useDesignFilters(pageSize)
+  const { filters, setFilters, removeFilter, clearFilters, setPage } = useDesignFilters(pageSize)
+
+  // Merge mutation
+  const mergeMutation = useMergeDesigns()
 
   // Merge page_size with filters
   const effectiveFilters = { ...filters, page_size: pageSize }
@@ -99,12 +104,32 @@ export function Designs() {
     setSidebarOpen(false)
   }, [])
 
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+
+  // Get selected designs from current data
+  const selectedDesigns = data?.items.filter((d) => selectedIds.has(d.id)) || []
+
   return (
     <div className="flex h-full -m-6">
       {/* Filter Sidebar */}
       <FilterSidebar
         filters={filters}
         onChange={setFilters}
+        onClearAll={clearFilters}
         isOpen={sidebarOpen}
         onClose={closeSidebar}
       />
@@ -193,13 +218,19 @@ export function Designs() {
           {data && data.items.length > 0 && (
             <>
               {view === 'grid' ? (
-                <DesignGrid designs={data.items} />
+                <DesignGrid
+                  designs={data.items}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelection}
+                />
               ) : (
                 <DesignList
                   designs={data.items}
                   sortBy={filters.sort_by}
                   sortOrder={filters.sort_order}
                   onSort={handleColumnSort}
+                  selectedIds={selectedIds}
+                  onToggleSelect={toggleSelection}
                 />
               )}
 
@@ -230,7 +261,46 @@ export function Designs() {
             </>
           )}
         </div>
+
+        {/* Selection Action Bar */}
+        {selectedIds.size > 0 && (
+          <div className="sticky bottom-0 bg-bg-secondary border-t border-bg-tertiary p-4 flex items-center justify-between">
+            <span className="text-sm text-text-secondary">
+              {selectedIds.size} design{selectedIds.size !== 1 ? 's' : ''} selected
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={clearSelection}
+                className="px-3 py-1.5 text-sm rounded bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
+              >
+                Clear Selection
+              </button>
+              <button
+                onClick={() => setShowMergeModal(true)}
+                disabled={selectedIds.size < 2}
+                className="px-3 py-1.5 text-sm rounded bg-accent-primary text-white hover:bg-accent-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Merge Selected
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Merge Modal */}
+      {showMergeModal && selectedDesigns.length >= 2 && (
+        <MergeModal
+          designs={selectedDesigns}
+          onClose={() => setShowMergeModal(false)}
+          onMerge={async (targetId) => {
+            const sourceIds = Array.from(selectedIds).filter((id) => id !== targetId)
+            await mergeMutation.mutateAsync({ targetId, sourceDesignIds: sourceIds })
+            clearSelection()
+            setShowMergeModal(false)
+          }}
+          isPending={mergeMutation.isPending}
+        />
+      )}
     </div>
   )
 }
@@ -249,6 +319,147 @@ function FilterIcon() {
       strokeLinejoin="round"
     >
       <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </svg>
+  )
+}
+
+interface MergeModalProps {
+  designs: DesignListItem[]
+  onClose: () => void
+  onMerge: (targetId: string) => Promise<void>
+  isPending: boolean
+}
+
+function MergeModal({ designs, onClose, onMerge, isPending }: MergeModalProps) {
+  const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleMerge = async () => {
+    if (!selectedTargetId) return
+    setError(null)
+    try {
+      await onMerge(selectedTargetId)
+    } catch (err) {
+      setError((err as Error).message || 'Failed to merge designs')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/60 transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Modal */}
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className="relative w-full max-w-lg bg-bg-primary rounded-lg shadow-xl">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary">
+            <div>
+              <h2 className="text-lg font-medium text-text-primary">
+                Merge Designs
+              </h2>
+              <p className="text-sm text-text-muted mt-0.5">
+                Select which design should be the primary (target)
+              </p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors"
+              aria-label="Close"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+            <p className="text-sm text-text-secondary">
+              The selected design will become the primary. All other designs will be merged into it and deleted.
+            </p>
+
+            <div className="space-y-2">
+              {designs.map((design) => (
+                <label
+                  key={design.id}
+                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                    selectedTargetId === design.id
+                      ? 'bg-accent-primary/20 border-accent-primary'
+                      : 'bg-bg-secondary hover:bg-bg-tertiary'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="targetDesign"
+                    value={design.id}
+                    checked={selectedTargetId === design.id}
+                    onChange={() => setSelectedTargetId(design.id)}
+                    className="text-accent-primary focus:ring-accent-primary"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-text-primary truncate">
+                      {design.canonical_title}
+                    </p>
+                    <p className="text-xs text-text-muted truncate">
+                      {design.canonical_designer} {design.channel && `- ${design.channel.title}`}
+                    </p>
+                  </div>
+                  {selectedTargetId === design.id && (
+                    <span className="text-xs px-2 py-0.5 rounded bg-accent-primary text-white">
+                      Primary
+                    </span>
+                  )}
+                </label>
+              ))}
+            </div>
+
+            {error && (
+              <div className="p-3 bg-accent-danger/20 rounded-lg">
+                <p className="text-sm text-accent-danger">{error}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm rounded bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleMerge}
+              disabled={!selectedTargetId || isPending}
+              className="px-4 py-2 text-sm rounded bg-accent-primary text-white hover:bg-accent-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isPending ? 'Merging...' : `Merge ${designs.length} Designs`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   )
 }

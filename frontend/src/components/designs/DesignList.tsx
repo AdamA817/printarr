@@ -7,6 +7,8 @@ interface DesignListProps {
   sortBy?: SortField
   sortOrder?: SortOrder
   onSort?: (field: SortField) => void
+  selectedIds?: Set<string>
+  onToggleSelect?: (id: string) => void
 }
 
 function formatDate(dateString: string): string {
@@ -34,11 +36,18 @@ const SORTABLE_COLUMNS: Record<string, SortableColumn | null> = {
   added: { field: 'created_at', label: 'Added' },
 }
 
-export function DesignList({ designs, sortBy, sortOrder, onSort }: DesignListProps) {
+export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, onToggleSelect }: DesignListProps) {
   const navigate = useNavigate()
 
-  const handleRowClick = (id: string) => {
+  const handleRowClick = (id: string, e: React.MouseEvent) => {
+    // Don't navigate if clicking on checkbox
+    if ((e.target as HTMLElement).tagName === 'INPUT') return
     navigate(`/designs/${id}`)
+  }
+
+  const handleCheckboxClick = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    onToggleSelect?.(id)
   }
 
   const renderColumnHeader = (
@@ -77,6 +86,9 @@ export function DesignList({ designs, sortBy, sortOrder, onSort }: DesignListPro
         <table className="w-full">
           <thead>
             <tr className="bg-bg-tertiary text-left text-sm text-text-secondary">
+              {onToggleSelect && (
+                <th className="px-4 py-3 w-10"></th>
+              )}
               {renderColumnHeader('title', 'Title')}
               {renderColumnHeader('designer', 'Designer')}
               {renderColumnHeader('channel', 'Channel')}
@@ -90,9 +102,22 @@ export function DesignList({ designs, sortBy, sortOrder, onSort }: DesignListPro
             {designs.map((design) => (
               <tr
                 key={design.id}
-                onClick={() => handleRowClick(design.id)}
-                className="hover:bg-bg-tertiary/50 transition-colors cursor-pointer"
+                onClick={(e) => handleRowClick(design.id, e)}
+                className={`hover:bg-bg-tertiary/50 transition-colors cursor-pointer ${
+                  selectedIds?.has(design.id) ? 'bg-accent-primary/10' : ''
+                }`}
               >
+                {onToggleSelect && (
+                  <td className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds?.has(design.id) || false}
+                      onChange={() => {}}
+                      onClick={(e) => handleCheckboxClick(e, design.id)}
+                      className="w-4 h-4 rounded border-bg-tertiary bg-bg-tertiary text-accent-primary focus:ring-accent-primary cursor-pointer"
+                    />
+                  </td>
+                )}
                 <td className="px-4 py-3">
                   <span className="text-text-primary font-medium truncate block max-w-xs">
                     {design.canonical_title}
