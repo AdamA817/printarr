@@ -412,11 +412,74 @@ Use FlareSolverr as an optional proxy for Thangs API requests:
 
 ---
 
-## Pending Decisions
+### DEC-017: Job Queue Implementation
+**Date**: 2025-12-30
+**Status**: Accepted
 
-### To Decide: Job Queue Implementation
-**Context**: Custom database-backed queue vs Celery/ARQ
-**Status**: Decide during v0.5
+**Context**
+v0.5 introduces the download workflow, requiring a robust job queue for background tasks (downloads, extraction, library import). Need to choose between custom database-backed queue vs external solutions.
+
+**Options Considered**
+1. **Database-backed queue (custom)** - Simple, no external deps, SQLite storage, matches Radarr pattern
+2. **ARQ (Redis)** - Proven async library, requires adding Redis container
+3. **Celery** - Enterprise-grade, heavy, requires Redis or RabbitMQ
+
+**Decision**
+Database-backed queue. Rationale:
+- No additional containers/dependencies
+- SQLite storage keeps deployment simple (Unraid-friendly)
+- Matches the *arr ecosystem pattern users expect
+- Job model already exists with all needed fields
+- Can implement priority-based scheduling (user preference)
+
+**Implementation Notes**
+- Use existing Job model with `status`, `priority`, `attempts` fields
+- Worker process polls for QUEUED jobs ordered by priority, created_at
+- Support exponential backoff on retry
+- Separate worker pools for different job types (downloads, extraction)
+
+**Consequences**
+- Simpler deployment (no Redis/RabbitMQ)
+- Must implement polling logic manually
+- Performance sufficient for single-user self-hosted use case
+- May need optimization if scaling beyond expected load
+
+---
+
+### DEC-018: Download Workflow Configuration
+**Date**: 2025-12-30
+**Status**: Accepted
+
+**Context**
+v0.5 needs decisions on download priority model, library folder structure, and archive handling.
+
+**Decisions Made**
+
+1. **Download Priority**: Priority-based from the start
+   - Jobs have integer `priority` field (higher = more urgent)
+   - Default priority: 0
+   - User can adjust priority per design
+   - Queue ordered by: priority DESC, created_at ASC
+
+2. **Library Folder Structure**: Configurable templates
+   - Global default: `/<DesignerOrUnknown>/<Channel>/<DesignTitle>/`
+   - Per-channel override via `library_template_override` field (already in Channel model)
+   - Template variables: `{designer}`, `{channel}`, `{title}`, `{date}`, `{status}`
+   - Settings UI to modify global template
+
+3. **Archive Cleanup**: Delete after extraction
+   - Default behavior: Remove original archives after successful extraction
+   - Saves disk space (archives can be re-downloaded)
+   - Future consideration: Make this configurable if users request it
+
+**Consequences**
+- Priority system adds complexity but improves UX
+- Template configuration requires settings storage/UI
+- Archive deletion may frustrate some users (document clearly)
+
+---
+
+## Pending Decisions
 
 ### To Decide: Preview Rendering Engine
 **Context**: How to render STL/3MF to images
