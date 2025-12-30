@@ -384,10 +384,9 @@ The backend is the **source of truth** for all type definitions.
 
 ## Getting Started
 
-**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Pay special attention to:
-- Backend setup and commands (lines 37-156)
-- Database commands and migration tips (lines 68-87)
-- Telegram integration troubleshooting (lines 381-413)
+**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Check the Table of Contents and focus on:
+- `## Backend (Python/FastAPI)` - Setup, running, testing, database commands
+- `## Telegram Integration` - Testing connection, common issues, rate limiting
 
 **THEN: Check for assigned GitHub issues**
 ```bash

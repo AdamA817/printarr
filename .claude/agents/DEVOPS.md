@@ -611,10 +611,9 @@ echo "✓ Deployment verified"
 
 ## Getting Started
 
-**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Pay special attention to:
-- Docker section (lines 255-378) - Building, running, debugging containers
-- Unraid deployment (lines 356-378)
-- Common Docker issues table (lines 340-347)
+**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Check the Table of Contents and focus on:
+- `## Docker` - Building, running, debugging containers, Unraid deployment
+- `## Troubleshooting` - Common issues and solutions
 
 **THEN: Check for assigned GitHub issues**
 ```bash

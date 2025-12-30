@@ -543,9 +543,9 @@ If backend types change, Backend Dev will create an issue for you.
 
 ## Getting Started
 
-**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Pay special attention to:
-- Frontend setup and commands (lines 159-251)
-- QA Testing Tips section (lines 474-582) - React gotchas, Vitest config, Docker debugging
+**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Check the Table of Contents and focus on:
+- `## Frontend (React/TypeScript)` - Setup, running, testing, linting
+- `## QA Testing Tips` - React gotchas, Vitest config, browser caching
 
 **THEN: Check for assigned GitHub issues**
 ```bash

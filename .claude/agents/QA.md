@@ -402,10 +402,10 @@ Before approving any PR or verifying issue completion:
 
 ## Getting Started
 
-**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Pay special attention to:
-- QA Testing Tips section (lines 474-582) - Browser caching, Docker rebuild, React gotchas
-- Testing commands for backend and frontend (lines 89-107, 183-195)
-- Docker debugging tips (lines 317-378)
+**FIRST: Read HINTS.md** for useful commands, debugging tips, and common patterns. Check the Table of Contents and focus on:
+- `## QA Testing Tips` - Browser caching, Docker rebuild, React gotchas, Vitest config
+- `## Docker` - Building, running, debugging containers
+- `## Troubleshooting` - Common issues and solutions
 
 **THEN: Check for assigned GitHub issues**
 ```bash

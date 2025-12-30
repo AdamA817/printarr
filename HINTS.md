@@ -2,6 +2,21 @@
 
 This file contains useful commands, debug tips, and common patterns to help agents work efficiently on Printarr.
 
+## Table of Contents
+
+| Section | Relevant For | Description |
+|---------|--------------|-------------|
+| [Project Structure](#project-structure) | All | Directory layout overview |
+| [Backend (Python/FastAPI)](#backend-pythonfastapi) | Backend Dev | Setup, running, testing, debugging |
+| [Frontend (React/TypeScript)](#frontend-reacttypescript) | Web Dev | Setup, running, testing, linting |
+| [Docker](#docker) | DevOps, QA | Building, running, debugging containers |
+| [Telegram Integration](#telegram-integration) | Backend Dev | Testing connection, common issues |
+| [Git Workflow](#git-workflow) | All | Branch naming, commit messages |
+| [Troubleshooting](#troubleshooting) | All | Common issues and solutions |
+| [QA Testing Tips](#qa-testing-tips) | QA, Web Dev | Browser caching, React gotchas, Vitest config |
+
+**Tip**: Use `grep -n "## Section Name" HINTS.md` to find a section quickly.
+
 ---
 
 ## Project Structure
