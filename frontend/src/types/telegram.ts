@@ -69,3 +69,37 @@ export interface ChannelResolveResponse {
   is_invite: boolean
   invite_hash: string | null
 }
+
+// Message types
+export interface MessageSender {
+  id: number | null
+  name: string
+  username: string | null
+}
+
+export interface MessageAttachment {
+  type: 'photo' | 'document' | 'video' | 'audio'
+  filename: string | null
+  size: number | null
+  mime_type: string | null
+}
+
+export interface Message {
+  id: number
+  date: string | null
+  text: string
+  sender: MessageSender | null
+  attachments: MessageAttachment[]
+  has_media: boolean
+  forward_from: string | null
+}
+
+export interface ChannelInfo {
+  id: number
+  title: string
+}
+
+export interface MessagesResponse {
+  messages: Message[]
+  channel: ChannelInfo
+}

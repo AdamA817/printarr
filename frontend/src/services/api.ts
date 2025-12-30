@@ -9,6 +9,7 @@ import type {
   AuthLogoutResponse,
   ChannelResolveRequest,
   ChannelResolveResponse,
+  MessagesResponse,
 } from '@/types/telegram'
 
 export const api = axios.create({
@@ -63,4 +64,7 @@ export const telegramApi = {
 
   resolveChannel: (data: ChannelResolveRequest) =>
     api.post<ChannelResolveResponse>('/telegram/channels/resolve', data).then((r) => r.data),
+
+  getChannelMessages: (channelId: number, limit = 10) =>
+    api.get<MessagesResponse>(`/telegram/channels/${channelId}/messages/`, { params: { limit } }).then((r) => r.data),
 }

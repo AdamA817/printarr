@@ -95,3 +95,12 @@ export function useResolveChannel() {
     mutationFn: (data: ChannelResolveRequest) => telegramApi.resolveChannel(data),
   })
 }
+
+export function useChannelMessages(channelId: number | null, limit = 10) {
+  return useQuery({
+    queryKey: ['telegram', 'messages', channelId, limit],
+    queryFn: () => telegramApi.getChannelMessages(channelId!, limit),
+    enabled: !!channelId,
+    staleTime: 30000, // 30 seconds
+  })
+}
