@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
+import { TelegramAuthModal } from '@/components/telegram/TelegramAuthModal'
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -9,6 +10,11 @@ export function Layout() {
 
   const handleTelegramAuthClick = () => {
     setAuthModalOpen(true)
+  }
+
+  const handleAuthSuccess = () => {
+    // Modal will close itself after success
+    // Status indicator will auto-refresh via React Query
   }
 
   return (
@@ -33,25 +39,12 @@ export function Layout() {
         </main>
       </div>
 
-      {/* TODO: TelegramAuthModal will be added in issue #26 */}
-      {authModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-bg-secondary rounded-lg p-6 max-w-md w-full mx-4">
-            <h2 className="text-lg font-semibold text-text-primary mb-4">
-              Connect to Telegram
-            </h2>
-            <p className="text-text-secondary mb-4">
-              Telegram authentication wizard coming in issue #26.
-            </p>
-            <button
-              onClick={() => setAuthModalOpen(false)}
-              className="w-full bg-accent-primary text-white py-2 px-4 rounded hover:bg-accent-primary/80 transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Telegram Auth Modal */}
+      <TelegramAuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={handleAuthSuccess}
+      />
     </div>
   )
 }
