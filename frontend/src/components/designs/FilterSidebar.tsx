@@ -106,12 +106,12 @@ export function FilterSidebar({ filters, onChange, isOpen, onClose }: FilterSide
       {/* Sidebar */}
       <aside
         className={`
-          fixed lg:static inset-y-0 left-0 z-50
+          fixed lg:sticky inset-y-0 left-0 lg:top-0 z-50 lg:z-auto
           w-64 bg-bg-secondary border-r border-bg-tertiary
           transform transition-transform duration-200 ease-in-out
           lg:transform-none lg:transition-none
           ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          flex flex-col h-full overflow-hidden
+          flex flex-col h-full lg:h-[calc(100vh-3.5rem)] overflow-hidden
         `}
       >
         {/* Header */}
