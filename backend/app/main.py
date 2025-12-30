@@ -72,12 +72,19 @@ def create_app() -> FastAPI:
             """Serve the frontend application."""
             return FileResponse(FRONTEND_DIR / "index.html")
 
-        # SPA catch-all route - must be last
-        @app.get("/{path:path}")
-        async def serve_spa(path: str) -> FileResponse:
-            """Serve index.html for all non-API routes (SPA support)."""
+        # Serve other static files (favicon, etc.)
+        @app.get("/{filename:path}")
+        async def serve_static(filename: str) -> FileResponse:
+            """Serve static files or index.html for SPA routes."""
+            # Don't intercept API routes
+            if filename.startswith("api/"):
+                # This shouldn't happen as API routes should match first,
+                # but return 404 if it does
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail="Not found")
+
             # Check if it's a static file that exists
-            file_path = FRONTEND_DIR / path
+            file_path = FRONTEND_DIR / filename
             if file_path.exists() and file_path.is_file():
                 return FileResponse(file_path)
             # Otherwise serve index.html for client-side routing

@@ -44,9 +44,12 @@ def get_database_url() -> str:
     """Get the database URL for migrations.
 
     For migrations, we use synchronous SQLite driver.
+    Uses the same path as the application settings.
     """
-    # Default to a local config directory for development
-    config_path = Path("./config")
+    import os
+
+    # Use environment variable if set, otherwise default to /config for Docker
+    config_path = Path(os.environ.get("PRINTARR_CONFIG_PATH", "/config"))
     config_path.mkdir(parents=True, exist_ok=True)
     db_path = config_path / "printarr.db"
     return f"sqlite+aiosqlite:///{db_path}"
