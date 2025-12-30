@@ -66,7 +66,7 @@ Each version should be:
 ---
 
 ## v0.3 - Message Ingestion
-**Goal**: Parse messages and detect design candidates
+**Goal**: Parse messages, detect design candidates, and enrich with Thangs metadata
 
 ### Scope
 - [ ] Store TelegramMessage records
@@ -74,22 +74,27 @@ Each version should be:
 - [ ] Identify "design posts" (has STL/3MF/archive)
 - [ ] Create Design records from detected posts
 - [ ] Basic backfill (last N messages per channel)
+- [ ] **Thangs URL detection** in captions (auto-link with confidence=1.0)
+- [ ] **Thangs metadata fetch** (designer, title) for auto-linked designs
+- [ ] ExternalMetadataSource table for storing Thangs links
 
 ### Success Criteria
 - Add a channel with 3D designs
 - Run backfill
 - See Designs appear in database
 - View design list in UI (basic table)
+- Designs with thangs.com URLs show enriched metadata
 
 ### Not Included
 - Full catalog UI
 - Downloads
 - Deduplication
+- Manual Thangs search (v0.4)
 
 ---
 
 ## v0.4 - Catalog UI
-**Goal**: Radarr-style browsing experience
+**Goal**: Radarr-style browsing experience with Thangs integration
 
 ### Scope
 - [ ] Design grid view with cards
@@ -97,16 +102,24 @@ Each version should be:
 - [ ] Filter sidebar (status, channel, file type)
 - [ ] Design detail page (sources, files, metadata)
 - [ ] Pagination and sorting
+- [ ] **Thangs status badge** on design detail (Linked / Not Linked)
+- [ ] **Thangs search modal** for manual linking
+- [ ] **Link by URL** action (paste thangs.com URL)
+- [ ] **Unlink Thangs** action
+- [ ] Metadata provenance display (Telegram / Thangs / User)
 
 ### Success Criteria
 - Browse designs like Radarr
 - Filter by channel, see results update
 - Click design to see details
+- Can manually search and link designs to Thangs
+- Thangs metadata visible with clear provenance
 
 ### Not Included
 - Downloads
 - Preview images
 - Tagging
+- Thangs image caching (v0.7)
 
 ---
 
@@ -155,7 +168,7 @@ Each version should be:
 ---
 
 ## v0.7 - Previews & Metadata
-**Goal**: Visual browsing and organization
+**Goal**: Visual browsing, organization, and full Thangs enrichment
 
 ### Scope
 - [ ] Capture Telegram images from posts
@@ -168,16 +181,22 @@ Each version should be:
 - [ ] Designer detection/override
 - [ ] Multicolor classification
 - [ ] Tag filtering in UI
+- [ ] **Thangs image caching** (download and cache preview images locally)
+- [ ] **Thangs tag import** (import tags from Thangs to local design)
+- [ ] **Metadata refresh** for linked designs (re-fetch from Thangs)
+- [ ] ExternalImage table for cached Thangs images
 
 ### Success Criteria
-- Design cards show preview images
+- Design cards show preview images (Telegram + Thangs)
 - Click to see full gallery
-- Designs have auto-generated tags
+- Designs have auto-generated tags (from captions + Thangs)
 - Can manually edit tags and filter by them
+- Thangs-linked designs show cached preview images
 
 ### Not Included
 - On-demand render for undownloaded
 - Deduplication
+- Geometry-based Thangs matching (future)
 
 ---
 
@@ -231,6 +250,8 @@ Each version should be:
 - Slicer metadata extraction
 - Export to slicer-friendly libraries
 - Multi-user support
+- **Thangs geometry search** (upload model to find matches)
+- **Printables/Thingiverse adapters** (additional metadata sources)
 
 ---
 
@@ -248,10 +269,10 @@ Each version should be:
 |---------|-------|--------|-------|
 | v0.1 | Hello World | ✅ Complete | Foundation + Docker/Unraid |
 | v0.2 | Telegram | ✅ Complete | Auth + connection |
-| v0.3 | Ingestion | 🔜 Next | Parse + detect designs |
-| v0.4 | Catalog UI | - | Radarr-style browsing |
+| v0.3 | Ingestion | 🔜 Next | Parse + detect designs + Thangs auto-link |
+| v0.4 | Catalog UI | - | Radarr-style browsing + Thangs search UI |
 | v0.5 | Downloads | - | Job queue + library |
 | v0.6 | Live Monitoring | - | Continuous ingestion |
-| v0.7 | Previews & Metadata | - | Images + tags |
+| v0.7 | Previews & Metadata | - | Images + tags + Thangs enrichment |
 | v0.8 | Deduplication | - | Handle duplicates |
 | v1.0 | Production | - | Full release |

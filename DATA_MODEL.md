@@ -272,8 +272,69 @@ Allows later reconciliation jobs to merge designs.
 
 ---
 
-## 4. Notes
+## 4. External Metadata Entities
+
+### 4.1 ExternalMetadataSource
+Links a Design to an external metadata authority (Thangs, Printables, etc.).
+
+Fields:
+- `id`
+- `design_id`
+- `source_type` (enum: THANGS | PRINTABLES | THINGIVERSE)
+- `external_id` (string; model ID on external platform)
+- `external_url` (string; canonical URL)
+- `confidence_score` (float; 0.0-1.0)
+- `match_method` (enum: LINK | TEXT | GEOMETRY | MANUAL)
+- `is_user_confirmed` (bool)
+- `fetched_title` (string; title from external source)
+- `fetched_designer` (string; designer from external source)
+- `fetched_tags` (array/json; tags from external source)
+- `last_fetched_at` (timestamp)
+- `created_at`
+
+Indexes:
+- unique(`design_id`, `source_type`)
+- index(`source_type`)
+- index(`external_id`)
+
+---
+
+### 4.2 ExternalImage
+Preview images from external metadata sources.
+
+Fields:
+- `id`
+- `external_source_id`
+- `image_url` (string; remote URL)
+- `local_cache_path` (string; cached path in /cache)
+- `sort_order` (int)
+- `width` (optional)
+- `height` (optional)
+- `created_at`
+
+Indexes:
+- index(`external_source_id`)
+
+---
+
+### 4.3 Design Extensions for Metadata Authority
+Additional fields on Design entity:
+
+- `metadata_authority` (enum: TELEGRAM | THANGS | PRINTABLES | USER; indicates current source of truth)
+- `metadata_confidence` (float; confidence in current metadata)
+
+Precedence logic:
+1. User overrides (title_override, designer_override) always win
+2. If ExternalMetadataSource exists with is_user_confirmed=true, use fetched values
+3. If ExternalMetadataSource exists with high confidence, use fetched values
+4. Fall back to Telegram heuristics
+
+---
+
+## 5. Notes
 
 - Keep Telegram raw entities (messages, attachments) so you can re-run extraction rules without losing history.
 - Prefer computing hashes after download; store them in Attachment/DesignFile.
 - Allow overrides at the Design level; never overwrite user overrides with auto-parsed data.
+- External metadata is additive; it enriches but never destroys Telegram-sourced data.
+- External images are cached locally to avoid repeated fetches and for offline viewing.

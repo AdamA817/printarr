@@ -252,7 +252,65 @@ Key configurable paths:
 
 ---
 
-## 13. Future Considerations (Non-Blocking)
+## 13. External Metadata Enrichment (Thangs)
+
+### 13.1 Core Principles
+- **Telegram = file source of truth**: All files come from Telegram channels
+- **Printarr owns Design identity**: Canonical design records are maintained locally
+- **Thangs = read-only metadata authority**: Enriches designs with authoritative metadata (IMDB/TMDB equivalent for 3D models)
+- **User overrides always win**: Manual edits take precedence over all automated data
+- **No automatic destructive merges**: System never silently overwrites user data
+
+### 13.2 Supported Metadata Authorities
+- **Primary**: Thangs (thangs.com)
+- **Secondary (future)**: Printables, Thingiverse
+- **Non-authoritative**: Patreon (designer attribution only)
+
+### 13.3 Thangs Capabilities
+Required metadata from Thangs:
+- Designer name
+- Canonical model title
+- Preview images
+- Tags/categories
+- Canonical model URL
+
+Explicitly excluded:
+- Downloading files from Thangs
+- File hash comparison
+- Acting as binary/file authority
+
+### 13.4 Matching Strategies
+1. **Explicit Thangs link in Telegram** (auto-link, confidence=1.0)
+   - Detect `thangs.com` URLs in captions during ingestion
+   - Automatically link and fetch metadata
+2. **Text search** (manual confirmation required)
+   - User searches Thangs by title/designer
+   - Must confirm match before linking
+3. **Geometry match** (future, manual confirmation only)
+   - Upload model to Thangs geometric search
+   - Present candidates for user selection
+
+### 13.5 Metadata Precedence
+1. User overrides (highest priority)
+2. Confirmed Thangs data
+3. Auto-imported Thangs data (high confidence)
+4. Telegram heuristics (lowest priority)
+
+### 13.6 UI Requirements
+- "Link to Thangs" action on design detail
+- Thangs search modal with preview cards
+- Confidence score indicators
+- Ability to unlink/relink
+- Clear provenance display (where metadata came from)
+
+### 13.7 Non-Goals
+- No public sharing or redistribution
+- No authenticated Thangs scraping
+- No background auto-merging without user visibility
+
+---
+
+## 14. Future Considerations (Non-Blocking)
 - Channel suggestion system
 - Printer profile awareness
 - Slicer metadata extraction

@@ -132,23 +132,29 @@ Header:
 - Status pill
 - Multicolor pill (auto + override)
 - Source count (how many channels/messages)
+- Thangs status badge (Linked / Not Linked / Auto-detected)
+- Confidence indicator (if linked via auto-detect)
 
 Tabs/Sections:
 
 ### 6.1 Overview
-- Preview gallery (Telegram images + embedded + rendered)
+- Preview gallery (Telegram images + Thangs images + embedded + rendered)
 - Key metadata:
   - Channels
-  - Tags
+  - Tags (with source indicator: Telegram / Thangs / Manual)
   - File types
   - Total size (best source)
   - Date discovered
+  - Metadata provenance (where title/designer came from)
 - Primary actions:
   - Mark Wanted / Unwanted
   - Download
   - Open in Telegram (if feasible)
   - Generate preview (if undownloaded)
   - Re-run analysis (post-download)
+  - Search Thangs (opens search modal)
+  - Link by URL (paste thangs.com URL)
+  - Unlink Thangs (if linked)
 
 ### 6.2 Sources
 List of source messages:
@@ -232,4 +238,37 @@ Actions:
 - Instant search box (title/designer/tags)
 - Status icons/pills on cards/rows
 - Bulk select + bulk actions toolbar
-- Consistent “Wanted” toggle behavior across list/grid/detail views
+- Consistent "Wanted" toggle behavior across list/grid/detail views
+
+---
+
+## 10. Thangs Search Modal
+
+**Purpose:** Find and link a design to its Thangs.com entry.
+
+### 10.1 Search Interface
+- Text search input (pre-filled with design title)
+- Search button
+- Results grid with preview cards
+
+### 10.2 Result Cards
+Each card shows:
+- Preview image (from Thangs)
+- Model title
+- Designer name
+- Tags/categories
+- "Select" button
+
+### 10.3 Confirmation Flow
+1. User clicks "Select" on a result
+2. Shows side-by-side comparison:
+   - Current design metadata (from Telegram)
+   - Thangs metadata (title, designer, tags)
+3. User confirms link
+4. System stores link and imports metadata
+
+### 10.4 UX Rules
+- No silent auto-merges; user must confirm
+- Clear provenance display (which data from which source)
+- Ability to unlink at any time
+- Confidence score visible for auto-detected links

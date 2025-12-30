@@ -172,8 +172,62 @@ Minimum:
 
 ---
 
-## 7. Extensibility Considerations
+## 7. External Metadata Enrichment
 
-- “Suggested channels” feature should be implemented as a separate job scanning captions for `t.me/` links.
+### 7.1 Thangs Adapter
+A read-only enrichment service, fully decoupled from Telegram ingestion and download workflows.
+
+Responsibilities:
+- URL normalization (extract model ID from thangs.com URLs)
+- Public metadata fetch via Thangs API
+- Text search for manual linking
+- Payload normalization to internal schema
+
+API Endpoints (via Thangs public API):
+- `api/models/v3/search-by-text` - Text search
+- `api/search/v1/mesh-search` - Geometry search (future)
+- Model detail pages - Metadata fetch
+
+### 7.2 Metadata Enrichment Pipeline
+Triggered by:
+- Telegram link detection during ingestion (auto-link)
+- User search/link action (manual)
+
+Requirements:
+- Non-blocking (failures don't stop ingestion)
+- Retryable (transient failures can be retried)
+- Reversible (links can be removed)
+
+### 7.3 Data Flows
+
+**Explicit Link (Auto-detect)**:
+```
+Telegram post → detect thangs.com URL → fetch metadata → auto-link → mark confirmed
+```
+
+**Manual Search**:
+```
+User search → candidate list → confirm → persist link
+```
+
+### 7.4 Failure Isolation
+Thangs failures must not block:
+- Telegram ingestion
+- Downloads
+- Library import
+
+The system must continue operating normally if Thangs is unreachable.
+
+### 7.5 Extensibility
+Supports future metadata sources via adapter pattern:
+- Printables adapter (future)
+- Thingiverse adapter (future)
+
+---
+
+## 8. Extensibility Considerations
+
+- "Suggested channels" feature should be implemented as a separate job scanning captions for `t.me/` links.
 - Rendering should be pluggable (support different render engines).
 - Library path templating should be configurable globally and per-channel.
+- Metadata adapters follow a common interface for easy addition of new sources.
