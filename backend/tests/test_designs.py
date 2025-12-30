@@ -1344,3 +1344,337 @@ class TestThangsLinkUnlink:
         response = await client.delete("/api/v1/designs/nonexistent-id/thangs-link")
 
         assert response.status_code == 404
+
+
+# =============================================================================
+# Design Merge/Unmerge Tests (Issue #60)
+# =============================================================================
+
+
+class TestMergeDesigns:
+    """Tests for design merge endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_merge_designs_success(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test merging two designs moves sources to target."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+
+            # Create target design with 1 source
+            message1 = await create_test_message(session, channel, telegram_message_id=1)
+            target = await create_test_design(session, channel, message1)
+            target.primary_file_types = "STL"
+            target.total_size_bytes = 1000
+            target_id = target.id
+
+            # Create source design with 1 source
+            message2 = await create_test_message(session, channel, telegram_message_id=2)
+            source_design = Design(
+                canonical_title="Source Design",
+                canonical_designer="Designer",
+                status=DesignStatus.DISCOVERED,
+                multicolor=MulticolorStatus.UNKNOWN,
+                primary_file_types="3MF",
+                total_size_bytes=2000,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(source_design)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=source_design.id,
+                channel_id=channel.id,
+                message_id=message2.id,
+                source_rank=1,
+                is_preferred=True,
+            ))
+            source_id = source_design.id
+            await session.commit()
+
+        response = await client.post(
+            f"/api/v1/designs/{target_id}/merge",
+            json={"source_design_ids": [source_id]},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["merged_design_id"] == target_id
+        assert data["merged_source_count"] == 2
+        assert source_id in data["deleted_design_ids"]
+
+        # Verify source design was deleted
+        async with async_session() as session:
+            result = await session.execute(
+                select(Design).where(Design.id == source_id)
+            )
+            assert result.scalar_one_or_none() is None
+
+            # Verify target has both sources
+            result = await session.execute(
+                select(DesignSource).where(DesignSource.design_id == target_id)
+            )
+            sources = result.scalars().all()
+            assert len(sources) == 2
+
+    @pytest.mark.asyncio
+    async def test_merge_cannot_merge_with_self(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test merging a design with itself returns 400."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+            design_id = design.id
+            await session.commit()
+
+        response = await client.post(
+            f"/api/v1/designs/{design_id}/merge",
+            json={"source_design_ids": [design_id]},
+        )
+
+        assert response.status_code == 400
+        assert "itself" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_merge_empty_source_list(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test merging with empty source list returns 400."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+            design_id = design.id
+            await session.commit()
+
+        response = await client.post(
+            f"/api/v1/designs/{design_id}/merge",
+            json={"source_design_ids": []},
+        )
+
+        assert response.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_merge_target_not_found(self, client: AsyncClient) -> None:
+        """Test merging with non-existent target returns 404."""
+        response = await client.post(
+            "/api/v1/designs/nonexistent-id/merge",
+            json={"source_design_ids": ["some-id"]},
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_merge_source_not_found(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test merging with non-existent source returns 404."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+            design_id = design.id
+            await session.commit()
+
+        response = await client.post(
+            f"/api/v1/designs/{design_id}/merge",
+            json={"source_design_ids": ["nonexistent-id"]},
+        )
+
+        assert response.status_code == 404
+
+
+class TestUnmergeDesign:
+    """Tests for design unmerge endpoint."""
+
+    @pytest.mark.asyncio
+    async def test_unmerge_design_success(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test unmerging creates new design and moves sources."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+
+            # Create design with 2 sources
+            message1 = await create_test_message(session, channel, telegram_message_id=1)
+            message2 = await create_test_message(session, channel, telegram_message_id=2)
+
+            design = Design(
+                canonical_title="Original Design",
+                canonical_designer="Designer",
+                status=DesignStatus.DISCOVERED,
+                multicolor=MulticolorStatus.UNKNOWN,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design)
+            await session.flush()
+
+            source1 = DesignSource(
+                design_id=design.id,
+                channel_id=channel.id,
+                message_id=message1.id,
+                source_rank=1,
+                is_preferred=True,
+            )
+            source2 = DesignSource(
+                design_id=design.id,
+                channel_id=channel.id,
+                message_id=message2.id,
+                source_rank=2,
+                is_preferred=False,
+            )
+            session.add_all([source1, source2])
+            design_id = design.id
+            await session.flush()
+            source2_id = source2.id
+            await session.commit()
+
+        response = await client.post(
+            f"/api/v1/designs/{design_id}/unmerge",
+            json={"source_ids": [source2_id]},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["original_design_id"] == design_id
+        assert data["moved_source_count"] == 1
+        new_design_id = data["new_design_id"]
+        assert new_design_id != design_id
+
+        # Verify original design still has source1
+        async with async_session() as session:
+            result = await session.execute(
+                select(DesignSource).where(DesignSource.design_id == design_id)
+            )
+            original_sources = result.scalars().all()
+            assert len(original_sources) == 1
+
+            # Verify new design has source2
+            result = await session.execute(
+                select(DesignSource).where(DesignSource.design_id == new_design_id)
+            )
+            new_sources = result.scalars().all()
+            assert len(new_sources) == 1
+            assert new_sources[0].id == source2_id
+
+    @pytest.mark.asyncio
+    async def test_unmerge_cannot_remove_all_sources(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test unmerging all sources returns 400."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+            design_id = design.id
+
+            # Get the single source ID
+            result = await session.execute(
+                select(DesignSource).where(DesignSource.design_id == design_id)
+            )
+            source = result.scalar_one()
+            source_id = source.id
+            await session.commit()
+
+        response = await client.post(
+            f"/api/v1/designs/{design_id}/unmerge",
+            json={"source_ids": [source_id]},
+        )
+
+        assert response.status_code == 400
+        assert "At least one source must remain" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_unmerge_design_not_found(self, client: AsyncClient) -> None:
+        """Test unmerging non-existent design returns 404."""
+        response = await client.post(
+            "/api/v1/designs/nonexistent-id/unmerge",
+            json={"source_ids": ["some-id"]},
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_unmerge_source_not_found(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test unmerging non-existent source returns 404."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message1 = await create_test_message(session, channel, telegram_message_id=1)
+            message2 = await create_test_message(session, channel, telegram_message_id=2)
+
+            design = Design(
+                canonical_title="Test",
+                canonical_designer="Designer",
+                status=DesignStatus.DISCOVERED,
+                multicolor=MulticolorStatus.UNKNOWN,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design)
+            await session.flush()
+
+            session.add_all([
+                DesignSource(
+                    design_id=design.id, channel_id=channel.id,
+                    message_id=message1.id, source_rank=1, is_preferred=True,
+                ),
+                DesignSource(
+                    design_id=design.id, channel_id=channel.id,
+                    message_id=message2.id, source_rank=2, is_preferred=False,
+                ),
+            ])
+            design_id = design.id
+            await session.commit()
+
+        response = await client.post(
+            f"/api/v1/designs/{design_id}/unmerge",
+            json={"source_ids": ["nonexistent-source-id"]},
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_unmerge_empty_source_list(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test unmerging with empty source list returns 400."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+            design_id = design.id
+            await session.commit()
+
+        response = await client.post(
+            f"/api/v1/designs/{design_id}/unmerge",
+            json={"source_ids": []},
+        )
+
+        assert response.status_code == 400

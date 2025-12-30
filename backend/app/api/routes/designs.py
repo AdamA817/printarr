@@ -85,6 +85,34 @@ class ThangsLinkResponse(BaseModel):
     created_at: datetime
 
 
+class MergeDesignsRequest(BaseModel):
+    """Request body for merging designs."""
+
+    source_design_ids: list[str]
+
+
+class UnmergeDesignRequest(BaseModel):
+    """Request body for unmerging a design."""
+
+    source_ids: list[str]
+
+
+class MergeDesignsResponse(BaseModel):
+    """Response for merge designs endpoint."""
+
+    merged_design_id: str
+    merged_source_count: int
+    deleted_design_ids: list[str]
+
+
+class UnmergeDesignResponse(BaseModel):
+    """Response for unmerge design endpoint."""
+
+    original_design_id: str
+    new_design_id: str
+    moved_source_count: int
+
+
 router = APIRouter(prefix="/designs", tags=["designs"])
 
 
@@ -619,4 +647,250 @@ async def unlink_from_thangs(
         "thangs_link_removed",
         design_id=design_id,
         model_id=source.external_id,
+    )
+
+
+@router.post("/{design_id}/merge", response_model=MergeDesignsResponse)
+async def merge_designs(
+    design_id: str,
+    request: MergeDesignsRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MergeDesignsResponse:
+    """Merge multiple designs into the target design.
+
+    Consolidates sources from the source designs into the target design.
+    The source designs are deleted after their sources are moved.
+
+    - Updates all DesignSource records to point to target design
+    - Consolidates file types and total size
+    - Preserves ExternalMetadataSource links (deduped by source_type)
+    - Deletes the source design records (now empty)
+    """
+    # Validation: cannot merge with itself
+    if design_id in request.source_design_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot merge a design with itself",
+        )
+
+    if not request.source_design_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="source_design_ids must not be empty",
+        )
+
+    # Load target design with sources
+    target_query = (
+        select(Design)
+        .options(
+            selectinload(Design.sources),
+            selectinload(Design.external_metadata_sources),
+        )
+        .where(Design.id == design_id)
+    )
+    target_result = await db.execute(target_query)
+    target_design = target_result.scalar_one_or_none()
+
+    if target_design is None:
+        raise HTTPException(status_code=404, detail="Target design not found")
+
+    # Load source designs with their sources
+    source_query = (
+        select(Design)
+        .options(
+            selectinload(Design.sources),
+            selectinload(Design.external_metadata_sources),
+        )
+        .where(Design.id.in_(request.source_design_ids))
+    )
+    source_result = await db.execute(source_query)
+    source_designs = source_result.scalars().all()
+
+    # Validate all source designs exist
+    found_ids = {d.id for d in source_designs}
+    missing_ids = set(request.source_design_ids) - found_ids
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Source designs not found: {list(missing_ids)}",
+        )
+
+    # Track merged info
+    merged_source_count = len(target_design.sources)
+    deleted_design_ids = []
+    all_file_types = set()
+    total_size = target_design.total_size_bytes or 0
+
+    # Collect existing file types from target
+    if target_design.primary_file_types:
+        all_file_types.update(
+            ft.strip() for ft in target_design.primary_file_types.split(",") if ft.strip()
+        )
+
+    # Track existing external metadata source types
+    existing_source_types = {
+        em.source_type for em in target_design.external_metadata_sources
+    }
+
+    # Process each source design
+    source_design_ids = [d.id for d in source_designs]
+
+    for source_design in source_designs:
+        merged_source_count += len(source_design.sources)
+
+        # Collect file types
+        if source_design.primary_file_types:
+            all_file_types.update(
+                ft.strip() for ft in source_design.primary_file_types.split(",") if ft.strip()
+            )
+
+        # Add to total size
+        if source_design.total_size_bytes:
+            total_size += source_design.total_size_bytes
+
+        # Handle external metadata sources
+        for em in list(source_design.external_metadata_sources):
+            if em.source_type not in existing_source_types:
+                existing_source_types.add(em.source_type)
+            else:
+                # Delete duplicate external metadata
+                await db.execute(
+                    update(ExternalMetadataSource)
+                    .where(ExternalMetadataSource.id == em.id)
+                    .values(design_id=None)  # Temporarily orphan it
+                )
+
+        deleted_design_ids.append(source_design.id)
+
+    # Use SQL UPDATE to move all sources from source designs to target design
+    # This avoids the cascade delete issue
+    await db.execute(
+        update(DesignSource)
+        .where(DesignSource.design_id.in_(source_design_ids))
+        .values(design_id=target_design.id, is_preferred=False)
+    )
+
+    # Move external metadata sources via SQL UPDATE
+    await db.execute(
+        update(ExternalMetadataSource)
+        .where(ExternalMetadataSource.design_id.in_(source_design_ids))
+        .values(design_id=target_design.id)
+    )
+
+    # Delete any orphaned external metadata (duplicates)
+    await db.execute(
+        update(ExternalMetadataSource)
+        .where(ExternalMetadataSource.design_id == None)
+        .values(design_id=target_design.id)  # This won't match if there are none
+    )
+
+    # Now refresh and delete the source designs
+    for source_design in source_designs:
+        # Expire to clear the stale relationship data
+        await db.refresh(source_design)
+        await db.delete(source_design)
+
+    # Update target design metadata
+    target_design.primary_file_types = ",".join(sorted(all_file_types)) if all_file_types else None
+    target_design.total_size_bytes = total_size if total_size > 0 else None
+
+    await db.commit()
+
+    logger.info(
+        "designs_merged",
+        target_id=design_id,
+        source_ids=deleted_design_ids,
+        total_sources=merged_source_count,
+    )
+
+    return MergeDesignsResponse(
+        merged_design_id=design_id,
+        merged_source_count=merged_source_count,
+        deleted_design_ids=deleted_design_ids,
+    )
+
+
+@router.post("/{design_id}/unmerge", response_model=UnmergeDesignResponse)
+async def unmerge_design(
+    design_id: str,
+    request: UnmergeDesignRequest,
+    db: AsyncSession = Depends(get_db),
+) -> UnmergeDesignResponse:
+    """Split specified sources from a design into a new design.
+
+    Creates a new Design from the specified sources and moves them there.
+    Recalculates file types and size for both designs.
+    """
+    if not request.source_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="source_ids must not be empty",
+        )
+
+    # Load design with sources
+    design_query = (
+        select(Design)
+        .options(selectinload(Design.sources))
+        .where(Design.id == design_id)
+    )
+    design_result = await db.execute(design_query)
+    design = design_result.scalar_one_or_none()
+
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Validate: cannot unmerge if only one source remains
+    if len(design.sources) <= len(request.source_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot unmerge all sources. At least one source must remain.",
+        )
+
+    # Find the sources to move
+    sources_to_move = [s for s in design.sources if s.id in request.source_ids]
+
+    # Validate all source_ids exist in this design
+    found_ids = {s.id for s in sources_to_move}
+    missing_ids = set(request.source_ids) - found_ids
+    if missing_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Sources not found in this design: {list(missing_ids)}",
+        )
+
+    # Create new design for the split sources
+    # Use the first source to derive initial metadata
+    first_source = sources_to_move[0]
+    new_design = Design(
+        canonical_title=design.canonical_title,
+        canonical_designer=design.canonical_designer,
+        status=design.status,
+        multicolor=design.multicolor,
+        metadata_authority=design.metadata_authority,
+    )
+    db.add(new_design)
+    await db.flush()  # Get the new design ID
+
+    # Move sources to new design
+    for source in sources_to_move:
+        source.design_id = new_design.id
+        source.source_rank = sources_to_move.index(source) + 1
+
+    # Set first moved source as preferred
+    if sources_to_move:
+        sources_to_move[0].is_preferred = True
+
+    await db.commit()
+
+    logger.info(
+        "design_unmerged",
+        original_id=design_id,
+        new_id=new_design.id,
+        moved_sources=len(sources_to_move),
+    )
+
+    return UnmergeDesignResponse(
+        original_design_id=design_id,
+        new_design_id=new_design.id,
+        moved_source_count=len(sources_to_move),
     )
