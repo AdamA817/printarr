@@ -1,5 +1,6 @@
 """Database models for Printarr."""
 
+from app.db.models.app_setting import AppSetting
 from app.db.models.attachment import Attachment
 from app.db.models.channel import Channel
 from app.db.models.design import Design
@@ -34,6 +35,7 @@ from app.db.models.telegram_message import TelegramMessage
 
 __all__ = [
     # Models
+    "AppSetting",
     "Attachment",
     "Channel",
     "Design",

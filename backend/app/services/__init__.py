@@ -6,6 +6,7 @@ from app.services.download import DownloadError, DownloadService
 from app.services.ingest import IngestService
 from app.services.job_queue import JobQueueService
 from app.services.library import LibraryError, LibraryImportService
+from app.services.settings import SettingsError, SettingsService, SettingsValidationError
 from app.services.thangs import ThangsAdapter
 
 __all__ = [
@@ -18,5 +19,8 @@ __all__ = [
     "JobQueueService",
     "LibraryError",
     "LibraryImportService",
+    "SettingsError",
+    "SettingsService",
+    "SettingsValidationError",
     "ThangsAdapter",
 ]
