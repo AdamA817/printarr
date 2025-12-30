@@ -93,25 +93,26 @@ Each version should be:
 
 ---
 
-## v0.4 - Catalog UI
+## v0.4 - Catalog UI ✅
 **Goal**: Radarr-style browsing experience with Thangs integration
 
 ### Scope
-- [ ] Design grid view with cards
-- [ ] Design list view
-- [ ] Filter sidebar (status, channel, file type)
-- [ ] Design detail page (sources, files, metadata)
-- [ ] Pagination and sorting
-- [ ] **Thangs status badge** on design detail (Linked / Not Linked)
-- [ ] **Thangs search modal** for manual linking
-- [ ] **Link by URL** action (paste thangs.com URL)
-- [ ] **Unlink Thangs** action
-- [ ] Metadata provenance display (Telegram / Thangs / User)
-- [ ] **Multi-message design merging**:
-  - [ ] Auto-detect split RAR archives (`.part1`, `.part2`, etc.) - mandatory grouping
-  - [ ] Heuristic matching for `(Images)` / `(Non Supported)` suffix patterns
-  - [ ] Manual "Merge Designs" action in UI
-  - [ ] "Unmerge" action to split back if needed
+- [x] Design grid view with cards
+- [x] Design list view
+- [x] Filter sidebar (status, channel, file type)
+- [x] Design detail page (sources, files, metadata)
+- [x] Pagination and sorting
+- [x] **Thangs status badge** on design detail (Linked / Not Linked)
+- [x] **Thangs search modal** for manual linking
+- [x] **Link by URL** action (paste thangs.com URL)
+- [x] **Unlink Thangs** action
+- [x] Metadata provenance display (Telegram / Thangs / User)
+- [x] **Multi-message design merging**:
+  - [x] Auto-detect split RAR archives (`.part1`, `.part2`, etc.) - mandatory grouping
+  - [x] Heuristic matching for `(Images)` / `(Non Supported)` suffix patterns
+  - [x] Manual "Merge Designs" action in UI
+  - [x] "Unmerge" action to split back if needed
+- [x] **FlareSolverr integration** for Cloudflare bypass (DEC-016)
 
 ### Success Criteria
 - Browse designs like Radarr
@@ -275,7 +276,7 @@ Channels like Wicked STL post designs across multiple messages:
 
 ## Current Status
 
-**Active Version**: v0.4 (next)
+**Active Version**: v0.5 (next)
 
 **Last Updated**: 2025-12-30
 
@@ -288,8 +289,8 @@ Channels like Wicked STL post designs across multiple messages:
 | v0.1 | Hello World | ✅ Complete | Foundation + Docker/Unraid |
 | v0.2 | Telegram | ✅ Complete | Auth + connection |
 | v0.3 | Ingestion | ✅ Complete | Parse + detect designs + Thangs auto-link |
-| v0.4 | Catalog UI | 🔜 Next | Radarr-style browsing + Thangs search UI |
-| v0.5 | Downloads | - | Job queue + library |
+| v0.4 | Catalog UI | ✅ Complete | Radarr-style browsing + Thangs + FlareSolverr |
+| v0.5 | Downloads | 🔜 Next | Job queue + library |
 | v0.6 | Live Monitoring & Discovery | - | Continuous ingestion + channel discovery |
 | v0.7 | Previews & Metadata | - | Images + tags + Thangs enrichment |
 | v0.8 | Deduplication | - | Handle duplicates |
