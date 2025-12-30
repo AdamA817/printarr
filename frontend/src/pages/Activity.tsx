@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { QueueView } from '@/components/activity/QueueView'
+import { QueueView, HistoryView } from '@/components/activity'
 
 type Tab = 'queue' | 'history'
 
@@ -34,7 +34,7 @@ export function Activity() {
       {/* Tab content */}
       <div>
         {activeTab === 'queue' && <QueueView />}
-        {activeTab === 'history' && <HistoryPlaceholder />}
+        {activeTab === 'history' && <HistoryView />}
       </div>
     </div>
   )
@@ -58,38 +58,5 @@ function TabButton({ active, onClick, children }: TabButtonProps) {
     >
       {children}
     </button>
-  )
-}
-
-// Placeholder for History view (will be implemented in issue #88)
-function HistoryPlaceholder() {
-  return (
-    <div className="bg-bg-secondary rounded-lg p-8 text-center">
-      <HistoryIcon className="w-16 h-16 mx-auto text-text-muted mb-4" />
-      <h3 className="text-lg font-medium text-text-primary mb-2">
-        History Coming Soon
-      </h3>
-      <p className="text-text-secondary">
-        View completed and failed downloads here.
-      </p>
-    </div>
-  )
-}
-
-function HistoryIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
   )
 }
