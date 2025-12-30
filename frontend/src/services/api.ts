@@ -37,6 +37,7 @@ import type {
   ActivityList,
   ActivityListParams,
 } from '@/types/queue'
+import type { SettingsMap, SettingValue } from '@/types/settings'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -191,4 +192,16 @@ export const activityApi = {
 
   remove: (jobId: string) =>
     api.delete(`/activity/${jobId}`).then((r) => r.data),
+}
+
+// Settings API (v0.5)
+export const settingsApi = {
+  getAll: () =>
+    api.get<SettingsMap>('/settings/').then((r) => r.data),
+
+  get: (key: string) =>
+    api.get<SettingValue>(`/settings/${key}`).then((r) => r.data),
+
+  update: (key: string, value: string | number | boolean) =>
+    api.put<SettingValue>(`/settings/${key}`, { value }).then((r) => r.data),
 }

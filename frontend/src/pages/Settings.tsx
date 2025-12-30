@@ -1,14 +1,16 @@
+import { LibrarySettings, DownloadSettings } from '@/components/settings'
+
 export function Settings() {
   return (
     <div className="space-y-6">
-      <div className="bg-bg-secondary rounded-lg p-6">
-        <h3 className="text-lg font-semibold text-text-primary mb-4">
-          General Settings
-        </h3>
-        <p className="text-text-secondary">
-          Settings will be available in a future version.
-        </p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-text-primary">Settings</h1>
       </div>
+
+      {/* Settings Sections */}
+      <LibrarySettings />
+      <DownloadSettings />
     </div>
   )
 }
