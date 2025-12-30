@@ -8,7 +8,7 @@ import {
   useUpdateDesign,
   useUnmergeDesign,
 } from '@/hooks/useDesigns'
-import { ThangsSearchModal } from '@/components/designs'
+import { ThangsSearchModal, DownloadSection } from '@/components/designs'
 import type {
   DesignStatus,
   ExternalMetadata,
@@ -691,6 +691,12 @@ export function DesignDetail() {
 
         {/* Right Column - Sidebar */}
         <div className="space-y-6">
+          {/* Download Section */}
+          <DownloadSection
+            designId={design.id}
+            status={design.status}
+          />
+
           {/* Thangs Section */}
           <ThangsSection
             designId={design.id}
