@@ -382,6 +382,15 @@ When adding or changing enums/schemas in `backend/app/db/models/enums.py`:
 
 The backend is the **source of truth** for all type definitions.
 
+## Getting Started
+
+**FIRST: Check for assigned GitHub issues**
+```bash
+gh issue list --label "agent:backend" --state open
+```
+
+If you have assigned issues, work on them in priority order (high → medium → low). Read the issue thoroughly, check dependencies, and verify the issue is not blocked before starting work.
+
 ## Key Reminders
 
 1. **Always use async** for I/O operations

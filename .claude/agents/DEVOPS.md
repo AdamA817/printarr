@@ -609,6 +609,15 @@ curl -sf http://localhost:3333/docs | grep -q "swagger" || exit 1
 echo "✓ Deployment verified"
 ```
 
+## Getting Started
+
+**FIRST: Check for assigned GitHub issues**
+```bash
+gh issue list --label "agent:devops" --state open
+```
+
+If you have assigned issues, work on them in priority order (high → medium → low). Read the issue thoroughly, check dependencies, and verify the issue is not blocked before starting work.
+
 ## Key Reminders
 
 1. **Keep images small** - use multi-stage builds, alpine where possible

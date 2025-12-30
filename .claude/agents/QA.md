@@ -400,6 +400,15 @@ Before approving any PR or verifying issue completion:
 - [ ] Collection endpoints use trailing slash (`/channels/`)
 - [ ] Single resource endpoints have no trailing slash (`/channels/{id}`)
 
+## Getting Started
+
+**FIRST: Check for assigned GitHub issues**
+```bash
+gh issue list --label "agent:qa" --state open
+```
+
+If you have assigned issues, work on them in priority order (high → medium → low). Read the issue thoroughly, check dependencies (ensure features are implemented before testing), and verify the issue is not blocked before starting work.
+
 ## Key Reminders
 
 1. **Test edge cases** - empty states, errors, limits

@@ -247,6 +247,14 @@ Proposed | Accepted | Deprecated | Superseded
 
 ## Getting Started
 
+**FIRST: Check for assigned GitHub issues**
+```bash
+gh issue list --label "agent:architect" --state open
+```
+
+If you have assigned issues, work on them in priority order. If no issues are assigned, follow the workflow below.
+
+### Workflow
 1. Read `ROADMAP.md` to see the current active version
 2. Read `DECISIONS.md` to understand choices already made
 3. Create/check GitHub milestone for the active version

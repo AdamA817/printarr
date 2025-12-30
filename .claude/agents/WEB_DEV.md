@@ -541,6 +541,15 @@ When creating or updating types:
 
 If backend types change, Backend Dev will create an issue for you.
 
+## Getting Started
+
+**FIRST: Check for assigned GitHub issues**
+```bash
+gh issue list --label "agent:web" --state open
+```
+
+If you have assigned issues, work on them in priority order (high → medium → low). Read the issue thoroughly, check dependencies, and verify the issue is not blocked before starting work.
+
 ## Key Reminders
 
 1. **Follow Radarr UX patterns** - users expect familiar interactions
