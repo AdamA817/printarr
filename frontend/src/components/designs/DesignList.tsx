@@ -1,9 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import { StatusBadge } from './StatusBadge'
-import type { DesignListItem } from '@/types/design'
+import type { DesignListItem, SortField, SortOrder } from '@/types/design'
 
 interface DesignListProps {
   designs: DesignListItem[]
+  sortBy?: SortField
+  sortOrder?: SortOrder
+  onSort?: (field: SortField) => void
 }
 
 function formatDate(dateString: string): string {
@@ -15,11 +18,57 @@ function formatDate(dateString: string): string {
   })
 }
 
-export function DesignList({ designs }: DesignListProps) {
+// Columns that can be sorted
+type SortableColumn = {
+  field: SortField
+  label: string
+}
+
+const SORTABLE_COLUMNS: Record<string, SortableColumn | null> = {
+  title: { field: 'canonical_title', label: 'Title' },
+  designer: { field: 'canonical_designer', label: 'Designer' },
+  channel: null, // Not sortable
+  status: null, // Not sortable
+  fileTypes: null, // Not sortable
+  thangs: null, // Not sortable
+  added: { field: 'created_at', label: 'Added' },
+}
+
+export function DesignList({ designs, sortBy, sortOrder, onSort }: DesignListProps) {
   const navigate = useNavigate()
 
   const handleRowClick = (id: string) => {
     navigate(`/designs/${id}`)
+  }
+
+  const renderColumnHeader = (
+    column: string,
+    label: string,
+    className?: string
+  ) => {
+    const sortable = SORTABLE_COLUMNS[column]
+    const isActive = sortable && sortBy === sortable.field
+    const canSort = sortable && onSort
+
+    if (!canSort) {
+      return (
+        <th className={`px-4 py-3 font-medium ${className || ''}`}>
+          {label}
+        </th>
+      )
+    }
+
+    return (
+      <th className={`px-4 py-3 font-medium ${className || ''}`}>
+        <button
+          onClick={() => onSort(sortable.field)}
+          className="flex items-center gap-1 hover:text-text-primary transition-colors group"
+        >
+          {label}
+          <SortIndicator active={isActive} direction={isActive ? sortOrder : undefined} />
+        </button>
+      </th>
+    )
   }
 
   return (
@@ -28,13 +77,13 @@ export function DesignList({ designs }: DesignListProps) {
         <table className="w-full">
           <thead>
             <tr className="bg-bg-tertiary text-left text-sm text-text-secondary">
-              <th className="px-4 py-3 font-medium">Title</th>
-              <th className="px-4 py-3 font-medium">Designer</th>
-              <th className="px-4 py-3 font-medium">Channel</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">File Types</th>
-              <th className="px-4 py-3 font-medium">Thangs</th>
-              <th className="px-4 py-3 font-medium">Added</th>
+              {renderColumnHeader('title', 'Title')}
+              {renderColumnHeader('designer', 'Designer')}
+              {renderColumnHeader('channel', 'Channel')}
+              {renderColumnHeader('status', 'Status')}
+              {renderColumnHeader('fileTypes', 'File Types')}
+              {renderColumnHeader('thangs', 'Thangs')}
+              {renderColumnHeader('added', 'Added')}
             </tr>
           </thead>
           <tbody className="divide-y divide-bg-tertiary">
@@ -84,6 +133,73 @@ export function DesignList({ designs }: DesignListProps) {
         </table>
       </div>
     </div>
+  )
+}
+
+function SortIndicator({ active, direction }: { active?: boolean; direction?: SortOrder }) {
+  if (!active) {
+    return (
+      <span className="opacity-0 group-hover:opacity-50 transition-opacity">
+        <ChevronUpDownIcon />
+      </span>
+    )
+  }
+
+  return direction === 'ASC' ? <ChevronUpIcon /> : <ChevronDownIcon />
+}
+
+function ChevronUpIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M18 15l-6-6-6 6" />
+    </svg>
+  )
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  )
+}
+
+function ChevronUpDownIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M7 15l5 5 5-5" />
+      <path d="M7 9l5-5 5 5" />
+    </svg>
   )
 }
 

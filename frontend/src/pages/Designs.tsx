@@ -10,8 +10,11 @@ import {
   ViewToggle,
   FilterSidebar,
   ActiveFilters,
+  SearchBox,
+  SortControls,
   type ViewMode,
 } from '@/components/designs'
+import type { SortField, SortOrder } from '@/types/design'
 
 const VIEW_STORAGE_KEY = 'printarr-designs-view'
 
@@ -69,6 +72,25 @@ export function Designs() {
     setPage(newPage)
   }, [setPage])
 
+  const handleSearchChange = useCallback((q: string) => {
+    setFilters({ q: q || undefined, page: 1 })
+  }, [setFilters])
+
+  const handleSortChange = useCallback((sortBy: SortField, sortOrder: SortOrder) => {
+    setFilters({ sort_by: sortBy, sort_order: sortOrder, page: 1 })
+  }, [setFilters])
+
+  const handleColumnSort = useCallback((field: SortField) => {
+    // Toggle direction if same field, otherwise use default direction
+    if (field === filters.sort_by) {
+      const newOrder = filters.sort_order === 'ASC' ? 'DESC' : 'ASC'
+      setFilters({ sort_order: newOrder, page: 1 })
+    } else {
+      const defaultOrder = field === 'created_at' || field === 'total_size_bytes' ? 'DESC' : 'ASC'
+      setFilters({ sort_by: field, sort_order: defaultOrder, page: 1 })
+    }
+  }, [filters.sort_by, filters.sort_order, setFilters])
+
   const toggleSidebar = useCallback(() => {
     setSidebarOpen(prev => !prev)
   }, [])
@@ -90,7 +112,7 @@ export function Designs() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <div className="p-6 space-y-4 overflow-y-auto flex-1">
-          {/* Header */}
+          {/* Header Row 1: Title and View Toggle */}
           <div className="flex justify-between items-center gap-4">
             <div className="flex items-center gap-4">
               {/* Mobile filter toggle */}
@@ -111,6 +133,22 @@ export function Designs() {
               </div>
             </div>
             <ViewToggle view={view} onChange={handleViewChange} />
+          </div>
+
+          {/* Header Row 2: Search and Sort */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1 max-w-md">
+              <SearchBox
+                value={filters.q || ''}
+                onChange={handleSearchChange}
+                placeholder="Search designs..."
+              />
+            </div>
+            <SortControls
+              sortBy={filters.sort_by || 'created_at'}
+              sortOrder={filters.sort_order || 'DESC'}
+              onSortChange={handleSortChange}
+            />
           </div>
 
           {/* Active Filters Pills */}
@@ -157,7 +195,12 @@ export function Designs() {
               {view === 'grid' ? (
                 <DesignGrid designs={data.items} />
               ) : (
-                <DesignList designs={data.items} />
+                <DesignList
+                  designs={data.items}
+                  sortBy={filters.sort_by}
+                  sortOrder={filters.sort_order}
+                  onSort={handleColumnSort}
+                />
               )}
 
               {/* Pagination */}

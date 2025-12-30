@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import BigInteger, DateTime, Enum, Float, Index, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -56,6 +56,14 @@ class Design(Base):
 
     # Notes (user-provided)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Split archive detection
+    is_split_archive: Mapped[bool] = mapped_column(Boolean, default=False)
+    split_archive_base_name: Mapped[Optional[str]] = mapped_column(
+        String(512), nullable=True
+    )
+    detected_parts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    expected_parts: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # Metadata authority (source of truth for canonical metadata)
     metadata_authority: Mapped[MetadataAuthority] = mapped_column(

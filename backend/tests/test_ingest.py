@@ -658,3 +658,290 @@ class TestExtractExtension:
         assert service._extract_extension("noextension") is None
         assert service._extract_extension("") is None
         assert service._extract_extension(None) is None
+
+
+# =============================================================================
+# Split Archive Detection Tests (Issue #61)
+# =============================================================================
+
+
+class TestSplitArchiveDetection:
+    """Tests for split archive pattern detection."""
+
+    def test_detect_part_rar_pattern(self):
+        """Test detection of .part1.rar, .part2.rar patterns."""
+        service = IngestService.__new__(IngestService)
+
+        result = service.detect_split_archive("Model.part1.rar")
+        assert result is not None
+        assert result.base_name == "Model"
+        assert result.part_number == 1
+
+        result = service.detect_split_archive("Model.part2.rar")
+        assert result is not None
+        assert result.base_name == "Model"
+        assert result.part_number == 2
+
+    def test_detect_part_padded_rar_pattern(self):
+        """Test detection of .part01.rar, .part02.rar patterns."""
+        service = IngestService.__new__(IngestService)
+
+        result = service.detect_split_archive("Design.part01.rar")
+        assert result is not None
+        assert result.base_name == "Design"
+        assert result.part_number == 1
+
+        result = service.detect_split_archive("Design.part09.rar")
+        assert result is not None
+        assert result.base_name == "Design"
+        assert result.part_number == 9
+
+    def test_detect_7z_split_pattern(self):
+        """Test detection of .001, .002 patterns (7z splits)."""
+        service = IngestService.__new__(IngestService)
+
+        result = service.detect_split_archive("Archive.7z.001")
+        assert result is not None
+        assert result.base_name == "Archive.7z"
+        assert result.part_number == 1
+
+        result = service.detect_split_archive("Archive.7z.005")
+        assert result is not None
+        assert result.part_number == 5
+
+    def test_detect_rar_volume_pattern(self):
+        """Test detection of .r00, .r01 patterns (RAR volumes)."""
+        service = IngestService.__new__(IngestService)
+
+        result = service.detect_split_archive("Model.r00")
+        assert result is not None
+        assert result.base_name == "Model"
+        assert result.part_number == 0
+
+        result = service.detect_split_archive("Model.r05")
+        assert result is not None
+        assert result.base_name == "Model"
+        assert result.part_number == 5
+
+    def test_non_split_archive_returns_none(self):
+        """Test that non-split archives return None."""
+        service = IngestService.__new__(IngestService)
+
+        assert service.detect_split_archive("Model.rar") is None
+        assert service.detect_split_archive("Model.zip") is None
+        assert service.detect_split_archive("Model.7z") is None
+        assert service.detect_split_archive("Model.stl") is None
+
+    def test_case_insensitive_detection(self):
+        """Test that pattern detection is case insensitive."""
+        service = IngestService.__new__(IngestService)
+
+        result = service.detect_split_archive("Model.PART1.RAR")
+        assert result is not None
+        assert result.part_number == 1
+
+        result = service.detect_split_archive("Model.Part2.Rar")
+        assert result is not None
+        assert result.part_number == 2
+
+
+class TestSplitArchiveIngestion:
+    """Tests for split archive detection during ingestion."""
+
+    @pytest.mark.asyncio
+    async def test_split_archive_creates_design_with_metadata(
+        self, db_session, sample_channel
+    ):
+        """Test that split archive creates design with split metadata."""
+        service = IngestService(db_session)
+
+        message_data = {
+            "id": 700,
+            "date": "2024-01-15T10:30:00Z",
+            "text": "Batman Model",
+            "has_media": True,
+            "attachments": [
+                {"type": "DOCUMENT", "filename": "Batman.part1.rar", "size": 10000000}
+            ],
+        }
+
+        message, design_created = await service.ingest_message(
+            sample_channel, message_data
+        )
+
+        assert design_created is True
+
+        result = await db_session.execute(select(Design))
+        design = result.scalar_one()
+
+        assert design.is_split_archive is True
+        assert design.split_archive_base_name == "Batman"
+        assert design.detected_parts == 1
+
+    @pytest.mark.asyncio
+    async def test_split_archive_merges_into_existing(
+        self, db_session, sample_channel
+    ):
+        """Test that second part merges into existing split archive design."""
+        service = IngestService(db_session)
+
+        # Ingest first part
+        message_data_1 = {
+            "id": 701,
+            "date": "2024-01-15T10:30:00Z",
+            "text": "Superman Model Part 1",
+            "has_media": True,
+            "attachments": [
+                {"type": "DOCUMENT", "filename": "Superman.part1.rar", "size": 10000000}
+            ],
+        }
+        await service.ingest_message(sample_channel, message_data_1)
+
+        # Ingest second part
+        message_data_2 = {
+            "id": 702,
+            "date": "2024-01-15T10:35:00Z",
+            "text": "Superman Model Part 2",
+            "has_media": True,
+            "attachments": [
+                {"type": "DOCUMENT", "filename": "Superman.part2.rar", "size": 10000000}
+            ],
+        }
+        await service.ingest_message(sample_channel, message_data_2)
+
+        # Should only have one design
+        result = await db_session.execute(select(Design))
+        designs = result.scalars().all()
+        assert len(designs) == 1
+
+        design = designs[0]
+        assert design.is_split_archive is True
+        assert design.detected_parts == 2
+
+        # Should have two sources
+        result = await db_session.execute(
+            select(DesignSource).where(DesignSource.design_id == design.id)
+        )
+        sources = result.scalars().all()
+        assert len(sources) == 2
+
+    @pytest.mark.asyncio
+    async def test_split_archive_different_base_creates_separate(
+        self, db_session, sample_channel
+    ):
+        """Test that different base names create separate designs."""
+        service = IngestService(db_session)
+
+        # Ingest first design part 1
+        message_data_1 = {
+            "id": 703,
+            "date": "2024-01-15T10:30:00Z",
+            "text": "Design A",
+            "has_media": True,
+            "attachments": [
+                {"type": "DOCUMENT", "filename": "DesignA.part1.rar", "size": 10000000}
+            ],
+        }
+        await service.ingest_message(sample_channel, message_data_1)
+
+        # Ingest different design part 1
+        message_data_2 = {
+            "id": 704,
+            "date": "2024-01-15T10:35:00Z",
+            "text": "Design B",
+            "has_media": True,
+            "attachments": [
+                {"type": "DOCUMENT", "filename": "DesignB.part1.rar", "size": 10000000}
+            ],
+        }
+        await service.ingest_message(sample_channel, message_data_2)
+
+        # Should have two separate designs
+        result = await db_session.execute(select(Design))
+        designs = result.scalars().all()
+        assert len(designs) == 2
+
+        base_names = {d.split_archive_base_name for d in designs}
+        assert base_names == {"DesignA", "DesignB"}
+
+    @pytest.mark.asyncio
+    async def test_non_split_archive_is_not_merged(
+        self, db_session, sample_channel
+    ):
+        """Test that non-split archives are not merged with split archives."""
+        service = IngestService(db_session)
+
+        # Ingest split archive
+        message_data_1 = {
+            "id": 705,
+            "date": "2024-01-15T10:30:00Z",
+            "text": "Model Part 1",
+            "has_media": True,
+            "attachments": [
+                {"type": "DOCUMENT", "filename": "Model.part1.rar", "size": 10000000}
+            ],
+        }
+        await service.ingest_message(sample_channel, message_data_1)
+
+        # Ingest regular rar with same base name
+        message_data_2 = {
+            "id": 706,
+            "date": "2024-01-15T10:35:00Z",
+            "text": "Model Full",
+            "has_media": True,
+            "attachments": [
+                {"type": "DOCUMENT", "filename": "Model.rar", "size": 20000000}
+            ],
+        }
+        await service.ingest_message(sample_channel, message_data_2)
+
+        # Should have two separate designs
+        result = await db_session.execute(select(Design))
+        designs = result.scalars().all()
+        assert len(designs) == 2
+
+    @pytest.mark.asyncio
+    async def test_split_archive_parts_out_of_order(
+        self, db_session, sample_channel
+    ):
+        """Test that parts posted out of order are still merged."""
+        service = IngestService(db_session)
+
+        # Ingest part 2 first
+        message_data_2 = {
+            "id": 707,
+            "date": "2024-01-15T10:30:00Z",
+            "text": "Part 2 First",
+            "has_media": True,
+            "attachments": [
+                {"type": "DOCUMENT", "filename": "OutOfOrder.part2.rar", "size": 10000000}
+            ],
+        }
+        await service.ingest_message(sample_channel, message_data_2)
+
+        # Ingest part 1 second
+        message_data_1 = {
+            "id": 708,
+            "date": "2024-01-15T10:35:00Z",
+            "text": "Part 1 Second",
+            "has_media": True,
+            "attachments": [
+                {"type": "DOCUMENT", "filename": "OutOfOrder.part1.rar", "size": 10000000}
+            ],
+        }
+        await service.ingest_message(sample_channel, message_data_1)
+
+        # Should have one design with both sources
+        result = await db_session.execute(select(Design))
+        designs = result.scalars().all()
+        assert len(designs) == 1
+
+        design = designs[0]
+        assert design.detected_parts == 2  # Max of 1 and 2
+
+        # Both sources should be linked
+        result = await db_session.execute(
+            select(DesignSource).where(DesignSource.design_id == design.id)
+        )
+        sources = result.scalars().all()
+        assert len(sources) == 2

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -43,6 +44,28 @@ DESIGN_EXTENSIONS = {
     ".tar.gz",
     ".tgz",
 }
+
+# Split archive patterns
+# Pattern 1: .part1.rar, .part2.rar, etc.
+SPLIT_PART_RAR_PATTERN = re.compile(r"^(.+)\.part(\d+)\.rar$", re.IGNORECASE)
+# Pattern 2: .part01.rar, .part02.rar, etc. (zero-padded)
+SPLIT_PART_PADDED_RAR_PATTERN = re.compile(r"^(.+)\.part0*(\d+)\.rar$", re.IGNORECASE)
+# Pattern 3: .001, .002, etc. (7z split format)
+SPLIT_7Z_PATTERN = re.compile(r"^(.+)\.(\d{3})$")
+# Pattern 4: .r00, .r01, etc. (RAR split volumes)
+SPLIT_RAR_VOLUME_PATTERN = re.compile(r"^(.+)\.r(\d{2})$", re.IGNORECASE)
+
+# Time window for matching split archives (24 hours)
+SPLIT_ARCHIVE_MATCH_WINDOW = timedelta(hours=24)
+
+
+@dataclass
+class SplitArchiveInfo:
+    """Information about a split archive file."""
+
+    base_name: str
+    part_number: int
+    original_filename: str
 
 
 class IngestService:
@@ -263,7 +286,33 @@ class IngestService:
         message: TelegramMessage,
         caption_text: str,
     ) -> Design:
-        """Create a Design record from a design post message."""
+        """Create a Design record from a design post message.
+
+        If this message contains a split archive, we try to find and merge
+        with an existing design for the same archive.
+        """
+        # Check if this is a split archive
+        split_info = await self._check_split_archive_attachments(message.id)
+
+        if split_info:
+            # Try to find existing design for this split archive
+            cutoff_time = datetime.utcnow() - SPLIT_ARCHIVE_MATCH_WINDOW
+            existing_design = await self._find_matching_split_archive_design(
+                channel.id,
+                split_info.base_name,
+                cutoff_time,
+            )
+
+            if existing_design:
+                # Merge into existing design
+                return await self._merge_into_split_archive_design(
+                    existing_design,
+                    channel,
+                    message,
+                    caption_text,
+                    split_info.part_number,
+                )
+
         # Extract title from caption or filename
         title = await self._extract_title(caption_text, message)
 
@@ -278,6 +327,10 @@ class IngestService:
             multicolor=MulticolorStatus.UNKNOWN,
             primary_file_types=",".join(file_types) if file_types else None,
             metadata_authority=MetadataAuthority.TELEGRAM,
+            # Set split archive fields if this is a split archive
+            is_split_archive=split_info is not None,
+            split_archive_base_name=split_info.base_name if split_info else None,
+            detected_parts=split_info.part_number if split_info else None,
         )
         self.db.add(design)
         await self.db.flush()
@@ -294,12 +347,21 @@ class IngestService:
         self.db.add(source)
         await self.db.flush()
 
-        logger.info(
-            "design_created",
-            design_id=design.id,
-            title=title,
-            file_types=file_types,
-        )
+        if split_info:
+            logger.info(
+                "split_archive_design_created",
+                design_id=design.id,
+                title=title,
+                base_name=split_info.base_name,
+                part_number=split_info.part_number,
+            )
+        else:
+            logger.info(
+                "design_created",
+                design_id=design.id,
+                title=title,
+                file_types=file_types,
+            )
 
         # Process external URLs (Thangs, Printables, Thingiverse)
         # This is non-blocking - errors are logged but don't fail ingestion
@@ -413,3 +475,131 @@ class IngestService:
         extensions = result.scalars().all()
         # Convert to uppercase without dots for display
         return [ext.lstrip(".").upper() for ext in extensions if ext]
+
+    def detect_split_archive(self, filename: str) -> SplitArchiveInfo | None:
+        """Detect if a filename is a split archive and extract info.
+
+        Args:
+            filename: The filename to check.
+
+        Returns:
+            SplitArchiveInfo if this is a split archive, None otherwise.
+        """
+        if not filename:
+            return None
+
+        # Try each pattern
+        for pattern in [
+            SPLIT_PART_RAR_PATTERN,
+            SPLIT_PART_PADDED_RAR_PATTERN,
+            SPLIT_7Z_PATTERN,
+            SPLIT_RAR_VOLUME_PATTERN,
+        ]:
+            match = pattern.match(filename)
+            if match:
+                base_name = match.group(1)
+                part_number = int(match.group(2))
+                return SplitArchiveInfo(
+                    base_name=base_name,
+                    part_number=part_number,
+                    original_filename=filename,
+                )
+
+        return None
+
+    async def _check_split_archive_attachments(
+        self, message_id: str
+    ) -> SplitArchiveInfo | None:
+        """Check if a message contains split archive attachments.
+
+        Returns the first detected split archive info, or None if not a split archive.
+        """
+        result = await self.db.execute(
+            select(Attachment.filename)
+            .where(
+                Attachment.message_id == message_id,
+                Attachment.is_candidate_design_file == True,  # noqa: E712
+                Attachment.filename.isnot(None),
+            )
+        )
+        filenames = result.scalars().all()
+
+        for filename in filenames:
+            split_info = self.detect_split_archive(filename)
+            if split_info:
+                return split_info
+
+        return None
+
+    async def _find_matching_split_archive_design(
+        self,
+        channel_id: str,
+        base_name: str,
+        cutoff_time: datetime,
+    ) -> Design | None:
+        """Find an existing design that matches the split archive base name.
+
+        Searches for designs in the same channel with matching split_archive_base_name
+        created within the time window.
+        """
+        result = await self.db.execute(
+            select(Design)
+            .join(DesignSource, Design.id == DesignSource.design_id)
+            .where(
+                and_(
+                    DesignSource.channel_id == channel_id,
+                    Design.is_split_archive == True,  # noqa: E712
+                    Design.split_archive_base_name == base_name,
+                    Design.created_at >= cutoff_time,
+                )
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def _merge_into_split_archive_design(
+        self,
+        existing_design: Design,
+        channel: Channel,
+        message: TelegramMessage,
+        caption_text: str,
+        part_number: int,
+    ) -> Design:
+        """Merge a new split archive part into an existing design.
+
+        Adds a new DesignSource and updates the detected_parts count.
+        """
+        # Get current max source_rank
+        result = await self.db.execute(
+            select(DesignSource.source_rank)
+            .where(DesignSource.design_id == existing_design.id)
+            .order_by(DesignSource.source_rank.desc())
+            .limit(1)
+        )
+        max_rank = result.scalar_one_or_none() or 0
+
+        # Create new DesignSource for this part
+        source = DesignSource(
+            design_id=existing_design.id,
+            channel_id=channel.id,
+            message_id=message.id,
+            source_rank=max_rank + 1,
+            is_preferred=False,
+            caption_snapshot=caption_text[:2000] if caption_text else None,
+        )
+        self.db.add(source)
+
+        # Update detected_parts (track max part number seen)
+        current_detected = existing_design.detected_parts or 0
+        existing_design.detected_parts = max(current_detected, part_number)
+
+        await self.db.flush()
+
+        logger.info(
+            "split_archive_merged",
+            design_id=existing_design.id,
+            part_number=part_number,
+            detected_parts=existing_design.detected_parts,
+        )
+
+        return existing_design
