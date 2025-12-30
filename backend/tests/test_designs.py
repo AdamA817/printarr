@@ -564,3 +564,541 @@ class TestResponseSchemas:
         assert "display_multicolor" in data
         assert "sources" in data
         assert "external_metadata" in data
+
+
+# =============================================================================
+# Enhanced Filtering, Search, and Sorting Tests (Issue #57)
+# =============================================================================
+
+
+class TestEnhancedFiltering:
+    """Tests for enhanced filtering capabilities."""
+
+    @pytest.mark.asyncio
+    async def test_filter_by_file_type(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test filtering designs by file type."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message1 = await create_test_message(session, channel, telegram_message_id=1)
+            message2 = await create_test_message(session, channel, telegram_message_id=2)
+
+            # Create design with STL files
+            design1 = Design(
+                canonical_title="STL Design",
+                canonical_designer="Designer 1",
+                status=DesignStatus.DISCOVERED,
+                multicolor=MulticolorStatus.UNKNOWN,
+                primary_file_types="STL",
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design1)
+            await session.flush()
+            source1 = DesignSource(
+                design_id=design1.id,
+                channel_id=channel.id,
+                message_id=message1.id,
+                source_rank=1,
+                is_preferred=True,
+            )
+            session.add(source1)
+
+            # Create design with 3MF files
+            design2 = Design(
+                canonical_title="3MF Design",
+                canonical_designer="Designer 2",
+                status=DesignStatus.DISCOVERED,
+                multicolor=MulticolorStatus.UNKNOWN,
+                primary_file_types="3MF,STL",
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design2)
+            await session.flush()
+            source2 = DesignSource(
+                design_id=design2.id,
+                channel_id=channel.id,
+                message_id=message2.id,
+                source_rank=1,
+                is_preferred=True,
+            )
+            session.add(source2)
+            await session.commit()
+
+        # Filter by STL (should match both)
+        response = await client.get("/api/v1/designs/?file_type=STL")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+
+        # Filter by 3MF (should match only second design)
+        response = await client.get("/api/v1/designs/?file_type=3MF")
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_title"] == "3MF Design"
+
+    @pytest.mark.asyncio
+    async def test_filter_by_multicolor(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test filtering designs by multicolor status."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message1 = await create_test_message(session, channel, telegram_message_id=1)
+            message2 = await create_test_message(session, channel, telegram_message_id=2)
+            message3 = await create_test_message(session, channel, telegram_message_id=3)
+
+            # Create SINGLE color design
+            design1 = Design(
+                canonical_title="Single Color Design",
+                canonical_designer="Designer",
+                status=DesignStatus.DISCOVERED,
+                multicolor=MulticolorStatus.SINGLE,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design1)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design1.id, channel_id=channel.id,
+                message_id=message1.id, source_rank=1, is_preferred=True,
+            ))
+
+            # Create MULTI color design
+            design2 = Design(
+                canonical_title="Multi Color Design",
+                canonical_designer="Designer",
+                status=DesignStatus.DISCOVERED,
+                multicolor=MulticolorStatus.MULTI,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design2)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design2.id, channel_id=channel.id,
+                message_id=message2.id, source_rank=1, is_preferred=True,
+            ))
+
+            # Create UNKNOWN color design
+            design3 = Design(
+                canonical_title="Unknown Color Design",
+                canonical_designer="Designer",
+                status=DesignStatus.DISCOVERED,
+                multicolor=MulticolorStatus.UNKNOWN,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design3)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design3.id, channel_id=channel.id,
+                message_id=message3.id, source_rank=1, is_preferred=True,
+            ))
+            await session.commit()
+
+        # Filter by SINGLE
+        response = await client.get("/api/v1/designs/?multicolor=SINGLE")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_title"] == "Single Color Design"
+
+        # Filter by MULTI
+        response = await client.get("/api/v1/designs/?multicolor=MULTI")
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_title"] == "Multi Color Design"
+
+    @pytest.mark.asyncio
+    async def test_filter_by_has_thangs_link(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test filtering designs by Thangs link status."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message1 = await create_test_message(session, channel, telegram_message_id=1)
+            message2 = await create_test_message(session, channel, telegram_message_id=2)
+
+            # Create design with Thangs link
+            design1 = Design(
+                canonical_title="Linked Design",
+                canonical_designer="Designer",
+                status=DesignStatus.DISCOVERED,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design1)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design1.id, channel_id=channel.id,
+                message_id=message1.id, source_rank=1, is_preferred=True,
+            ))
+            session.add(ExternalMetadataSource(
+                design_id=design1.id,
+                source_type=ExternalSourceType.THANGS,
+                external_id="12345",
+                external_url="https://thangs.com/m/12345",
+                confidence_score=1.0,
+                match_method=MatchMethod.LINK,
+            ))
+
+            # Create design without Thangs link
+            design2 = Design(
+                canonical_title="Unlinked Design",
+                canonical_designer="Designer",
+                status=DesignStatus.DISCOVERED,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design2)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design2.id, channel_id=channel.id,
+                message_id=message2.id, source_rank=1, is_preferred=True,
+            ))
+            await session.commit()
+
+        # Filter by has_thangs_link=true
+        response = await client.get("/api/v1/designs/?has_thangs_link=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_title"] == "Linked Design"
+
+        # Filter by has_thangs_link=false
+        response = await client.get("/api/v1/designs/?has_thangs_link=false")
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_title"] == "Unlinked Design"
+
+    @pytest.mark.asyncio
+    async def test_filter_by_designer(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test filtering designs by designer (partial match)."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message1 = await create_test_message(session, channel, telegram_message_id=1)
+            message2 = await create_test_message(session, channel, telegram_message_id=2)
+
+            # Create design by "John Smith"
+            design1 = Design(
+                canonical_title="Design 1",
+                canonical_designer="John Smith",
+                status=DesignStatus.DISCOVERED,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design1)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design1.id, channel_id=channel.id,
+                message_id=message1.id, source_rank=1, is_preferred=True,
+            ))
+
+            # Create design by "Jane Doe"
+            design2 = Design(
+                canonical_title="Design 2",
+                canonical_designer="Jane Doe",
+                status=DesignStatus.DISCOVERED,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design2)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design2.id, channel_id=channel.id,
+                message_id=message2.id, source_rank=1, is_preferred=True,
+            ))
+            await session.commit()
+
+        # Filter by "John" (partial match)
+        response = await client.get("/api/v1/designs/?designer=John")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_designer"] == "John Smith"
+
+        # Filter by "smith" (case-insensitive)
+        response = await client.get("/api/v1/designs/?designer=smith")
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_designer"] == "John Smith"
+
+
+class TestSearchFunctionality:
+    """Tests for full-text search functionality."""
+
+    @pytest.mark.asyncio
+    async def test_search_by_title(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test searching designs by title."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message1 = await create_test_message(session, channel, telegram_message_id=1)
+            message2 = await create_test_message(session, channel, telegram_message_id=2)
+
+            design1 = Design(
+                canonical_title="Batman Figure",
+                canonical_designer="Designer A",
+                status=DesignStatus.DISCOVERED,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design1)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design1.id, channel_id=channel.id,
+                message_id=message1.id, source_rank=1, is_preferred=True,
+            ))
+
+            design2 = Design(
+                canonical_title="Superman Statue",
+                canonical_designer="Designer B",
+                status=DesignStatus.DISCOVERED,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design2)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design2.id, channel_id=channel.id,
+                message_id=message2.id, source_rank=1, is_preferred=True,
+            ))
+            await session.commit()
+
+        # Search for "Batman"
+        response = await client.get("/api/v1/designs/?q=Batman")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_title"] == "Batman Figure"
+
+        # Search for "figure" (case-insensitive)
+        response = await client.get("/api/v1/designs/?q=figure")
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_title"] == "Batman Figure"
+
+    @pytest.mark.asyncio
+    async def test_search_by_designer(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test searching designs by designer name."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message1 = await create_test_message(session, channel, telegram_message_id=1)
+            message2 = await create_test_message(session, channel, telegram_message_id=2)
+
+            design1 = Design(
+                canonical_title="Design One",
+                canonical_designer="WickedProps",
+                status=DesignStatus.DISCOVERED,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design1)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design1.id, channel_id=channel.id,
+                message_id=message1.id, source_rank=1, is_preferred=True,
+            ))
+
+            design2 = Design(
+                canonical_title="Design Two",
+                canonical_designer="Gambody",
+                status=DesignStatus.DISCOVERED,
+                metadata_authority=MetadataAuthority.TELEGRAM,
+            )
+            session.add(design2)
+            await session.flush()
+            session.add(DesignSource(
+                design_id=design2.id, channel_id=channel.id,
+                message_id=message2.id, source_rank=1, is_preferred=True,
+            ))
+            await session.commit()
+
+        # Search for "Wicked" (matches designer)
+        response = await client.get("/api/v1/designs/?q=Wicked")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["canonical_designer"] == "WickedProps"
+
+
+class TestSorting:
+    """Tests for sorting functionality."""
+
+    @pytest.mark.asyncio
+    async def test_sort_by_title_asc(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test sorting designs by title ascending."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+
+            for title in ["Zebra", "Apple", "Mango"]:
+                message = await create_test_message(
+                    session, channel,
+                    telegram_message_id=ord(title[0])
+                )
+                design = Design(
+                    canonical_title=title,
+                    canonical_designer="Designer",
+                    status=DesignStatus.DISCOVERED,
+                    metadata_authority=MetadataAuthority.TELEGRAM,
+                )
+                session.add(design)
+                await session.flush()
+                session.add(DesignSource(
+                    design_id=design.id, channel_id=channel.id,
+                    message_id=message.id, source_rank=1, is_preferred=True,
+                ))
+            await session.commit()
+
+        # Sort by title ASC
+        response = await client.get(
+            "/api/v1/designs/?sort_by=canonical_title&sort_order=ASC"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        titles = [item["canonical_title"] for item in data["items"]]
+        assert titles == ["Apple", "Mango", "Zebra"]
+
+    @pytest.mark.asyncio
+    async def test_sort_by_title_desc(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test sorting designs by title descending."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+
+            for title in ["Zebra", "Apple", "Mango"]:
+                message = await create_test_message(
+                    session, channel,
+                    telegram_message_id=ord(title[0])
+                )
+                design = Design(
+                    canonical_title=title,
+                    canonical_designer="Designer",
+                    status=DesignStatus.DISCOVERED,
+                    metadata_authority=MetadataAuthority.TELEGRAM,
+                )
+                session.add(design)
+                await session.flush()
+                session.add(DesignSource(
+                    design_id=design.id, channel_id=channel.id,
+                    message_id=message.id, source_rank=1, is_preferred=True,
+                ))
+            await session.commit()
+
+        # Sort by title DESC
+        response = await client.get(
+            "/api/v1/designs/?sort_by=canonical_title&sort_order=DESC"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        titles = [item["canonical_title"] for item in data["items"]]
+        assert titles == ["Zebra", "Mango", "Apple"]
+
+    @pytest.mark.asyncio
+    async def test_sort_by_designer(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test sorting designs by designer."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+
+            for idx, designer in enumerate(["Zack", "Adam", "Mike"]):
+                message = await create_test_message(
+                    session, channel,
+                    telegram_message_id=idx + 1
+                )
+                design = Design(
+                    canonical_title=f"Design by {designer}",
+                    canonical_designer=designer,
+                    status=DesignStatus.DISCOVERED,
+                    metadata_authority=MetadataAuthority.TELEGRAM,
+                )
+                session.add(design)
+                await session.flush()
+                session.add(DesignSource(
+                    design_id=design.id, channel_id=channel.id,
+                    message_id=message.id, source_rank=1, is_preferred=True,
+                ))
+            await session.commit()
+
+        # Sort by designer ASC
+        response = await client.get(
+            "/api/v1/designs/?sort_by=canonical_designer&sort_order=ASC"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        designers = [item["canonical_designer"] for item in data["items"]]
+        assert designers == ["Adam", "Mike", "Zack"]
+
+    @pytest.mark.asyncio
+    async def test_combined_filter_and_sort(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test combining filters with sorting."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+
+            # Create designs with different statuses
+            designs_data = [
+                ("Zebra", DesignStatus.DISCOVERED),
+                ("Apple", DesignStatus.DISCOVERED),
+                ("Mango", DesignStatus.WANTED),
+            ]
+
+            for idx, (title, status) in enumerate(designs_data):
+                message = await create_test_message(
+                    session, channel,
+                    telegram_message_id=idx + 1
+                )
+                design = Design(
+                    canonical_title=title,
+                    canonical_designer="Designer",
+                    status=status,
+                    metadata_authority=MetadataAuthority.TELEGRAM,
+                )
+                session.add(design)
+                await session.flush()
+                session.add(DesignSource(
+                    design_id=design.id, channel_id=channel.id,
+                    message_id=message.id, source_rank=1, is_preferred=True,
+                ))
+            await session.commit()
+
+        # Filter by DISCOVERED and sort by title ASC
+        response = await client.get(
+            "/api/v1/designs/?status=DISCOVERED&sort_by=canonical_title&sort_order=ASC"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        titles = [item["canonical_title"] for item in data["items"]]
+        assert titles == ["Apple", "Zebra"]

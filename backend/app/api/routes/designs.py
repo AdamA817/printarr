@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from enum import Enum
+from typing import Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.logging import get_logger
 from app.db import get_db
 from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType
+from app.db.models.enums import MulticolorStatus
 from app.schemas.design import (
     ChannelSummary,
     DesignDetail,
@@ -25,6 +27,22 @@ from app.schemas.design import (
 )
 
 logger = get_logger(__name__)
+
+
+class SortOrder(str, Enum):
+    """Sort order options."""
+
+    ASC = "ASC"
+    DESC = "DESC"
+
+
+class SortField(str, Enum):
+    """Sort field options for designs."""
+
+    CREATED_AT = "created_at"
+    CANONICAL_TITLE = "canonical_title"
+    CANONICAL_DESIGNER = "canonical_designer"
+    TOTAL_SIZE_BYTES = "total_size_bytes"
 
 
 class RefreshMetadataResponse(BaseModel):
@@ -44,9 +62,16 @@ async def list_designs(
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     status: Optional[str] = Query(None, description="Filter by status"),
     channel_id: Optional[str] = Query(None, description="Filter by channel ID"),
+    file_type: Optional[str] = Query(None, description="Filter by primary file type (STL, 3MF, OBJ, etc.)"),
+    multicolor: Optional[MulticolorStatus] = Query(None, description="Filter by multicolor status"),
+    has_thangs_link: Optional[bool] = Query(None, description="Filter by Thangs link status"),
+    designer: Optional[str] = Query(None, description="Filter by designer (partial match)"),
+    q: Optional[str] = Query(None, description="Full-text search on title and designer"),
+    sort_by: SortField = Query(SortField.CREATED_AT, description="Field to sort by"),
+    sort_order: SortOrder = Query(SortOrder.DESC, description="Sort order (ASC or DESC)"),
     db: AsyncSession = Depends(get_db),
 ) -> DesignList:
-    """List all designs with pagination and filtering."""
+    """List all designs with pagination, filtering, search, and sorting."""
     # Build base query with eager loading
     query = select(Design).options(
         selectinload(Design.sources).selectinload(DesignSource.channel),
@@ -65,14 +90,52 @@ async def list_designs(
             )
         )
 
+    if file_type:
+        # Filter by primary file type (case-insensitive, using LIKE for partial match in CSV field)
+        query = query.where(Design.primary_file_types.ilike(f"%{file_type}%"))
+
+    if multicolor:
+        query = query.where(Design.multicolor == multicolor)
+
+    if designer:
+        # Case-insensitive partial match on designer
+        query = query.where(Design.canonical_designer.ilike(f"%{designer}%"))
+
+    if has_thangs_link is not None:
+        # Subquery to find designs with Thangs links
+        designs_with_thangs = select(ExternalMetadataSource.design_id).where(
+            ExternalMetadataSource.source_type == ExternalSourceType.THANGS
+        )
+        if has_thangs_link:
+            query = query.where(Design.id.in_(designs_with_thangs))
+        else:
+            query = query.where(Design.id.notin_(designs_with_thangs))
+
+    if q:
+        # Full-text search on title and designer (case-insensitive)
+        search_pattern = f"%{q}%"
+        query = query.where(
+            or_(
+                Design.canonical_title.ilike(search_pattern),
+                Design.canonical_designer.ilike(search_pattern),
+            )
+        )
+
     # Get total count (before pagination)
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
+    # Apply sorting
+    sort_column = getattr(Design, sort_by.value)
+    if sort_order == SortOrder.ASC:
+        query = query.order_by(sort_column.asc())
+    else:
+        query = query.order_by(sort_column.desc())
+
     # Apply pagination
     offset = (page - 1) * page_size
-    query = query.order_by(Design.created_at.desc()).offset(offset).limit(page_size)
+    query = query.offset(offset).limit(page_size)
 
     # Execute query
     result = await db.execute(query)
