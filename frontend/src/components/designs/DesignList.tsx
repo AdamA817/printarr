@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { StatusBadge } from './StatusBadge'
+import { DesignActions } from './DesignActions'
 import type { DesignListItem, SortField, SortOrder } from '@/types/design'
 
 interface DesignListProps {
@@ -9,6 +10,7 @@ interface DesignListProps {
   onSort?: (field: SortField) => void
   selectedIds?: Set<string>
   onToggleSelect?: (id: string) => void
+  showActions?: boolean
 }
 
 function formatDate(dateString: string): string {
@@ -36,12 +38,13 @@ const SORTABLE_COLUMNS: Record<string, SortableColumn | null> = {
   added: { field: 'created_at', label: 'Added' },
 }
 
-export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, onToggleSelect }: DesignListProps) {
+export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, onToggleSelect, showActions = true }: DesignListProps) {
   const navigate = useNavigate()
 
   const handleRowClick = (id: string, e: React.MouseEvent) => {
-    // Don't navigate if clicking on checkbox
-    if ((e.target as HTMLElement).tagName === 'INPUT') return
+    // Don't navigate if clicking on checkbox or action buttons
+    const target = e.target as HTMLElement
+    if (target.tagName === 'INPUT' || target.tagName === 'BUTTON' || target.closest('button')) return
     navigate(`/designs/${id}`)
   }
 
@@ -96,6 +99,7 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
               {renderColumnHeader('fileTypes', 'File Types')}
               {renderColumnHeader('thangs', 'Thangs')}
               {renderColumnHeader('added', 'Added')}
+              {showActions && <th className="px-4 py-3 font-medium w-24">Actions</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-bg-tertiary">
@@ -152,6 +156,16 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
                 <td className="px-4 py-3 text-text-secondary text-sm">
                   {formatDate(design.created_at)}
                 </td>
+                {showActions && (
+                  <td className="px-4 py-3">
+                    <DesignActions
+                      designId={design.id}
+                      status={design.status}
+                      size="sm"
+                      variant="icon"
+                    />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

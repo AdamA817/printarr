@@ -14,6 +14,9 @@ import type {
   MergeDesignsResponse,
   UnmergeDesignRequest,
   UnmergeDesignResponse,
+  WantDesignResponse,
+  DownloadDesignResponse,
+  CancelDownloadResponse,
 } from '@/types/design'
 import type {
   AuthStatusResponse,
@@ -137,6 +140,16 @@ export const designsApi = {
 
   unmerge: (id: string, data: UnmergeDesignRequest) =>
     api.post<UnmergeDesignResponse>(`/designs/${id}/unmerge`, data).then((r) => r.data),
+
+  // Download actions (v0.5)
+  want: (id: string) =>
+    api.post<WantDesignResponse>(`/designs/${id}/want`).then((r) => r.data),
+
+  download: (id: string) =>
+    api.post<DownloadDesignResponse>(`/designs/${id}/download`).then((r) => r.data),
+
+  cancelDownload: (id: string) =>
+    api.post<CancelDownloadResponse>(`/designs/${id}/cancel`).then((r) => r.data),
 }
 
 export interface ThangsSearchParams {

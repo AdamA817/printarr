@@ -180,3 +180,22 @@ export interface UnmergeDesignResponse {
   new_design_id: string
   moved_source_count: number
 }
+
+// Download action types (for v0.5 download workflow)
+export interface WantDesignResponse {
+  design_id: string
+  status: DesignStatus
+  job_id: string | null
+}
+
+export interface DownloadDesignResponse {
+  design_id: string
+  status: DesignStatus
+  job_id: string
+}
+
+export interface CancelDownloadResponse {
+  design_id: string
+  status: DesignStatus
+  cancelled_job_id: string | null
+}

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { StatusBadge } from './StatusBadge'
+import { DesignActions } from './DesignActions'
 import type { DesignListItem } from '@/types/design'
 
 interface DesignCardProps {
@@ -7,6 +8,7 @@ interface DesignCardProps {
   isSelected?: boolean
   onToggleSelect?: (id: string) => void
   selectionMode?: boolean
+  showActions?: boolean
 }
 
 // File type icons (simple text representations)
@@ -30,7 +32,7 @@ function getFileTypeIcon(fileTypes: string[]): string {
   return '📄'
 }
 
-export function DesignCard({ design, isSelected, onToggleSelect, selectionMode }: DesignCardProps) {
+export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, showActions = true }: DesignCardProps) {
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -67,9 +69,19 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode }
           </div>
         )}
 
-        {/* Hover overlay */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+        {/* Hover overlay with action button */}
+        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 pointer-events-none">
           <span className="text-white text-sm font-medium">View Details</span>
+          {showActions && (
+            <div className="pointer-events-auto">
+              <DesignActions
+                designId={design.id}
+                status={design.status}
+                size="sm"
+                variant="button"
+              />
+            </div>
+          )}
         </div>
 
         {/* Thangs indicator */}
@@ -82,6 +94,18 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode }
           >
             🔗
           </span>
+        )}
+
+        {/* Action button in corner (visible on hover, except for completed states) */}
+        {showActions && (design.status === 'DISCOVERED' || design.status === 'WANTED' || design.status === 'DOWNLOADING') && (
+          <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
+            <DesignActions
+              designId={design.id}
+              status={design.status}
+              size="sm"
+              variant="icon"
+            />
+          </div>
         )}
       </div>
 
