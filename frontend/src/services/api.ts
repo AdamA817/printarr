@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { Channel, ChannelCreate, ChannelUpdate, ChannelList } from '@/types/channel'
+import type { DesignList, DesignListParams } from '@/types/design'
 import type {
   AuthStatusResponse,
   AuthStartRequest,
@@ -75,4 +76,9 @@ export const telegramApi = {
 
 export const statsApi = {
   getStats: () => api.get<StatsResponse>('/stats/').then((r) => r.data),
+}
+
+export const designsApi = {
+  list: (params?: DesignListParams) =>
+    api.get<DesignList>('/designs/', { params }).then((r) => r.data),
 }
