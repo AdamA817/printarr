@@ -1,11 +1,42 @@
 // Must match backend/app/db/models/enums.py exactly
 export type DesignStatus = 'DISCOVERED' | 'WANTED' | 'DOWNLOADING' | 'DOWNLOADED' | 'ORGANIZED'
 export type MulticolorStatus = 'UNKNOWN' | 'SINGLE' | 'MULTI'
+export type MetadataAuthority = 'TELEGRAM' | 'THANGS' | 'PRINTABLES' | 'USER'
+export type ExternalSourceType = 'THANGS' | 'PRINTABLES' | 'THINGIVERSE'
+export type MatchMethod = 'LINK' | 'TEXT' | 'GEOMETRY' | 'MANUAL'
 
 // Summary of channel info for design response
 export interface ChannelSummary {
   id: string
   title: string
+}
+
+// Design source (from Telegram messages)
+export interface DesignSource {
+  id: string
+  channel_id: string
+  message_id: string
+  source_rank: number
+  is_preferred: boolean
+  caption_snapshot: string | null
+  created_at: string
+  channel: ChannelSummary
+}
+
+// External metadata (e.g., Thangs link)
+export interface ExternalMetadata {
+  id: string
+  source_type: ExternalSourceType
+  external_id: string
+  external_url: string
+  confidence_score: number
+  match_method: MatchMethod
+  is_user_confirmed: boolean
+  fetched_title: string | null
+  fetched_designer: string | null
+  fetched_tags: string | null
+  last_fetched_at: string | null
+  created_at: string
 }
 
 // Design list item (from GET /api/v1/designs/)
@@ -20,6 +51,30 @@ export interface DesignListItem {
   updated_at: string
   channel: ChannelSummary | null
   has_thangs_link: boolean
+}
+
+// Design detail (from GET /api/v1/designs/{id})
+export interface DesignDetail {
+  id: string
+  canonical_title: string
+  canonical_designer: string
+  status: DesignStatus
+  multicolor: MulticolorStatus
+  primary_file_types: string | null
+  total_size_bytes: number | null
+  title_override: string | null
+  designer_override: string | null
+  multicolor_override: MulticolorStatus | null
+  notes: string | null
+  metadata_authority: MetadataAuthority
+  metadata_confidence: number | null
+  display_title: string
+  display_designer: string
+  display_multicolor: MulticolorStatus
+  created_at: string
+  updated_at: string
+  sources: DesignSource[]
+  external_metadata: ExternalMetadata[]
 }
 
 // Paginated design list response

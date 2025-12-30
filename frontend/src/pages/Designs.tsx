@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useDesigns } from '@/hooks/useDesigns'
 import type { DesignListParams, DesignStatus } from '@/types/design'
 
@@ -62,6 +63,7 @@ function DesignsTableSkeleton() {
 }
 
 export function Designs() {
+  const navigate = useNavigate()
   const [params, setParams] = useState<DesignListParams>({
     page: 1,
     page_size: 20,
@@ -71,6 +73,10 @@ export function Designs() {
 
   const handlePageChange = (newPage: number) => {
     setParams((prev) => ({ ...prev, page: newPage }))
+  }
+
+  const handleRowClick = (id: string) => {
+    navigate(`/designs/${id}`)
   }
 
   return (
@@ -132,7 +138,8 @@ export function Designs() {
                 {data.items.map((design) => (
                   <tr
                     key={design.id}
-                    className="hover:bg-bg-tertiary/50 transition-colors"
+                    onClick={() => handleRowClick(design.id)}
+                    className="hover:bg-bg-tertiary/50 transition-colors cursor-pointer"
                   >
                     <td className="px-4 py-3">
                       <span className="text-text-primary font-medium truncate block max-w-xs">

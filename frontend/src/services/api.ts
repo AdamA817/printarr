@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type { Channel, ChannelCreate, ChannelUpdate, ChannelList } from '@/types/channel'
-import type { DesignList, DesignListParams } from '@/types/design'
+import type { DesignList, DesignListParams, DesignDetail } from '@/types/design'
 import type {
   AuthStatusResponse,
   AuthStartRequest,
@@ -96,4 +96,7 @@ export const statsApi = {
 export const designsApi = {
   list: (params?: DesignListParams) =>
     api.get<DesignList>('/designs/', { params }).then((r) => r.data),
+
+  get: (id: string) =>
+    api.get<DesignDetail>(`/designs/${id}`).then((r) => r.data),
 }

@@ -8,3 +8,11 @@ export function useDesigns(params?: DesignListParams) {
     queryFn: () => designsApi.list(params),
   })
 }
+
+export function useDesign(id: string) {
+  return useQuery({
+    queryKey: ['design', id],
+    queryFn: () => designsApi.get(id),
+    enabled: !!id,
+  })
+}
