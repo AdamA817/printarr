@@ -53,3 +53,19 @@ export type TelegramConnectionStatus =
   | 'connecting'      // Auth in progress
   | 'connected'       // Authenticated with Telegram
   | 'unknown'         // API not responding
+
+// Channel Resolution types
+export interface ChannelResolveRequest {
+  link: string
+}
+
+export interface ChannelResolveResponse {
+  id: number | null
+  title: string
+  username: string | null
+  type: 'channel' | 'supergroup' | 'group'
+  members_count: number | null
+  photo_url: string | null
+  is_invite: boolean
+  invite_hash: string | null
+}

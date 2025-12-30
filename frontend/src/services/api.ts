@@ -7,6 +7,8 @@ import type {
   AuthVerifyRequest,
   AuthVerifyResponse,
   AuthLogoutResponse,
+  ChannelResolveRequest,
+  ChannelResolveResponse,
 } from '@/types/telegram'
 
 export const api = axios.create({
@@ -58,4 +60,7 @@ export const telegramApi = {
 
   logout: () =>
     api.post<AuthLogoutResponse>('/telegram/auth/logout').then((r) => r.data),
+
+  resolveChannel: (data: ChannelResolveRequest) =>
+    api.post<ChannelResolveResponse>('/telegram/channels/resolve', data).then((r) => r.data),
 }

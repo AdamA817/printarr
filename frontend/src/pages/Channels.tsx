@@ -3,7 +3,8 @@ import { useChannels, useCreateChannel, useDeleteChannel } from '@/hooks/useChan
 import { ChannelCard } from '@/components/channels/ChannelCard'
 import { AddChannelModal } from '@/components/channels/AddChannelModal'
 import { DeleteConfirmModal } from '@/components/channels/DeleteConfirmModal'
-import type { Channel } from '@/types/channel'
+import { OPEN_TELEGRAM_AUTH_EVENT } from '@/components/layout/Layout'
+import type { Channel, ChannelCreate } from '@/types/channel'
 
 export function Channels() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -13,7 +14,7 @@ export function Channels() {
   const createChannel = useCreateChannel()
   const deleteChannel = useDeleteChannel()
 
-  const handleAddChannel = (formData: { title: string; username?: string }) => {
+  const handleAddChannel = (formData: ChannelCreate) => {
     createChannel.mutate(formData, {
       onSuccess: () => {
         setIsAddModalOpen(false)
@@ -37,6 +38,11 @@ export function Channels() {
         setDeleteTarget(null)
       },
     })
+  }
+
+  const handleAuthClick = () => {
+    // Dispatch custom event to open auth modal in Layout
+    window.dispatchEvent(new CustomEvent(OPEN_TELEGRAM_AUTH_EVENT))
   }
 
   return (
@@ -144,6 +150,7 @@ export function Channels() {
               'Failed to add channel'
             : null
         }
+        onAuthClick={handleAuthClick}
       />
 
       {/* Delete confirmation modal */}

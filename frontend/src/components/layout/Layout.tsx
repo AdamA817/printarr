@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { TelegramAuthModal } from '@/components/telegram/TelegramAuthModal'
+
+// Custom event name for opening auth modal from other components
+export const OPEN_TELEGRAM_AUTH_EVENT = 'printarr:open-telegram-auth'
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -16,6 +19,18 @@ export function Layout() {
     // Modal will close itself after success
     // Status indicator will auto-refresh via React Query
   }
+
+  // Listen for custom event from child components
+  useEffect(() => {
+    const handleOpenAuth = () => {
+      setAuthModalOpen(true)
+    }
+
+    window.addEventListener(OPEN_TELEGRAM_AUTH_EVENT, handleOpenAuth)
+    return () => {
+      window.removeEventListener(OPEN_TELEGRAM_AUTH_EVENT, handleOpenAuth)
+    }
+  }, [])
 
   return (
     <div className="flex h-screen bg-bg-primary">

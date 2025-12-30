@@ -4,6 +4,7 @@ import type {
   AuthStatusResponse,
   AuthStartRequest,
   AuthVerifyRequest,
+  ChannelResolveRequest,
   TelegramConnectionStatus,
 } from '@/types/telegram'
 
@@ -86,5 +87,11 @@ export function useTelegramLogout() {
         user: null,
       })
     },
+  })
+}
+
+export function useResolveChannel() {
+  return useMutation({
+    mutationFn: (data: ChannelResolveRequest) => telegramApi.resolveChannel(data),
   })
 }
