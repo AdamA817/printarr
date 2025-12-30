@@ -12,10 +12,9 @@ interface ChannelCardProps {
 export function ChannelCard({ channel, onEdit, onDelete, isDeleting }: ChannelCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
-  // Parse telegram_peer_id to number if present
-  const telegramId = channel.telegram_peer_id
-    ? parseInt(channel.telegram_peer_id, 10)
-    : null
+  // Parse telegram_peer_id to number if present (handle non-numeric strings)
+  const parsedId = parseInt(channel.telegram_peer_id ?? '', 10)
+  const telegramId = isNaN(parsedId) ? null : parsedId
 
   return (
     <div className="bg-bg-secondary rounded-lg overflow-hidden">
