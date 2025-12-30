@@ -1,0 +1,49 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+*.egg-info
+.eggs
+venv
+.venv
+backend/venv
+backend/.venv
+*.egg
+
+# Node
+frontend/node_modules
+frontend/.env.local
+frontend/.env.*.local
+
+# Build artifacts (we build fresh in Docker)
+frontend/dist
+
+# Local data directories
+data/
+
+# Documentation
+*.md
+!README.md
+
+# Testing
+.coverage
+htmlcov
+.tox
+
+# Claude agents
+.claude
+
+# Misc
+.DS_Store
+*.log

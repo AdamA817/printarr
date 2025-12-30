@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>Printarr</Name>
+  <Repository>printarr:latest</Repository>
+  <Registry/>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/AdamA817/printarr</Support>
+  <Project>https://github.com/AdamA817/printarr</Project>
+  <Overview>
+    Printarr is a self-hosted web application that monitors Telegram channels
+    for 3D-printable designs, catalogs them, and manages downloads into a
+    structured local library. Inspired by Radarr/Sonarr.
+  </Overview>
+  <Category>MediaApp:Other Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:3333]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/AdamA817/printarr/main/unraid/printarr.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/AdamA817/printarr/main/docs/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="Web UI Port" Target="3333" Default="3333" Mode="tcp"
+          Description="Web interface port" Type="Port" Display="always"
+          Required="true" Mask="false">3333</Config>
+
+  <Config Name="Config Path" Target="/config" Default="/mnt/user/appdata/printarr/config"
+          Mode="rw" Description="Application config and Telegram session"
+          Type="Path" Display="always" Required="true" Mask="false"/>
+
+  <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/printarr/data"
+          Mode="rw" Description="Database and internal state"
+          Type="Path" Display="always" Required="true" Mask="false"/>
+
+  <Config Name="Staging Path" Target="/staging" Default="/mnt/user/downloads/printarr-staging"
+          Mode="rw" Description="Temporary downloads and extraction workspace"
+          Type="Path" Display="always" Required="true" Mask="false"/>
+
+  <Config Name="Library Path" Target="/library" Default="/mnt/user/3d-library"
+          Mode="rw" Description="Final organized 3D model library"
+          Type="Path" Display="always" Required="true" Mask="false"/>
+
+  <Config Name="Cache Path" Target="/cache" Default="/mnt/user/appdata/printarr/cache"
+          Mode="rw" Description="Thumbnails and rendered previews"
+          Type="Path" Display="always" Required="true" Mask="false"/>
+
+  <Config Name="Log Level" Target="PRINTARR_LOG_LEVEL" Default="INFO"
+          Mode="" Description="Logging level (DEBUG, INFO, WARNING, ERROR)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
+
+  <Config Name="Max Concurrent Downloads" Target="PRINTARR_MAX_CONCURRENT_DOWNLOADS"
+          Default="3" Mode="" Description="Maximum simultaneous Telegram downloads"
+          Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
+</Container>

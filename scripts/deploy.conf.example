@@ -1,0 +1,37 @@
+# Printarr Deploy Configuration
+# ==============================
+#
+# Copy this file to deploy.conf and customize for your Unraid server.
+# All paths should be absolute paths on your Unraid server.
+
+# Container settings
+CONTAINER_NAME="printarr"
+IMAGE_NAME="printarr"
+IMAGE_TAG="latest"
+
+# Port mapping (host:container)
+# Change this if port 3333 is already in use
+PORT="3333"
+
+# Volume paths - customize these for your setup
+# These directories will be created if they don't exist
+
+# Application config (Telegram session, settings)
+CONFIG_PATH="/mnt/user/appdata/printarr/config"
+
+# Database and internal state
+DATA_PATH="/mnt/user/appdata/printarr/data"
+
+# Temporary download and extraction workspace
+# Consider using a fast drive (SSD/cache) for better performance
+STAGING_PATH="/mnt/user/downloads/printarr-staging"
+
+# Final organized 3D model library
+# This is where your designs will be stored
+LIBRARY_PATH="/mnt/user/3d-library"
+
+# Thumbnails and preview cache
+CACHE_PATH="/mnt/user/appdata/printarr/cache"
+
+# Logging level (DEBUG, INFO, WARNING, ERROR)
+LOG_LEVEL="INFO"
