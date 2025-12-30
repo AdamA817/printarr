@@ -24,12 +24,12 @@ export interface ChannelListParams {
 
 export const channelsApi = {
   list: (params?: ChannelListParams) =>
-    api.get<ChannelList>('/channels', { params }).then((r) => r.data),
+    api.get<ChannelList>('/channels/', { params }).then((r) => r.data),
 
   get: (id: string) => api.get<Channel>(`/channels/${id}`).then((r) => r.data),
 
   create: (data: ChannelCreate) =>
-    api.post<Channel>('/channels', data).then((r) => r.data),
+    api.post<Channel>('/channels/', data).then((r) => r.data),
 
   delete: (id: string) => api.delete(`/channels/${id}`),
 }
