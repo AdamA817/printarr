@@ -137,3 +137,29 @@ class DedupeEvidenceType(str, enum.Enum):
     FILENAME_SIZE_MATCH = "FILENAME_SIZE_MATCH"
     CAPTION_SIMILARITY = "CAPTION_SIMILARITY"
     MANUAL_MERGE = "MANUAL_MERGE"
+
+
+class MetadataAuthority(str, enum.Enum):
+    """Source of truth for design metadata."""
+
+    TELEGRAM = "TELEGRAM"
+    THANGS = "THANGS"
+    PRINTABLES = "PRINTABLES"
+    USER = "USER"
+
+
+class ExternalSourceType(str, enum.Enum):
+    """Type of external metadata source."""
+
+    THANGS = "THANGS"
+    PRINTABLES = "PRINTABLES"
+    THINGIVERSE = "THINGIVERSE"
+
+
+class MatchMethod(str, enum.Enum):
+    """How a design was matched to an external source."""
+
+    LINK = "LINK"
+    TEXT = "TEXT"
+    GEOMETRY = "GEOMETRY"
+    MANUAL = "MANUAL"

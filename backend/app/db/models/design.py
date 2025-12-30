@@ -6,16 +6,17 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import BigInteger, DateTime, Enum, Index, String, Text
+from sqlalchemy import BigInteger, DateTime, Enum, Float, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.models.enums import DesignStatus, MulticolorStatus
+from app.db.models.enums import DesignStatus, MetadataAuthority, MulticolorStatus
 
 if TYPE_CHECKING:
     from app.db.models.design_file import DesignFile
     from app.db.models.design_source import DesignSource
     from app.db.models.design_tag import DesignTag
+    from app.db.models.external_metadata_source import ExternalMetadataSource
     from app.db.models.job import Job
     from app.db.models.preview_asset import PreviewAsset
 
@@ -56,6 +57,12 @@ class Design(Base):
     # Notes (user-provided)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Metadata authority (source of truth for canonical metadata)
+    metadata_authority: Mapped[MetadataAuthority] = mapped_column(
+        Enum(MetadataAuthority), default=MetadataAuthority.TELEGRAM
+    )
+    metadata_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -76,6 +83,9 @@ class Design(Base):
         "PreviewAsset", back_populates="design", cascade="all, delete-orphan"
     )
     jobs: Mapped[list["Job"]] = relationship("Job", back_populates="design")
+    external_metadata_sources: Mapped[list["ExternalMetadataSource"]] = relationship(
+        "ExternalMetadataSource", back_populates="design", cascade="all, delete-orphan"
+    )
 
     # Indexes
     __table_args__ = (
