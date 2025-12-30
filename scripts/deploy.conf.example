@@ -35,3 +35,15 @@ CACHE_PATH="/mnt/user/appdata/printarr/cache"
 
 # Logging level (DEBUG, INFO, WARNING, ERROR)
 LOG_LEVEL="INFO"
+
+# ============================================
+# TELEGRAM API CREDENTIALS (REQUIRED)
+# ============================================
+# Get these from https://my.telegram.org:
+#   1. Log in with your phone number
+#   2. Go to "API development tools"
+#   3. Create a new application
+#   4. Copy the api_id and api_hash
+
+TELEGRAM_API_ID="your_api_id_here"
+TELEGRAM_API_HASH="your_api_hash_here"

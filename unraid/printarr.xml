@@ -55,4 +55,12 @@
   <Config Name="Max Concurrent Downloads" Target="PRINTARR_MAX_CONCURRENT_DOWNLOADS"
           Default="3" Mode="" Description="Maximum simultaneous Telegram downloads"
           Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
+
+  <Config Name="Telegram API ID" Target="TELEGRAM_API_ID" Default=""
+          Mode="" Description="Telegram API ID from https://my.telegram.org (required)"
+          Type="Variable" Display="always" Required="true" Mask="false"/>
+
+  <Config Name="Telegram API Hash" Target="TELEGRAM_API_HASH" Default=""
+          Mode="" Description="Telegram API Hash from https://my.telegram.org (required)"
+          Type="Variable" Display="always" Required="true" Mask="true"/>
 </Container>

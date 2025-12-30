@@ -49,6 +49,11 @@ LIBRARY_PATH="/mnt/user/3d-library"
 CACHE_PATH="/mnt/user/appdata/printarr/cache"
 LOG_LEVEL="INFO"
 
+# Telegram API credentials (required for v0.2+)
+# Get these from https://my.telegram.org
+TELEGRAM_API_ID=""
+TELEGRAM_API_HASH=""
+
 # Functions
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -121,6 +126,13 @@ if docker ps -aq -f name="$CONTAINER_NAME" | grep -q .; then
     docker rm "$CONTAINER_NAME"
 fi
 
+# Validate Telegram credentials
+if [[ -z "$TELEGRAM_API_ID" || -z "$TELEGRAM_API_HASH" ]]; then
+    log_error "TELEGRAM_API_ID and TELEGRAM_API_HASH are required!"
+    log_error "Get these from https://my.telegram.org and set them in deploy.conf"
+    exit 1
+fi
+
 # Start new container
 log_info "Starting new container: $CONTAINER_NAME"
 docker run -d \
@@ -133,6 +145,8 @@ docker run -d \
     -v "${LIBRARY_PATH}:/library" \
     -v "${CACHE_PATH}:/cache" \
     -e "PRINTARR_LOG_LEVEL=${LOG_LEVEL}" \
+    -e "TELEGRAM_API_ID=${TELEGRAM_API_ID}" \
+    -e "TELEGRAM_API_HASH=${TELEGRAM_API_HASH}" \
     "${IMAGE_NAME}:${IMAGE_TAG}"
 
 # Wait for container to be healthy
