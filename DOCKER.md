@@ -135,30 +135,46 @@ docker run -d \
 
 ---
 
-## 8. FlareSolverr (Optional)
+## 8. FlareSolverr (Required for Thangs Search)
 
-Printarr can use [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) to bypass Cloudflare protection on external APIs like Thangs. If you already run FlareSolverr for Prowlarr or Jackett, you can reuse the same instance.
+Printarr uses [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) to bypass Cloudflare protection on external APIs like Thangs. **FlareSolverr is required for Thangs Search to work.**
 
-### Setup
+### Default Setup (docker-compose.yml)
 
-1. If not already running, add FlareSolverr:
-   ```bash
-   docker run -d --name flaresolverr -p 8191:8191 ghcr.io/flaresolverr/flaresolverr:latest
-   ```
+The default `docker-compose.yml` includes FlareSolverr and is pre-configured:
 
-2. Set the environment variable in Printarr:
+```bash
+docker-compose up -d
+```
+
+This starts both Printarr and FlareSolverr automatically.
+
+### Using an Existing FlareSolverr Instance
+
+If you already run FlareSolverr for Prowlarr or Jackett, you can reuse it:
+
+1. Remove or comment out the `flaresolverr` service in `docker-compose.yml`
+2. Update `PRINTARR_FLARESOLVERR_URL` to point to your instance:
    ```yaml
    environment:
-     - PRINTARR_FLARESOLVERR_URL=http://flaresolverr:8191/v1
+     - PRINTARR_FLARESOLVERR_URL=http://192.168.1.x:8191/v1
    ```
 
-   Or for Unraid, use the IP of your FlareSolverr container (e.g., `http://192.168.1.x:8191/v1`).
+### For Unraid
 
-### Without FlareSolverr
+Set the FlareSolverr URL in the container settings (Advanced section):
+- Example: `http://192.168.1.x:8191/v1`
 
-- URL detection from Telegram captions still works
-- Manual "Link by URL" still works
-- Search and automatic metadata fetch may fail on Cloudflare-protected sites
+### What Works Without FlareSolverr
+
+- URL detection from Telegram captions (automatic)
+- Manual "Link by URL" feature
+- All other Printarr functionality
+
+### What Requires FlareSolverr
+
+- Thangs Search (will return 502 error without FlareSolverr)
+- Automatic metadata fetch from Cloudflare-protected sites
 
 ---
 
