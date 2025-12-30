@@ -468,3 +468,114 @@ npm run lint
 1. Delete session file and re-authenticate
 2. Check API_ID and API_HASH are correct
 3. Ensure phone number format is correct (+1234567890)
+
+---
+
+## QA Testing Tips
+
+### Browser Caching Issues
+When testing Docker containers, browsers may cache old JS/CSS bundles:
+```bash
+# Verify what the server is actually serving
+curl -s http://localhost:3333/ | grep 'index-'
+
+# Compare with what's in the container
+docker exec printarr ls /app/frontend/dist/assets/
+
+# Force cache bust by adding query param
+http://localhost:3333/?v=2
+```
+
+**Symptoms**: UI shows old version number, features missing, stale behavior
+**Solution**: Close browser tab completely or add cache-busting query param
+
+### Docker Rebuild After Code Changes
+When testing code changes, ensure the container has the latest:
+```bash
+# Quick rebuild (uses cache)
+docker-compose up -d --build
+
+# Full rebuild (no cache - use when having issues)
+docker-compose down
+docker-compose build --no-cache
+docker-compose up -d
+
+# Verify code is current
+docker exec printarr cat /app/backend/app/api/router.py | head -10
+docker exec printarr bash -c 'grep -o "someString" /app/frontend/dist/assets/*.js'
+```
+
+### Environment Variable Naming
+The backend uses pydantic-settings with `env_prefix="PRINTARR_"`:
+```python
+# In Settings class
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="PRINTARR_")
+    telegram_api_id: int | None = None  # Expects: PRINTARR_TELEGRAM_API_ID
+```
+
+**Common mistake**: Using `TELEGRAM_API_ID` instead of `PRINTARR_TELEGRAM_API_ID`
+
+```yaml
+# docker-compose.yml - CORRECT
+environment:
+  - PRINTARR_TELEGRAM_API_ID=${TELEGRAM_API_ID}
+
+# docker-compose.yml - WRONG (won't work!)
+environment:
+  - TELEGRAM_API_ID=${TELEGRAM_API_ID}
+```
+
+### React Rendering Gotchas
+React renders some falsy values as visible text:
+```tsx
+// PROBLEM: NaN renders as the string "NaN"
+const id = parseInt("not-a-number", 10)  // Returns NaN
+{id && <Component />}  // Renders "NaN" instead of nothing!
+
+// SOLUTION: Explicitly check for valid values
+const parsedId = parseInt(value ?? '', 10)
+const id = isNaN(parsedId) ? null : parsedId
+{id !== null && <Component />}
+```
+
+**Values React renders as nothing**: `false`, `null`, `undefined`, `""` (empty string)
+**Values React renders visibly**: `0`, `NaN`, empty arrays `[]`
+
+### Vitest Configuration
+When using vitest with vite, import `defineConfig` from the correct package:
+```typescript
+// CORRECT - for projects using vitest
+import { defineConfig } from 'vitest/config'
+
+// WRONG - causes "test does not exist" TypeScript error
+import { defineConfig } from 'vite'
+```
+
+### Testing API Endpoints
+```bash
+# Check Telegram auth status
+curl -s http://localhost:3333/api/v1/telegram/auth/status | jq .
+
+# Expected response when configured but not authenticated:
+# {"authenticated": false, "configured": true, "connected": true, "user": null}
+
+# Check if API routes are registered
+docker logs printarr 2>&1 | grep -i "telegram\|route"
+```
+
+### Checking for Missing Code in Docker Build
+If features are missing in the Docker container:
+```bash
+# 1. Check if route file exists
+docker exec printarr ls /app/backend/app/api/routes/
+
+# 2. Check if router includes the route
+docker exec printarr cat /app/backend/app/api/router.py
+
+# 3. Check if frontend component is bundled
+docker exec printarr bash -c 'grep -c "ComponentName" /app/frontend/dist/assets/*.js'
+
+# 4. Rebuild if code is stale
+docker-compose build --no-cache && docker-compose up -d
+```
