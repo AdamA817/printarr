@@ -35,6 +35,18 @@ export interface ChannelListParams {
   is_enabled?: boolean
 }
 
+export interface BackfillRequest {
+  mode?: string
+  value?: number
+}
+
+export interface BackfillResponse {
+  channel_id: string
+  messages_processed: number
+  designs_created: number
+  last_message_id: number
+}
+
 export const channelsApi = {
   list: (params?: ChannelListParams) =>
     api.get<ChannelList>('/channels/', { params }).then((r) => r.data),
@@ -48,6 +60,9 @@ export const channelsApi = {
     api.patch<Channel>(`/channels/${id}`, data).then((r) => r.data),
 
   delete: (id: string) => api.delete(`/channels/${id}`),
+
+  triggerBackfill: (id: string, request?: BackfillRequest) =>
+    api.post<BackfillResponse>(`/channels/${id}/backfill`, request).then((r) => r.data),
 }
 
 export const healthApi = {

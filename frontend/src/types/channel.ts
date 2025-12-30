@@ -31,6 +31,10 @@ export interface ChannelCreate {
   invite_link?: string
   is_private?: boolean
   telegram_peer_id?: string
+  // Backfill settings (used for update after create)
+  backfill_mode?: BackfillMode
+  backfill_value?: number
+  start_backfill?: boolean // UI-only: trigger backfill after creation
 }
 
 export interface ChannelUpdate {

@@ -21,7 +21,36 @@ export function useCreateChannel() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (data: ChannelCreate) => channelsApi.create(data),
+    mutationFn: async (data: ChannelCreate) => {
+      // Extract backfill settings (not sent to create endpoint)
+      const { backfill_mode, backfill_value, start_backfill, ...createData } = data
+
+      // Step 1: Create the channel
+      const channel = await channelsApi.create(createData)
+
+      // Step 2: Update backfill settings if they differ from defaults
+      const needsUpdate = backfill_mode && (
+        backfill_mode !== 'LAST_N_MESSAGES' ||
+        backfill_value !== 100
+      )
+
+      if (needsUpdate) {
+        await channelsApi.update(channel.id, {
+          backfill_mode,
+          backfill_value,
+        })
+      }
+
+      // Step 3: Trigger backfill if requested
+      if (start_backfill && backfill_mode) {
+        // Fire and forget - don't wait for backfill to complete
+        channelsApi.triggerBackfill(channel.id).catch((err) => {
+          console.error('Failed to trigger backfill:', err)
+        })
+      }
+
+      return channel
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
