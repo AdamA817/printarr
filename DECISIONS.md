@@ -318,6 +318,59 @@ Telethon. The maturity, community size, and low issue count indicate better stab
 
 ---
 
+### DEC-014: External Metadata Integration Strategy
+**Date**: 2025-12-30
+**Status**: Accepted
+
+**Context**
+v0.3 introduces external metadata enrichment (starting with Thangs). Need to decide how to integrate external metadata sources with the Telegram ingestion pipeline.
+
+**Options Considered**
+1. Synchronous fetch - Block ingestion until external metadata retrieved
+2. Async fetch - Ingest immediately, fetch metadata in background
+3. Detect only - Store URLs, no automatic fetch
+
+**Decision**
+Async fetch with graceful degradation:
+- Detect external URLs (thangs.com, printables.com, thingiverse.com) during ingestion
+- For Thangs: Async fetch metadata, don't block ingestion
+- For Printables/Thingiverse: Store URL only (fetch in future version)
+- On API failure: Store URL, queue retry job
+- External metadata never overwrites user overrides
+
+**Consequences**
+- Ingestion pipeline remains fast and resilient
+- Thangs failures don't block catalog growth
+- Phased rollout: Thangs first, other sources later
+- Need retry mechanism for failed fetches
+
+---
+
+### DEC-015: Design-to-Message Relationship
+**Date**: 2025-12-30
+**Status**: Accepted
+
+**Context**
+Need to define how Telegram messages map to Design catalog entries.
+
+**Options Considered**
+1. One Design per message (all attachments grouped)
+2. One Design per attachment (split files)
+3. User-configurable per channel
+
+**Decision**
+One Design per Telegram message (default). All attachments from a single message belong to one Design. This matches how creators typically post - multiple STL files for one model in a single message.
+
+Future consideration: Allow splitting/merging when needed, but start simple.
+
+**Consequences**
+- Simpler initial implementation
+- Matches typical posting patterns
+- May need merge/split features later for edge cases
+- DesignSource provides 1:1 link between Design and TelegramMessage
+
+---
+
 ## Pending Decisions
 
 ### To Decide: Job Queue Implementation
