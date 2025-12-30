@@ -18,20 +18,24 @@ Each version should be:
 
 ---
 
-## v0.1 - Hello World
-**Goal**: Prove the stack works together
+## v0.1 - Hello World (Deployable from Day 1)
+**Goal**: Prove the stack works together, deployable on Unraid
 
 ### Scope
 - [ ] FastAPI backend with health endpoint
 - [ ] React frontend with basic layout (sidebar, header)
 - [ ] SQLite database with one table (Channels)
-- [ ] Docker container that runs both
+- [ ] Docker container that runs both (multi-stage build)
+- [ ] docker-compose.yml for local development
+- [ ] Basic Unraid template for deployment
+- [ ] Proper volume mounts (/config, /data, /library, etc.)
 - [ ] Can add/view channels in UI (no Telegram yet)
 
 ### Success Criteria
-- Run `docker-compose up` and see the UI
+- Deploy on Unraid via Docker template
+- Access UI from browser
 - Add a channel name via UI, see it in the list
-- Data persists across restarts
+- Data persists across container restarts
 
 ### Not Included
 - Telegram integration
@@ -150,8 +154,8 @@ Each version should be:
 
 ---
 
-## v0.7 - Previews & Images
-**Goal**: Visual browsing experience
+## v0.7 - Previews & Metadata
+**Goal**: Visual browsing and organization
 
 ### Scope
 - [ ] Capture Telegram images from posts
@@ -159,21 +163,6 @@ Each version should be:
 - [ ] Extract 3MF embedded thumbnails
 - [ ] Preview generation for downloaded models
 - [ ] Image gallery in design detail
-
-### Success Criteria
-- Design cards show preview images
-- Click to see full gallery
-- Downloaded designs have rendered previews
-
-### Not Included
-- On-demand render for undownloaded
-
----
-
-## v0.8 - Tags & Metadata
-**Goal**: Organization and discovery
-
-### Scope
 - [ ] Auto-tagging from captions and filenames
 - [ ] Manual tag editing
 - [ ] Designer detection/override
@@ -181,17 +170,18 @@ Each version should be:
 - [ ] Tag filtering in UI
 
 ### Success Criteria
+- Design cards show preview images
+- Click to see full gallery
 - Designs have auto-generated tags
-- Can manually edit tags
-- Filter catalog by tags
+- Can manually edit tags and filter by them
 
 ### Not Included
+- On-demand render for undownloaded
 - Deduplication
-- Channel suggestions
 
 ---
 
-## v0.9 - Deduplication & Polish
+## v0.8 - Deduplication & Reliability
 **Goal**: Handle duplicates, improve reliability
 
 ### Scope
@@ -200,12 +190,14 @@ Each version should be:
 - [ ] Merge duplicate designs
 - [ ] Multiple sources per design
 - [ ] Error handling improvements
-- [ ] Rate limiting / backoff
+- [ ] Rate limiting / backoff for Telegram
+- [ ] Job retry logic and failure recovery
 
 ### Success Criteria
 - Same design from 2 channels shows as one entry
 - Preferred source selection works
 - System handles Telegram rate limits gracefully
+- Failed jobs can be retried
 
 ### Not Included
 - Suggested channels (future consideration)
@@ -213,22 +205,23 @@ Each version should be:
 ---
 
 ## v1.0 - Production Ready
-**Goal**: Full REQUIREMENTS.md implementation
+**Goal**: Full REQUIREMENTS.md implementation, battle-tested
 
 ### Scope
 - [ ] All v0.x features polished
 - [ ] Full backfill options (all history, last N days)
 - [ ] Complete Settings UI
-- [ ] Unraid template
-- [ ] CI/CD pipeline
-- [ ] Documentation
+- [ ] Polished Unraid template with all options
+- [ ] CI/CD pipeline (auto-build, auto-release)
+- [ ] User documentation / README
 - [ ] Performance optimization for scale
+- [ ] Error recovery and resilience
 
 ### Success Criteria
-- Deploy on Unraid via template
-- Monitor 100+ channels
-- Manage 10,000+ designs
+- Monitor 100+ channels reliably
+- Manage 10,000+ designs without slowdown
 - All features from REQUIREMENTS.md working
+- Clean upgrade path from v0.x
 
 ---
 
@@ -251,15 +244,14 @@ Each version should be:
 
 ## Version History
 
-| Version | Status | Notes |
-|---------|--------|-------|
-| v0.1 | Not Started | |
-| v0.2 | - | |
-| v0.3 | - | |
-| v0.4 | - | |
-| v0.5 | - | |
-| v0.6 | - | |
-| v0.7 | - | |
-| v0.8 | - | |
-| v0.9 | - | |
-| v1.0 | - | |
+| Version | Focus | Status | Notes |
+|---------|-------|--------|-------|
+| v0.1 | Hello World | Not Started | Foundation + Docker/Unraid |
+| v0.2 | Telegram | - | Auth + connection |
+| v0.3 | Ingestion | - | Parse + detect designs |
+| v0.4 | Catalog UI | - | Radarr-style browsing |
+| v0.5 | Downloads | - | Job queue + library |
+| v0.6 | Live Monitoring | - | Continuous ingestion |
+| v0.7 | Previews & Metadata | - | Images + tags |
+| v0.8 | Deduplication | - | Handle duplicates |
+| v1.0 | Production | - | Full release |
