@@ -66,7 +66,8 @@ export const channelsApi = {
 }
 
 export const healthApi = {
-  check: () => api.get<{ status: string; version: string }>('/health').then((r) => r.data),
+  // Health endpoint is at /api/health (not under /v1)
+  check: () => axios.get<{ status: string; version: string }>('/api/health').then((r) => r.data),
 }
 
 export const telegramApi = {
