@@ -291,11 +291,34 @@ Before closing any issue that involves API endpoints:
 
 ---
 
-## Pending Decisions
+### DEC-013: Telegram Client Library
+**Date**: 2024-12-29
+**Status**: Accepted
 
-### To Decide: Telegram Client Library
-**Context**: Need to choose between Telethon and Pyrogram for MTProto client.
-**Status**: Research needed during v0.2
+**Context**
+Need to choose a Python MTProto client library for Telegram integration. The library will handle user authentication, channel resolution, message retrieval, and file downloads.
+
+**Options Considered**
+1. **Telethon** - 11.6k stars, 27 open issues, created 2016
+   - Pros: Most popular, mature, excellent documentation, large community, very few open issues
+   - Cons: None significant
+
+2. **Pyrogram** - 4.6k stars, 283 open issues, created 2017
+   - Pros: Modern "Pythonic" API, good documentation
+   - Cons: 10x more open issues, smaller community
+
+**Decision**
+Telethon. The maturity, community size, and low issue count indicate better stability and support. Both libraries have similar async capabilities, but Telethon's battle-tested nature makes it the safer choice for production use.
+
+**Consequences**
+- Use `telethon` package for all Telegram interactions
+- Session files stored in /config volume
+- Async integration with FastAPI via shared event loop
+- Documentation at docs.telethon.dev for implementation reference
+
+---
+
+## Pending Decisions
 
 ### To Decide: Job Queue Implementation
 **Context**: Custom database-backed queue vs Celery/ARQ
@@ -310,7 +333,7 @@ Before closing any issue that involves API endpoints:
 ## Decision Review Schedule
 
 Revisit decisions at these milestones:
-- After v0.2: Telegram library choice
+- After v0.2: Evaluate Telethon performance (DEC-013)
 - After v0.5: Job queue performance
 - After v0.7: Preview rendering approach
 - Before v1.0: Overall architecture review
