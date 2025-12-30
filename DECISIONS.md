@@ -144,6 +144,108 @@ SQLite as primary database. For a single-user self-hosted app on Unraid, SQLite 
 
 ---
 
+### DEC-006: Application Port
+**Date**: 2024-12-29
+**Status**: Accepted
+
+**Context**
+Need a default port for the web UI.
+
+**Options Considered**
+1. 7878 - Radarr-style (*arr convention)
+2. 8080 - Common web app default
+3. 3333 - Thematic (3D printing)
+
+**Decision**
+Port 3333. Memorable and thematic for a 3D printing application.
+
+**Consequences**
+- Easy to remember
+- Unlikely to conflict with other services
+- All documentation uses 3333
+
+---
+
+### DEC-007: Full Schema from Start
+**Date**: 2024-12-29
+**Status**: Accepted
+
+**Context**
+Should we implement minimal database models and add fields later, or implement the full schema from DATA_MODEL.md upfront?
+
+**Decision**
+Implement full schema from DATA_MODEL.md even in v0.1. While the UI won't use all fields immediately, this avoids database migrations and rewrites as we add features.
+
+**Consequences**
+- More upfront work in v0.1
+- No schema migrations needed in later versions
+- Consistent data model throughout development
+- UI can progressively use more fields
+
+---
+
+### DEC-008: Frontend Styling Setup
+**Date**: 2024-12-29
+**Status**: Accepted
+
+**Context**
+Should we set up full styling (Tailwind, dark theme, Radarr colors) in v0.1, or keep it minimal and style properly later?
+
+**Decision**
+Full Tailwind + dark theme setup from v0.1. Establish the Radarr-inspired visual language early so all components follow it.
+
+**Consequences**
+- Consistent look from the start
+- Component patterns established early
+- More upfront work in v0.1
+- Avoids restyling later
+
+---
+
+### DEC-009: Development Environment
+**Date**: 2024-12-29
+**Status**: Accepted
+
+**Context**
+Should we have separate dev configurations with hot-reload, or use production-like single container for development?
+
+**Decision**
+Production-like single container. Rebuild to test changes. Keeps dev/prod parity high and simplifies the setup.
+
+**Consequences**
+- Slower iteration (rebuild required)
+- Higher confidence that dev matches prod
+- Simpler Docker configuration
+- May revisit if rebuild times become painful
+
+---
+
+### DEC-010: Unraid Deployment Approach
+**Date**: 2024-12-29
+**Status**: Accepted
+
+**Context**
+Need a way to build and deploy during development on Unraid.
+
+**Options Considered**
+1. Build locally, push to container registry, pull on Unraid
+2. Build locally, docker save/scp/load to Unraid
+3. Clone repo on Unraid, build directly there
+
+**Decision**
+Clone repo on Unraid and build directly. A deploy script on the Unraid server will:
+- `git pull` to get latest code
+- `docker build` to build the image
+- Deploy/restart the container with config from a local config file
+
+**Consequences**
+- Simple workflow: push to GitHub, SSH to Unraid, run deploy script
+- No container registry needed
+- Unraid needs git installed (usually available)
+- Build happens on Unraid (may be slower than Mac, but avoids transfer)
+
+---
+
 ## Pending Decisions
 
 ### To Decide: Telegram Client Library
