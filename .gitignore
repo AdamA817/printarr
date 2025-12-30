@@ -39,6 +39,8 @@ Thumbs.db
 # Data directories (for local dev)
 data/
 !data/.gitkeep
+config/
+!config/.gitkeep
 
 # Logs
 *.log
