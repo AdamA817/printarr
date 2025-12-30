@@ -151,6 +151,7 @@ async def delete_channel(
         raise HTTPException(status_code=404, detail="Channel not found")
 
     await db.delete(channel)
+    await db.commit()
 
 
 @router.post("/{channel_id}/backfill", response_model=BackfillResponse)
