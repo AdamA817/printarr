@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTelegramStatus, useResolveChannel } from '@/hooks/useTelegramStatus'
 import type { ChannelResolveResponse, TelegramErrorResponse } from '@/types/telegram'
 import type { ChannelCreate } from '@/types/channel'
@@ -28,6 +28,7 @@ export function AddChannelModal({
 
   const { isAuthenticated } = useTelegramStatus()
   const resolveChannel = useResolveChannel()
+  const lastResolvedLink = useRef<string>('')
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -36,17 +37,19 @@ export function AddChannelModal({
       setTitle('')
       setResolvedChannel(null)
       setError(null)
+      lastResolvedLink.current = ''
     }
   }, [isOpen])
 
-  const handleResolve = useCallback(async () => {
-    if (!link.trim()) return
+  const handleResolve = useCallback(async (linkToResolve: string) => {
+    if (!linkToResolve.trim()) return
+    if (linkToResolve === lastResolvedLink.current) return // Already resolved this link
 
     setError(null)
-    setResolvedChannel(null)
 
     try {
-      const result = await resolveChannel.mutateAsync({ link: link.trim() })
+      const result = await resolveChannel.mutateAsync({ link: linkToResolve.trim() })
+      lastResolvedLink.current = linkToResolve
       setResolvedChannel(result)
       setTitle(result.title) // Pre-fill title from Telegram
     } catch (err) {
@@ -56,19 +59,24 @@ export function AddChannelModal({
       } else {
         setError('Failed to resolve channel')
       }
+      setResolvedChannel(null)
     }
-  }, [link, resolveChannel])
+  }, [resolveChannel])
 
   // Debounced auto-resolve when link changes
   useEffect(() => {
-    if (!isAuthenticated || !link.trim()) return
+    if (!isAuthenticated || !link.trim()) {
+      return
+    }
+
+    // Check if it looks like a valid Telegram link or username
+    const linkPattern = /^(@[\w]+|https?:\/\/t\.me\/[\w+]+|t\.me\/[\w+]+)$/i
+    if (!linkPattern.test(link.trim())) {
+      return
+    }
 
     const timer = setTimeout(() => {
-      // Check if it looks like a valid Telegram link or username
-      const linkPattern = /^(@[\w]+|https?:\/\/t\.me\/[\w+]+|t\.me\/[\w+]+)$/i
-      if (linkPattern.test(link.trim())) {
-        handleResolve()
-      }
+      handleResolve(link)
     }, 800) // Debounce for 800ms
 
     return () => clearTimeout(timer)
@@ -145,7 +153,7 @@ export function AddChannelModal({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 space-y-4 min-h-[280px]">
           {combinedError && (
             <div className="p-3 rounded-lg bg-accent-danger/20 border border-accent-danger/30">
               <p className="text-sm text-accent-danger">{combinedError}</p>
@@ -166,8 +174,12 @@ export function AddChannelModal({
                 type="text"
                 value={link}
                 onChange={(e) => {
-                  setLink(e.target.value)
-                  setResolvedChannel(null)
+                  const newLink = e.target.value
+                  setLink(newLink)
+                  // Only clear resolved channel if link changed significantly
+                  if (newLink.trim() !== lastResolvedLink.current) {
+                    setError(null)
+                  }
                 }}
                 placeholder="https://t.me/channel or @channel"
                 className="w-full px-3 py-2 pr-10 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary disabled:opacity-50"
