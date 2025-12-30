@@ -1102,3 +1102,245 @@ class TestSorting:
         assert data["total"] == 2
         titles = [item["canonical_title"] for item in data["items"]]
         assert titles == ["Apple", "Zebra"]
+
+
+# =============================================================================
+# Thangs Link/Unlink Tests (Issue #59)
+# =============================================================================
+
+from unittest.mock import patch, AsyncMock, MagicMock
+from sqlalchemy import select
+
+
+class TestThangsLinkUnlink:
+    """Tests for Thangs link/unlink endpoints."""
+
+    @pytest.mark.asyncio
+    async def test_link_to_thangs_creates_source(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test linking a design to Thangs creates ExternalMetadataSource."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+            design_id = design.id
+            await session.commit()
+
+        with patch("app.api.routes.designs.ThangsAdapter") as MockAdapter:
+            mock_adapter = MagicMock()
+            mock_adapter.fetch_thangs_metadata = AsyncMock(
+                return_value={
+                    "title": "Thangs Title",
+                    "designer": "Thangs Designer",
+                    "tags": ["tag1", "tag2"],
+                }
+            )
+            mock_adapter.close = AsyncMock()
+            MockAdapter.return_value = mock_adapter
+
+            response = await client.post(
+                f"/api/v1/designs/{design_id}/thangs-link",
+                json={"model_id": "12345", "url": "https://thangs.com/m/12345"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["design_id"] == design_id
+        assert data["external_id"] == "12345"
+        assert data["external_url"] == "https://thangs.com/m/12345"
+        assert data["source_type"] == "THANGS"
+        assert data["match_method"] == "MANUAL"
+        assert data["confidence_score"] == 1.0
+        assert data["is_user_confirmed"] is True
+        assert data["fetched_title"] == "Thangs Title"
+        assert data["fetched_designer"] == "Thangs Designer"
+
+    @pytest.mark.asyncio
+    async def test_link_to_thangs_updates_existing(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test linking when already linked updates the existing source."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+
+            # Create existing Thangs link
+            existing_source = ExternalMetadataSource(
+                design_id=design.id,
+                source_type=ExternalSourceType.THANGS,
+                external_id="old_id",
+                external_url="https://thangs.com/m/old_id",
+                confidence_score=0.5,
+                match_method=MatchMethod.LINK,
+            )
+            session.add(existing_source)
+            design_id = design.id
+            await session.commit()
+
+        with patch("app.api.routes.designs.ThangsAdapter") as MockAdapter:
+            mock_adapter = MagicMock()
+            mock_adapter.fetch_thangs_metadata = AsyncMock(return_value=None)
+            mock_adapter.close = AsyncMock()
+            MockAdapter.return_value = mock_adapter
+
+            response = await client.post(
+                f"/api/v1/designs/{design_id}/thangs-link",
+                json={"model_id": "new_id", "url": "https://thangs.com/m/new_id"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["external_id"] == "new_id"
+        assert data["match_method"] == "MANUAL"
+        assert data["confidence_score"] == 1.0
+        assert data["is_user_confirmed"] is True
+
+    @pytest.mark.asyncio
+    async def test_link_to_thangs_not_found(self, client: AsyncClient) -> None:
+        """Test linking non-existent design returns 404."""
+        response = await client.post(
+            "/api/v1/designs/nonexistent-id/thangs-link",
+            json={"model_id": "12345", "url": "https://thangs.com/m/12345"},
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_link_by_url(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test linking by URL extracts model ID correctly."""
+        from app.services.thangs import ThangsAdapter
+
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+            design_id = design.id
+            await session.commit()
+
+        # Create a mock class that preserves the static method
+        class MockThangsAdapter:
+            detect_thangs_url = staticmethod(ThangsAdapter.detect_thangs_url)
+
+            def __init__(self, db):
+                pass
+
+            async def fetch_thangs_metadata(self, model_id):
+                return None
+
+            async def close(self):
+                pass
+
+        with patch("app.api.routes.designs.ThangsAdapter", MockThangsAdapter):
+            response = await client.post(
+                f"/api/v1/designs/{design_id}/thangs-link-by-url",
+                json={"url": "https://thangs.com/designer/cool-model-67890"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["external_id"] == "67890"
+        assert data["external_url"] == "https://thangs.com/m/67890"
+
+    @pytest.mark.asyncio
+    async def test_link_by_url_invalid(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test linking with invalid URL returns 400."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+            design_id = design.id
+            await session.commit()
+
+        response = await client.post(
+            f"/api/v1/designs/{design_id}/thangs-link-by-url",
+            json={"url": "https://example.com/not-a-thangs-url"},
+        )
+
+        assert response.status_code == 400
+        assert "Invalid Thangs URL" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_unlink_from_thangs(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test unlinking a design from Thangs removes the source."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+
+            # Create Thangs link
+            source = ExternalMetadataSource(
+                design_id=design.id,
+                source_type=ExternalSourceType.THANGS,
+                external_id="12345",
+                external_url="https://thangs.com/m/12345",
+                confidence_score=1.0,
+                match_method=MatchMethod.LINK,
+            )
+            session.add(source)
+            design_id = design.id
+            await session.commit()
+
+        response = await client.delete(f"/api/v1/designs/{design_id}/thangs-link")
+
+        assert response.status_code == 204
+
+        # Verify link was removed
+        async with async_session() as session:
+            result = await session.execute(
+                select(ExternalMetadataSource).where(
+                    ExternalMetadataSource.design_id == design_id,
+                    ExternalMetadataSource.source_type == ExternalSourceType.THANGS,
+                )
+            )
+            source = result.scalar_one_or_none()
+            assert source is None
+
+    @pytest.mark.asyncio
+    async def test_unlink_from_thangs_not_linked(
+        self, client: AsyncClient, db_engine
+    ) -> None:
+        """Test unlinking when not linked returns 404."""
+        async_session = async_sessionmaker(
+            db_engine, class_=AsyncSession, expire_on_commit=False
+        )
+        async with async_session() as session:
+            channel = await create_test_channel(session)
+            message = await create_test_message(session, channel)
+            design = await create_test_design(session, channel, message)
+            design_id = design.id
+            await session.commit()
+
+        response = await client.delete(f"/api/v1/designs/{design_id}/thangs-link")
+
+        assert response.status_code == 404
+        assert "not linked" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_unlink_design_not_found(self, client: AsyncClient) -> None:
+        """Test unlinking non-existent design returns 404."""
+        response = await client.delete("/api/v1/designs/nonexistent-id/thangs-link")
+
+        assert response.status_code == 404

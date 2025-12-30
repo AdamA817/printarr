@@ -16,7 +16,7 @@ from sqlalchemy.orm import selectinload
 from app.core.logging import get_logger
 from app.db import get_db
 from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType
-from app.db.models.enums import MulticolorStatus
+from app.db.models.enums import MatchMethod, MulticolorStatus
 from app.schemas.design import (
     ChannelSummary,
     DesignDetail,
@@ -25,6 +25,7 @@ from app.schemas.design import (
     DesignSourceResponse,
     ExternalMetadataResponse,
 )
+from app.services.thangs import ThangsAdapter
 
 logger = get_logger(__name__)
 
@@ -51,6 +52,37 @@ class RefreshMetadataResponse(BaseModel):
     design_id: str
     sources_refreshed: int
     sources_failed: int
+
+
+class ThangsLinkRequest(BaseModel):
+    """Request body for linking a design to Thangs."""
+
+    model_id: str
+    url: str
+
+
+class ThangsLinkByUrlRequest(BaseModel):
+    """Request body for linking a design to Thangs by URL."""
+
+    url: str
+
+
+class ThangsLinkResponse(BaseModel):
+    """Response for Thangs link endpoint."""
+
+    id: str
+    design_id: str
+    source_type: str
+    external_id: str
+    external_url: str
+    confidence_score: float
+    match_method: str
+    is_user_confirmed: bool
+    fetched_title: Optional[str] = None
+    fetched_designer: Optional[str] = None
+    fetched_tags: Optional[str] = None
+    last_fetched_at: Optional[datetime] = None
+    created_at: datetime
 
 
 router = APIRouter(prefix="/designs", tags=["designs"])
@@ -420,3 +452,171 @@ async def _fetch_thangs_metadata(client: httpx.AsyncClient, model_id: str) -> di
             status=response.status_code,
         )
         return None
+
+
+@router.post("/{design_id}/thangs-link", response_model=ThangsLinkResponse)
+async def link_to_thangs(
+    design_id: str,
+    request: ThangsLinkRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ThangsLinkResponse:
+    """Manually link a design to a Thangs model.
+
+    Creates or updates an ExternalMetadataSource with:
+    - source_type=THANGS
+    - match_method=MANUAL
+    - confidence_score=1.0
+    - is_user_confirmed=True
+
+    Immediately fetches and stores Thangs metadata.
+    """
+    # Verify design exists
+    design_query = select(Design).where(Design.id == design_id)
+    design_result = await db.execute(design_query)
+    design = design_result.scalar_one_or_none()
+
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Check if Thangs link already exists
+    existing_query = select(ExternalMetadataSource).where(
+        ExternalMetadataSource.design_id == design_id,
+        ExternalMetadataSource.source_type == ExternalSourceType.THANGS,
+    )
+    existing_result = await db.execute(existing_query)
+    existing_source = existing_result.scalar_one_or_none()
+
+    if existing_source:
+        # Update existing source
+        existing_source.external_id = request.model_id
+        existing_source.external_url = request.url
+        existing_source.confidence_score = 1.0
+        existing_source.match_method = MatchMethod.MANUAL
+        existing_source.is_user_confirmed = True
+        source = existing_source
+        logger.info(
+            "thangs_link_updated",
+            design_id=design_id,
+            model_id=request.model_id,
+        )
+    else:
+        # Create new source
+        source = ExternalMetadataSource(
+            design_id=design_id,
+            source_type=ExternalSourceType.THANGS,
+            external_id=request.model_id,
+            external_url=request.url,
+            confidence_score=1.0,
+            match_method=MatchMethod.MANUAL,
+            is_user_confirmed=True,
+        )
+        db.add(source)
+        logger.info(
+            "thangs_link_created",
+            design_id=design_id,
+            model_id=request.model_id,
+        )
+
+    await db.flush()
+
+    # Fetch metadata from Thangs API
+    adapter = ThangsAdapter(db)
+    try:
+        metadata = await adapter.fetch_thangs_metadata(request.model_id)
+        if metadata:
+            source.fetched_title = metadata.get("title")
+            source.fetched_designer = metadata.get("designer")
+            tags = metadata.get("tags", [])
+            source.fetched_tags = ",".join(tags) if tags else None
+            source.last_fetched_at = datetime.utcnow()
+            logger.info(
+                "thangs_metadata_fetched_on_link",
+                design_id=design_id,
+                model_id=request.model_id,
+                title=source.fetched_title,
+            )
+    finally:
+        await adapter.close()
+
+    await db.commit()
+
+    return ThangsLinkResponse(
+        id=source.id,
+        design_id=source.design_id,
+        source_type=source.source_type.value,
+        external_id=source.external_id,
+        external_url=source.external_url,
+        confidence_score=source.confidence_score,
+        match_method=source.match_method.value,
+        is_user_confirmed=source.is_user_confirmed,
+        fetched_title=source.fetched_title,
+        fetched_designer=source.fetched_designer,
+        fetched_tags=source.fetched_tags,
+        last_fetched_at=source.last_fetched_at,
+        created_at=source.created_at,
+    )
+
+
+@router.post("/{design_id}/thangs-link-by-url", response_model=ThangsLinkResponse)
+async def link_to_thangs_by_url(
+    design_id: str,
+    request: ThangsLinkByUrlRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ThangsLinkResponse:
+    """Link a design to Thangs using a URL.
+
+    Extracts the model ID from the thangs.com URL and links the design.
+    Same behavior as thangs-link but takes URL only.
+    """
+    # Extract model_id from URL
+    detected = ThangsAdapter.detect_thangs_url(request.url)
+    if not detected:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Thangs URL. Could not extract model ID.",
+        )
+
+    model_id = detected[0]["model_id"]
+    canonical_url = detected[0]["url"]
+
+    # Delegate to the main link function
+    link_request = ThangsLinkRequest(model_id=model_id, url=canonical_url)
+    return await link_to_thangs(design_id, link_request, db)
+
+
+@router.delete("/{design_id}/thangs-link", status_code=204)
+async def unlink_from_thangs(
+    design_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Remove the Thangs link from a design.
+
+    Returns 204 on success, 404 if design not found or not linked.
+    """
+    # Verify design exists
+    design_query = select(Design).where(Design.id == design_id)
+    design_result = await db.execute(design_query)
+    design = design_result.scalar_one_or_none()
+
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Find and delete the Thangs link
+    source_query = select(ExternalMetadataSource).where(
+        ExternalMetadataSource.design_id == design_id,
+        ExternalMetadataSource.source_type == ExternalSourceType.THANGS,
+    )
+    source_result = await db.execute(source_query)
+    source = source_result.scalar_one_or_none()
+
+    if source is None:
+        raise HTTPException(status_code=404, detail="Design is not linked to Thangs")
+
+    await db.delete(source)
+    await db.commit()
+
+    logger.info(
+        "thangs_link_removed",
+        design_id=design_id,
+        model_id=source.external_id,
+    )
