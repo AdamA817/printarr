@@ -92,11 +92,58 @@ Types: feat, fix, docs, refactor, test, chore
 Scope: api, ui, db, telegram, docker, etc.
 ```
 
+### Commit Frequently!
+**IMPORTANT**: Commit and push your work regularly:
+- After completing each logical unit of work
+- Before switching to a different task
+- At minimum, every 30 minutes of active coding
+- Always push before ending your session
+
+This ensures:
+- Other agents can see your progress
+- Work isn't lost if session ends
+- Easy rollback if something breaks
+
 ### PR Standards
 - Reference the GitHub issue
 - Describe what changed and why
 - Include testing instructions
 - List any breaking changes
+
+## Inter-Agent Communication
+
+### Creating Issues for Other Agents
+When you need another agent's help or need to hand off work:
+
+1. **Create a GitHub issue** using the task template
+2. **Assign the appropriate agent** via label (agent:backend, agent:web, etc.)
+3. **Reference the blocking issue** in dependencies
+4. **Be specific** about what you need
+
+Example scenarios:
+- Backend Dev creates API endpoint → create issue for Web Dev to build UI for it
+- Web Dev needs new endpoint → create issue for Backend Dev
+- DevOps finds bug during deploy → create issue for appropriate agent
+- Any agent finds bug → create issue with `type:bug` label
+
+### Issue Template for Handoffs
+```markdown
+## Summary
+[What the other agent needs to do]
+
+## Context
+[Why this is needed, what you've done so far]
+
+## Your work that this depends on
+- Completed: #X (merged)
+- Files created: list key files
+
+## Acceptance Criteria
+- [ ] What success looks like
+
+## Assigned Agent
+[Backend Dev / Web Dev / DevOps / QA]
+```
 
 ## Communication
 
