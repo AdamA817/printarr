@@ -371,6 +371,47 @@ Future consideration: Allow splitting/merging when needed, but start simple.
 
 ---
 
+### DEC-016: FlareSolverr for Cloudflare Bypass
+**Date**: 2025-12-30
+**Status**: Accepted
+
+**Context**
+Thangs API (thangs.com) uses Cloudflare protection that blocks server-side HTTP requests. Direct API calls return a JavaScript challenge page instead of JSON data, causing 502 errors in our Thangs integration.
+
+**Options Considered**
+1. **Accept limitation** - Disable search, only support manual URL pasting
+   - Pros: No additional dependencies
+   - Cons: Poor UX, no search functionality
+
+2. **FlareSolverr proxy** - Route requests through FlareSolverr (headless browser)
+   - Pros: Works with existing Unraid *arr stack, solves Cloudflare challenges
+   - Cons: Additional container, ~200MB RAM per request
+
+3. **Official API access** - Contact Thangs/Physna for API keys
+   - Pros: Proper solution, no workarounds
+   - Cons: Unknown availability, timeline
+
+**Decision**
+Use FlareSolverr as an optional proxy for Thangs API requests:
+- Add `FLARESOLVERR_URL` environment variable (optional)
+- If configured, route Thangs requests through FlareSolverr
+- If not configured, fall back to direct requests (may fail with Cloudflare)
+- Graceful degradation: URL detection always works, only API calls need proxy
+
+**Implementation Notes**
+- Correct Thangs search endpoint: `https://thangs.com/api/models/v3/search-by-text`
+- FlareSolverr API: `POST http://{host}:8191/v1` with `{"cmd":"request.get","url":"..."}`
+- Response contains solved HTML/JSON in `solution.response`
+- Parse JSON from response body for API data
+
+**Consequences**
+- Thangs search and metadata fetch will work when FlareSolverr is configured
+- Users on Unraid likely already have FlareSolverr for Prowlarr/Jackett
+- No hard dependency - feature degrades gracefully without it
+- Documentation must explain FlareSolverr setup
+
+---
+
 ## Pending Decisions
 
 ### To Decide: Job Queue Implementation
