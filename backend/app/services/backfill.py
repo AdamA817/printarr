@@ -92,6 +92,9 @@ class BackfillService:
         try:
             client = self.telegram.client
 
+            # Phase 1: Collect all messages from Telegram (no database operations)
+            # This avoids greenlet conflicts between Telethon and aiosqlite
+            collected_messages = []
             async for message in client.iter_messages(
                 peer_id,
                 limit=limit,
@@ -101,28 +104,36 @@ class BackfillService:
             ):
                 # Parse message using TelegramService's parser
                 message_data = await self.telegram._parse_message(message)
+                collected_messages.append((message.id, message_data))
 
-                # Ingest the message
-                result = await self.ingest.ingest_message(channel, message_data)
+            logger.info(
+                "backfill_messages_collected",
+                channel_id=channel.id,
+                count=len(collected_messages),
+            )
 
-                if result:
+            # Phase 2: Process collected messages through ingestion (database only)
+            for msg_id, message_data in collected_messages:
+                message, design_created = await self.ingest.ingest_message(
+                    channel, message_data
+                )
+
+                if message:
                     messages_processed += 1
-                    last_message_id = max(last_message_id, message.id)
+                    last_message_id = max(last_message_id, msg_id)
 
-                    # Check if a design was created
-                    # (we could track this better by modifying IngestService)
-                    if result.design_source:
+                    if design_created:
                         designs_created += 1
 
                 # Checkpoint periodically
                 if messages_processed % batch_size == 0:
-                    await self._update_checkpoint(channel.id, message.id)
+                    await self._update_checkpoint(channel.id, msg_id)
                     await self.db.commit()
                     logger.debug(
                         "backfill_checkpoint",
                         channel_id=channel.id,
                         messages_processed=messages_processed,
-                        checkpoint=message.id,
+                        checkpoint=msg_id,
                     )
 
             # Final checkpoint

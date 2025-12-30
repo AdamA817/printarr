@@ -60,7 +60,7 @@ class IngestService:
         self,
         channel: Channel,
         message_data: dict[str, Any],
-    ) -> TelegramMessage | None:
+    ) -> tuple[TelegramMessage | None, bool]:
         """Ingest a single Telegram message.
 
         This method:
@@ -74,12 +74,12 @@ class IngestService:
             message_data: Parsed message data from TelegramService.
 
         Returns:
-            The created/updated TelegramMessage, or None if skipped.
+            Tuple of (TelegramMessage or None if skipped, design_created flag).
         """
         telegram_message_id = message_data.get("id")
         if telegram_message_id is None:
             logger.warning("message_missing_id", message=message_data)
-            return None
+            return None, False
 
         # Check if message already exists (idempotent)
         existing = await self._get_existing_message(channel.id, telegram_message_id)
@@ -90,7 +90,7 @@ class IngestService:
                 telegram_message_id=telegram_message_id,
             )
             # TODO: Consider updating if needed
-            return existing
+            return existing, False
 
         # Parse message date
         date_posted = self._parse_date(message_data.get("date"))
@@ -127,14 +127,14 @@ class IngestService:
                 message_id=message.id,
                 telegram_message_id=telegram_message_id,
             )
+            return message, True
         else:
             logger.debug(
                 "message_ingested_no_design",
                 channel_id=channel.id,
                 telegram_message_id=telegram_message_id,
             )
-
-        return message
+            return message, False
 
     async def _get_existing_message(
         self, channel_id: str, telegram_message_id: int
@@ -311,13 +311,20 @@ class IngestService:
         """Process caption for external platform URLs and create links.
 
         This is async but non-blocking - errors are logged but don't fail ingestion.
+
+        NOTE: Metadata fetching is disabled during ingestion to avoid greenlet
+        conflicts with aiosqlite. Metadata can be fetched in a separate pass.
         """
         if not caption:
             return
 
         try:
             adapter = ThangsAdapter(self.db)
-            sources = await adapter.process_design_urls(design, caption)
+            # Don't fetch metadata during ingestion - causes greenlet conflicts
+            # with aiosqlite. Metadata can be refreshed separately.
+            sources = await adapter.process_design_urls(
+                design, caption, fetch_metadata=False
+            )
 
             if sources:
                 logger.info(
