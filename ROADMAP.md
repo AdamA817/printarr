@@ -18,18 +18,18 @@ Each version should be:
 
 ---
 
-## v0.1 - Hello World (Deployable from Day 1)
+## v0.1 - Hello World (Deployable from Day 1) ✅
 **Goal**: Prove the stack works together, deployable on Unraid
 
 ### Scope
-- [ ] FastAPI backend with health endpoint
-- [ ] React frontend with basic layout (sidebar, header)
-- [ ] SQLite database with one table (Channels)
-- [ ] Docker container that runs both (multi-stage build)
-- [ ] docker-compose.yml for local development
-- [ ] Basic Unraid template for deployment
-- [ ] Proper volume mounts (/config, /data, /library, etc.)
-- [ ] Can add/view channels in UI (no Telegram yet)
+- [x] FastAPI backend with health endpoint
+- [x] React frontend with basic layout (sidebar, header)
+- [x] SQLite database with one table (Channels)
+- [x] Docker container that runs both (multi-stage build)
+- [x] docker-compose.yml for local development
+- [x] Basic Unraid template for deployment
+- [x] Proper volume mounts (/config, /data, /library, etc.)
+- [x] Can add/view channels in UI (no Telegram yet)
 
 ### Success Criteria
 - Deploy on Unraid via Docker template
@@ -236,9 +236,9 @@ Each version should be:
 
 ## Current Status
 
-**Active Version**: Not started
+**Active Version**: v0.2 (next)
 
-**Last Updated**: 2024-12-29
+**Last Updated**: 2024-12-30
 
 ---
 
@@ -246,8 +246,8 @@ Each version should be:
 
 | Version | Focus | Status | Notes |
 |---------|-------|--------|-------|
-| v0.1 | Hello World | Not Started | Foundation + Docker/Unraid |
-| v0.2 | Telegram | - | Auth + connection |
+| v0.1 | Hello World | ✅ Complete | Foundation + Docker/Unraid |
+| v0.2 | Telegram | 🔜 Next | Auth + connection |
 | v0.3 | Ingestion | - | Parse + detect designs |
 | v0.4 | Catalog UI | - | Radarr-style browsing |
 | v0.5 | Downloads | - | Job queue + library |

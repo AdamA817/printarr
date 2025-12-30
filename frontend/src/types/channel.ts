@@ -1,7 +1,8 @@
-export type BackfillMode = 'NONE' | 'COUNT' | 'DAYS' | 'ALL'
-export type DownloadMode = 'MANUAL' | 'NEW' | 'ALL'
-export type TitleSource = 'FILENAME' | 'CAPTION' | 'CHANNEL'
-export type DesignerSource = 'FILENAME' | 'CAPTION' | 'CHANNEL'
+// Must match backend/app/db/models/enums.py exactly
+export type BackfillMode = 'ALL_HISTORY' | 'LAST_N_MESSAGES' | 'LAST_N_DAYS'
+export type DownloadMode = 'DOWNLOAD_ALL' | 'DOWNLOAD_ALL_NEW' | 'MANUAL'
+export type TitleSource = 'CAPTION' | 'FILENAME' | 'MANUAL'
+export type DesignerSource = 'CAPTION' | 'CHANNEL' | 'MANUAL'
 
 export interface Channel {
   id: string
