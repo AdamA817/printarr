@@ -15,7 +15,7 @@ from sqlalchemy.orm import selectinload
 from app.core.logging import get_logger
 from app.db import get_db
 from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType
-from app.db.models.enums import MatchMethod, MulticolorStatus
+from app.db.models.enums import DesignStatus, MatchMethod, MulticolorStatus
 from app.schemas.design import (
     ChannelSummary,
     DesignDetail,
@@ -892,4 +892,216 @@ async def unmerge_design(
         original_design_id=design_id,
         new_design_id=new_design.id,
         moved_source_count=len(sources_to_move),
+    )
+
+
+# =============================================================================
+# Download Actions
+# =============================================================================
+
+
+class WantResponse(BaseModel):
+    """Response for want/download actions."""
+
+    design_id: str
+    job_id: str
+    status: str
+    message: str
+
+
+class CancelDownloadResponse(BaseModel):
+    """Response for cancel download action."""
+
+    design_id: str
+    jobs_cancelled: int
+    status: str
+
+
+class DeleteFilesResponse(BaseModel):
+    """Response for delete files action."""
+
+    design_id: str
+    status: str
+    message: str
+
+
+@router.post("/{design_id}/want", response_model=WantResponse)
+async def want_design(
+    design_id: str,
+    priority: int = Query(0, ge=0, le=100, description="Download priority"),
+    db: AsyncSession = Depends(get_db),
+) -> WantResponse:
+    """Mark a design as wanted and queue download.
+
+    Changes status to WANTED and creates a DOWNLOAD_DESIGN job.
+    """
+    from app.services.download import DownloadError, DownloadService
+
+    # Get design
+    design = await db.get(Design, design_id)
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Check if already downloading or downloaded
+    if design.status in (DesignStatus.DOWNLOADING, DesignStatus.DOWNLOADED, DesignStatus.ORGANIZED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Design already has status {design.status.value}",
+        )
+
+    try:
+        service = DownloadService(db)
+        job_id = await service.queue_download(design_id, priority=priority)
+        await db.commit()
+
+        logger.info(
+            "design_wanted",
+            design_id=design_id,
+            job_id=job_id,
+            priority=priority,
+        )
+
+        return WantResponse(
+            design_id=design_id,
+            job_id=job_id,
+            status="WANTED",
+            message="Download queued",
+        )
+
+    except DownloadError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{design_id}/download", response_model=WantResponse)
+async def force_download(
+    design_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> WantResponse:
+    """Force immediate download with high priority.
+
+    Creates a high-priority DOWNLOAD_DESIGN job (priority=100).
+    """
+    from app.services.download import DownloadError, DownloadService
+
+    # Get design
+    design = await db.get(Design, design_id)
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    try:
+        service = DownloadService(db)
+        job_id = await service.queue_download(design_id, priority=100)
+        await db.commit()
+
+        logger.info(
+            "design_force_download",
+            design_id=design_id,
+            job_id=job_id,
+        )
+
+        return WantResponse(
+            design_id=design_id,
+            job_id=job_id,
+            status="WANTED",
+            message="High-priority download queued",
+        )
+
+    except DownloadError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{design_id}/cancel", response_model=CancelDownloadResponse)
+async def cancel_download(
+    design_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> CancelDownloadResponse:
+    """Cancel pending/in-progress download for a design.
+
+    Cancels all QUEUED or RUNNING jobs for the design.
+    """
+    from app.db.models import DesignStatus
+    from app.services.job_queue import JobQueueService
+
+    # Get design
+    design = await db.get(Design, design_id)
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Cancel all jobs for this design
+    queue = JobQueueService(db)
+    cancelled = await queue.cancel_jobs_for_design(design_id)
+
+    # Reset design status if it was in a download state
+    if design.status in (DesignStatus.WANTED, DesignStatus.DOWNLOADING):
+        design.status = DesignStatus.DISCOVERED
+
+    await db.commit()
+
+    logger.info(
+        "design_download_cancelled",
+        design_id=design_id,
+        jobs_cancelled=cancelled,
+    )
+
+    return CancelDownloadResponse(
+        design_id=design_id,
+        jobs_cancelled=cancelled,
+        status=design.status.value,
+    )
+
+
+@router.delete("/{design_id}/files", response_model=DeleteFilesResponse)
+async def delete_files(
+    design_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> DeleteFilesResponse:
+    """Delete downloaded files and reset design to DISCOVERED.
+
+    Removes files from staging/library and resets design status.
+    Note: This deletes actual files from disk!
+    """
+    import shutil
+    from pathlib import Path
+
+    from app.core.config import settings
+    from app.db.models import DesignFile, DesignStatus
+
+    # Get design
+    design = await db.get(Design, design_id)
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Check design has files
+    if design.status == DesignStatus.DISCOVERED:
+        raise HTTPException(
+            status_code=400,
+            detail="Design has no downloaded files",
+        )
+
+    # Delete staging directory if exists
+    staging_dir = settings.staging_path / design_id
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+        logger.info("staging_deleted", design_id=design_id, path=str(staging_dir))
+
+    # Delete DesignFile records
+    from sqlalchemy import delete
+    await db.execute(
+        delete(DesignFile).where(DesignFile.design_id == design_id)
+    )
+
+    # Reset design status
+    design.status = DesignStatus.DISCOVERED
+
+    await db.commit()
+
+    logger.info(
+        "design_files_deleted",
+        design_id=design_id,
+    )
+
+    return DeleteFilesResponse(
+        design_id=design_id,
+        status=design.status.value,
+        message="Files deleted and design reset",
     )
