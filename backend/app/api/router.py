@@ -2,9 +2,15 @@
 
 from fastapi import APIRouter
 
-from app.api.routes import health
+from app.api.routes import channels, health
 
 api_router = APIRouter(prefix="/api")
 
 # Include route modules
 api_router.include_router(health.router)
+
+# V1 API routes
+v1_router = APIRouter(prefix="/v1")
+v1_router.include_router(channels.router)
+
+api_router.include_router(v1_router)
