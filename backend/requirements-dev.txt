@@ -1,0 +1,14 @@
+# Printarr Development Dependencies
+# Install: pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0
+httpx>=0.26.0
+
+# Code Quality
+ruff>=0.1.0
+mypy>=1.8.0
