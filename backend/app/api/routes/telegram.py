@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.db.models import Channel
+from app.db.session import get_db
 from app.schemas.telegram import (
     AuthLogoutResponse,
     AuthStartRequest,
@@ -308,6 +312,7 @@ async def get_channel_messages(
     channel_id: int,
     limit: int = Query(default=10, ge=1, le=100, description="Number of messages to fetch"),
     telegram: TelegramService = Depends(get_telegram_service),
+    db: AsyncSession = Depends(get_db),
 ) -> MessagesResponse:
     """Fetch recent messages from a Telegram channel.
 
@@ -320,8 +325,23 @@ async def get_channel_messages(
             detail="Telegram client is not connected",
         )
 
+    # Look up the channel in our database to get its username
+    # After a session reset, Telethon can't resolve numeric IDs without the entity cache
+    # Using the username allows resolution without cached entities
+    channel_identifier: int | str = channel_id
+    db_channel = await db.scalar(
+        select(Channel).where(Channel.telegram_peer_id == str(channel_id))
+    )
+    if db_channel and db_channel.username:
+        channel_identifier = db_channel.username
+        logger.debug(
+            "using_username_for_resolution",
+            channel_id=channel_id,
+            username=db_channel.username,
+        )
+
     try:
-        result = await telegram.get_messages(channel_id, limit=limit)
+        result = await telegram.get_messages(channel_identifier, limit=limit)
         return MessagesResponse(
             messages=[
                 Message(
