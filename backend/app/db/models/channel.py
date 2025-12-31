@@ -44,6 +44,9 @@ class Channel(Base):
     download_mode: Mapped[DownloadMode] = mapped_column(
         Enum(DownloadMode), default=DownloadMode.MANUAL
     )
+    download_mode_enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, doc="When download mode was changed from MANUAL"
+    )
     library_template_override: Mapped[str | None] = mapped_column(String(512), nullable=True)
     title_source_override: Mapped[TitleSource | None] = mapped_column(
         Enum(TitleSource), nullable=True

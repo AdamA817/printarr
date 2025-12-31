@@ -67,6 +67,7 @@ class ChannelResponse(ChannelBase):
     last_ingested_message_id: int | None = None
     last_backfill_checkpoint: int | None = None
     last_sync_at: datetime | None = None
+    download_mode_enabled_at: datetime | None = None
 
     # Timestamps
     created_at: datetime
@@ -117,3 +118,41 @@ class BackfillStatusResponse(BaseModel):
     last_sync_at: str | None = None
     backfill_mode: str
     backfill_value: int
+
+
+class DownloadModeRequest(BaseModel):
+    """Schema for changing download mode."""
+
+    download_mode: DownloadMode = Field(
+        ...,
+        description="New download mode",
+    )
+    confirm_bulk_download: bool = Field(
+        default=False,
+        description="Confirm bulk download when setting DOWNLOAD_ALL mode",
+    )
+
+
+class DownloadModePreviewResponse(BaseModel):
+    """Schema for download mode change preview."""
+
+    channel_id: str
+    current_mode: DownloadMode
+    new_mode: DownloadMode
+    designs_to_queue: int = Field(
+        description="Number of designs that would be queued (for DOWNLOAD_ALL)",
+    )
+
+
+class DownloadModeResponse(BaseModel):
+    """Schema for download mode change response."""
+
+    channel_id: str
+    old_mode: str
+    new_mode: str
+    changed: bool
+    enabled_at: str | None = None
+    bulk_download: dict | None = Field(
+        default=None,
+        description="Bulk download results if DOWNLOAD_ALL was triggered",
+    )

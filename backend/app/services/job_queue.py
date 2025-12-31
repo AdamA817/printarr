@@ -334,6 +334,29 @@ class JobQueueService:
         )
         return list(result.scalars().all())
 
+    async def get_pending_job_for_design(
+        self,
+        design_id: str,
+        job_type: JobType,
+    ) -> Job | None:
+        """Get a pending (QUEUED or RUNNING) job for a design.
+
+        Args:
+            design_id: The design ID.
+            job_type: The job type to look for.
+
+        Returns:
+            The Job instance if found, None otherwise.
+        """
+        result = await self.db.execute(
+            select(Job).where(
+                Job.design_id == design_id,
+                Job.type == job_type,
+                Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def cancel_jobs_for_design(
         self,
         design_id: str,

@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
-from app.db.models import BackfillMode, Channel
+from app.db.models import BackfillMode, Channel, DownloadMode
 from app.schemas.channel import (
     BackfillRequest,
     BackfillResponse,
@@ -18,7 +18,11 @@ from app.schemas.channel import (
     ChannelList,
     ChannelResponse,
     ChannelUpdate,
+    DownloadModePreviewResponse,
+    DownloadModeRequest,
+    DownloadModeResponse,
 )
+from app.services.auto_download import AutoDownloadService
 from app.services.backfill import BackfillService
 
 router = APIRouter(prefix="/channels", tags=["channels"])
@@ -210,3 +214,76 @@ async def get_backfill_status(
     status = await service.get_backfill_status(channel)
 
     return BackfillStatusResponse(**status)
+
+
+@router.get("/{channel_id}/download-mode/preview", response_model=DownloadModePreviewResponse)
+async def preview_download_mode_change(
+    channel_id: str,
+    new_mode: DownloadMode = Query(..., description="The new download mode to preview"),
+    db: AsyncSession = Depends(get_db),
+) -> DownloadModePreviewResponse:
+    """Preview the effect of changing download mode.
+
+    For DOWNLOAD_ALL mode, this returns the number of designs that would be
+    queued for download.
+    """
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    designs_to_queue = 0
+    if new_mode == DownloadMode.DOWNLOAD_ALL:
+        service = AutoDownloadService(db)
+        preview = await service.get_bulk_download_preview(channel)
+        designs_to_queue = preview["count"]
+
+    return DownloadModePreviewResponse(
+        channel_id=channel_id,
+        current_mode=channel.download_mode,
+        new_mode=new_mode,
+        designs_to_queue=designs_to_queue,
+    )
+
+
+@router.post("/{channel_id}/download-mode", response_model=DownloadModeResponse)
+async def update_download_mode(
+    channel_id: str,
+    request: DownloadModeRequest,
+    db: AsyncSession = Depends(get_db),
+) -> DownloadModeResponse:
+    """Change a channel's download mode.
+
+    For DOWNLOAD_ALL mode, you must set confirm_bulk_download=true to trigger
+    the bulk download of existing designs.
+    """
+    result = await db.execute(select(Channel).where(Channel.id == channel_id))
+    channel = result.scalar_one_or_none()
+
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    service = AutoDownloadService(db)
+
+    # If switching to DOWNLOAD_ALL without confirmation, just preview
+    if request.download_mode == DownloadMode.DOWNLOAD_ALL and not request.confirm_bulk_download:
+        preview = await service.get_bulk_download_preview(channel)
+        if preview["count"] > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"DOWNLOAD_ALL would queue {preview['count']} designs. Set confirm_bulk_download=true to proceed.",
+            )
+
+    # Apply the change
+    result_data = await service.update_download_mode(
+        channel,
+        request.download_mode,
+        trigger_bulk=request.confirm_bulk_download,
+    )
+    await db.commit()
+
+    return DownloadModeResponse(
+        channel_id=channel_id,
+        **result_data,
+    )
