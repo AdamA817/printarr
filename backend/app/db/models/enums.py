@@ -166,3 +166,12 @@ class MatchMethod(str, enum.Enum):
     TEXT = "TEXT"
     GEOMETRY = "GEOMETRY"
     MANUAL = "MANUAL"
+
+
+class DiscoverySourceType(str, enum.Enum):
+    """How a channel was discovered from monitored content."""
+
+    FORWARD = "FORWARD"  # Message was forwarded from this channel
+    MENTION = "MENTION"  # @username mentioned in caption/text
+    CAPTION_LINK = "CAPTION_LINK"  # t.me link in caption
+    TEXT_LINK = "TEXT_LINK"  # t.me link in message entities

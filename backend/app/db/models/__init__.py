@@ -7,12 +7,14 @@ from app.db.models.design import Design
 from app.db.models.design_file import DesignFile
 from app.db.models.design_source import DesignSource
 from app.db.models.design_tag import DesignTag
+from app.db.models.discovered_channel import DiscoveredChannel
 from app.db.models.enums import (
     AttachmentDownloadStatus,
     BackfillMode,
     DedupeEvidenceType,
     DesignerSource,
     DesignStatus,
+    DiscoverySourceType,
     DownloadMode,
     ExternalSourceType,
     FileKind,
@@ -42,6 +44,7 @@ __all__ = [
     "DesignFile",
     "DesignSource",
     "DesignTag",
+    "DiscoveredChannel",
     "ExternalMetadataSource",
     "Job",
     "PreviewAsset",
@@ -53,6 +56,7 @@ __all__ = [
     "DedupeEvidenceType",
     "DesignerSource",
     "DesignStatus",
+    "DiscoverySourceType",
     "DownloadMode",
     "ExternalSourceType",
     "FileKind",
