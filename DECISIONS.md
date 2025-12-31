@@ -663,6 +663,93 @@ This provides visual overview similar to Radarr/Sonarr dashboards without comple
 
 ---
 
+### DEC-024: Telethon SQLite Session Concurrency
+**Date**: 2025-12-31
+**Status**: Resolved
+
+**Context**
+During v0.6 implementation, Telethon's SQLite session file (`telegram.session`) experienced "database is locked" errors. This occurred because multiple async operations accessed the session file concurrently (auth check, channel resolution, message retrieval). Unlike the application database (DEC-019), Telethon manages its own session storage internally.
+
+**Root Cause**
+Telethon's `SQLiteSession` uses default SQLite settings that don't handle concurrent access well:
+- No WAL mode (uses default journal mode)
+- No busy_timeout (fails immediately on lock)
+- Multiple coroutines calling client methods simultaneously
+
+**Options Considered**
+1. **External lock** - Add asyncio.Lock to serialize all Telethon operations
+   - Pros: Simple, prevents all concurrent access
+   - Cons: Performance bottleneck, doesn't fix underlying session issue
+
+2. **WAL mode + busy_timeout** - Configure SQLite for better concurrency
+   - Pros: Allows concurrent readers, handles lock contention gracefully
+   - Cons: Requires subclassing Telethon's session class
+
+3. **Combined approach** - Both external lock AND improved session configuration
+   - Pros: Defense in depth, handles edge cases
+   - Cons: More code, may be overkill
+
+**Decision**
+Combined approach with:
+1. **`WalSqliteSession`** - Custom subclass of `SQLiteSession` that applies:
+   - `PRAGMA busy_timeout = 30000` (30s wait on lock)
+   - `PRAGMA journal_mode = WAL` (better concurrent access)
+
+2. **Asyncio Lock** - Added `self._lock` to `TelegramService`, applied to ALL client methods:
+   - `is_authenticated()`
+   - `get_current_user()`
+   - `start_auth()`
+   - `complete_auth()`
+   - `logout()`
+   - `resolve_channel()`
+   - `get_messages()`
+
+**Implementation Notes**
+- If session file becomes corrupted, delete `telegram.session*` files and re-authenticate
+- Channel resolution after session reset requires username fallback (see DEC-025)
+
+**Consequences**
+- Telethon operations are now serialized but resilient
+- Slight performance impact from locking, acceptable for single-user app
+- Session file survives concurrent access without corruption
+
+---
+
+### DEC-025: Channel Resolution After Session Reset
+**Date**: 2025-12-31
+**Status**: Resolved
+
+**Context**
+After fixing Telethon session locking (DEC-024), deleting the corrupted session file caused a new issue: channels could no longer be resolved by numeric peer ID. Telethon's `get_entity()` requires the entity to be in its local cache when using numeric IDs.
+
+**Root Cause**
+Telethon caches entity metadata (username, access_hash) in the session file. After session reset:
+- Numeric IDs like `1234567890` can't be resolved (no cached access_hash)
+- Usernames like `@channelname` CAN be resolved (public lookup)
+
+**Decision**
+Modified `get_channel_messages` endpoint to look up channel username from the Printarr database:
+1. If channel has a stored `username`, use that for resolution
+2. Fall back to numeric peer ID if no username available
+3. Original numeric ID preserved for database queries
+
+**Implementation**
+```python
+# Look up channel in database to get username
+db_channel = await db.scalar(
+    select(Channel).where(Channel.telegram_peer_id == str(channel_id))
+)
+if db_channel and db_channel.username:
+    channel_identifier = db_channel.username  # Use username instead
+```
+
+**Consequences**
+- Channels with stored usernames work after session reset
+- Channels without usernames (private/invite-only) may fail until re-cached
+- Encourages storing username during channel addition
+
+---
+
 ## Pending Decisions
 
 ### To Decide: Preview Rendering Engine

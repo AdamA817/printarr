@@ -167,21 +167,21 @@ Channels like Wicked STL post designs across multiple messages:
 
 ---
 
-## v0.6 - Live Monitoring & Channel Discovery
+## v0.6 - Live Monitoring & Channel Discovery ✅
 **Goal**: Continuous ingestion of new posts and discover related channels
 
 ### Scope
-- [ ] Live channel monitoring (polling or subscription)
-- [ ] New posts ingested automatically
-- [ ] Per-channel download modes (manual, auto-new, auto-all)
-- [ ] Dashboard with stats
-- [ ] **Channel Discovery**:
-  - [ ] Track forwarded messages and their source channels
-  - [ ] Detect @mentions and t.me links in captions
-  - [ ] "Discovered Channels" page showing referenced channels
-  - [ ] Reference count and content indicators per discovered channel
-  - [ ] One-click "Add Channel" from discovered list
-  - [ ] Filter: already added, reference count, last seen
+- [x] Live channel monitoring (hybrid real-time + polling)
+- [x] New posts ingested automatically
+- [x] Per-channel download modes (manual, auto-new, auto-all)
+- [x] Dashboard with stats
+- [x] **Channel Discovery**:
+  - [x] Track forwarded messages and their source channels
+  - [x] Detect @mentions and t.me links in captions
+  - [x] "Discovered Channels" page showing referenced channels
+  - [x] Reference count and content indicators per discovered channel
+  - [x] One-click "Add Channel" from discovered list
+  - [x] Filter: already added, reference count, last seen
 
 ### Success Criteria
 - New post appears in Telegram
@@ -193,6 +193,11 @@ Channels like Wicked STL post designs across multiple messages:
 ### Not Included
 - Full backfill options
 - Network graph visualization
+
+### Technical Notes
+- SyncService uses hybrid approach: Telethon events for real-time + polling for catch-up
+- SQLite WAL mode and locks added for Telethon concurrency (DEC-020)
+- Channel resolution uses username fallback after session resets
 
 ---
 
@@ -282,7 +287,7 @@ Channels like Wicked STL post designs across multiple messages:
 
 ## Current Status
 
-**Active Version**: v0.6 (next)
+**Active Version**: v0.7 (next)
 
 **Last Updated**: 2025-12-31
 
@@ -297,7 +302,7 @@ Channels like Wicked STL post designs across multiple messages:
 | v0.3 | Ingestion | ✅ Complete | Parse + detect designs + Thangs auto-link |
 | v0.4 | Catalog UI | ✅ Complete | Radarr-style browsing + Thangs + FlareSolverr |
 | v0.5 | Downloads | ✅ Complete | Job queue + library + session-per-operation pattern |
-| v0.6 | Live Monitoring & Discovery | 🔜 Next | Continuous ingestion + channel discovery |
-| v0.7 | Previews & Metadata | - | Images + tags + Thangs enrichment |
+| v0.6 | Live Monitoring & Discovery | ✅ Complete | SyncService + DiscoveryService + Dashboard |
+| v0.7 | Previews & Metadata | 🔜 Next | Images + tags + Thangs enrichment |
 | v0.8 | Deduplication | - | Handle duplicates |
 | v1.0 | Production | - | Full release |
