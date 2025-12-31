@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.logging import get_logger
 from app.db import get_db
 from app.db.models import Design, DesignSource, Job, JobStatus, JobType
-
 from app.schemas.queue import (
     ActivityItemResponse,
     ActivityListResponse,
     DesignSummary,
+    JobResultStats,
 )
 
 logger = get_logger(__name__)
@@ -99,6 +101,15 @@ async def list_activity(
             delta = job.finished_at - job.started_at
             duration_ms = int(delta.total_seconds() * 1000)
 
+        # Parse result JSON if available
+        result_stats = None
+        if job.result_json:
+            try:
+                result_data = json.loads(job.result_json)
+                result_stats = JobResultStats(**result_data)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         items.append(
             ActivityItemResponse(
                 id=job.id,
@@ -109,6 +120,7 @@ async def list_activity(
                 started_at=job.started_at,
                 finished_at=job.finished_at,
                 duration_ms=duration_ms,
+                result=result_stats,
                 last_error=job.last_error,
                 attempts=job.attempts,
             )

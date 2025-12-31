@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 from app.core.logging import get_logger
@@ -17,6 +19,9 @@ from app.services.archive import (
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
 logger = get_logger(__name__)
+
+# Throttle progress updates to avoid database spam
+PROGRESS_UPDATE_INTERVAL_SECONDS = 1.0
 
 
 class ExtractArchiveWorker(BaseWorker):
@@ -51,7 +56,9 @@ class ExtractArchiveWorker(BaseWorker):
         """
         super().__init__(poll_interval=poll_interval, worker_id=worker_id)
 
-    async def process(self, job: Job, payload: dict[str, Any] | None) -> None:
+    async def process(
+        self, job: Job, payload: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         """Process an extraction job.
 
         Extracts all archives in the design's staging directory,
@@ -60,6 +67,9 @@ class ExtractArchiveWorker(BaseWorker):
         Args:
             job: The Job instance to process.
             payload: Parsed payload dict (expects design_id).
+
+        Returns:
+            Result dict with archives_extracted and files_created.
 
         Raises:
             NonRetryableError: For password protection, corruption, missing parts.
@@ -107,6 +117,13 @@ class ExtractArchiveWorker(BaseWorker):
                         import_job_id=import_job_id,
                     )
 
+            # Return result for storage in job
+            return {
+                "archives_extracted": result["archives_extracted"],
+                "files_created": result["files_created"],
+                "nested_archives": result["nested_archives"],
+            }
+
         except PasswordProtectedError as e:
             logger.error(
                 "extract_password_protected",
@@ -150,11 +167,37 @@ class ExtractArchiveWorker(BaseWorker):
 
         Returns:
             A callback function for tracking extraction progress.
+
+        Note:
+            Updates job progress in the database, throttled to avoid spam.
         """
+        last_update_time = 0.0
+
         def sync_progress(current: int, total: int) -> None:
-            # Log progress
-            if total > 0:
-                percent = int((current / total) * 100)
+            nonlocal last_update_time
+
+            if total <= 0:
+                return
+
+            percent = int((current / total) * 100)
+            now = time.time()
+
+            # Throttle updates
+            should_update = (
+                now - last_update_time >= PROGRESS_UPDATE_INTERVAL_SECONDS
+                or current >= total  # Always update on completion
+            )
+
+            if should_update:
+                last_update_time = now
+
+                # Schedule async database update
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self.update_progress(current, total))
+                except RuntimeError:
+                    pass
+
                 logger.debug(
                     "extract_progress",
                     current=current,

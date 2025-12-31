@@ -137,6 +137,7 @@ class JobQueueService:
         *,
         success: bool,
         error: str | None = None,
+        result: dict[str, Any] | None = None,
     ) -> Job | None:
         """Mark a job as completed (success or failure).
 
@@ -144,14 +145,15 @@ class JobQueueService:
             job_id: ID of the job to complete.
             success: Whether the job succeeded.
             error: Error message if job failed.
+            result: Optional result data to store (bytes, files, etc.).
 
         Returns:
             The updated Job instance, or None if not found.
         """
-        result = await self.db.execute(
+        db_result = await self.db.execute(
             select(Job).where(Job.id == job_id)
         )
-        job = result.scalar_one_or_none()
+        job = db_result.scalar_one_or_none()
 
         if job is None:
             logger.warning("job_not_found", job_id=job_id)
@@ -162,6 +164,8 @@ class JobQueueService:
         if success:
             job.status = JobStatus.SUCCESS
             job.last_error = None
+            if result:
+                job.result_json = json.dumps(result)
             logger.info(
                 "job_completed_success",
                 job_id=job_id,
@@ -426,3 +430,16 @@ class JobQueueService:
         if not job.payload_json:
             return None
         return json.loads(job.payload_json)
+
+    def get_result(self, job: Job) -> dict[str, Any] | None:
+        """Parse and return the job's result.
+
+        Args:
+            job: The Job instance.
+
+        Returns:
+            Parsed result dict, or None if no result.
+        """
+        if not job.result_json:
+            return None
+        return json.loads(job.result_json)

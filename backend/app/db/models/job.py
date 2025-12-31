@@ -43,6 +43,9 @@ class Job(Base):
     # Job payload (JSON stored as text for SQLite compatibility)
     payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Job result (JSON stored as text for completion stats like bytes, files)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Progress tracking
     progress_current: Mapped[int | None] = mapped_column(Integer, nullable=True)
     progress_total: Mapped[int | None] = mapped_column(Integer, nullable=True)

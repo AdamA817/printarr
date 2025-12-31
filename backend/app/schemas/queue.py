@@ -57,6 +57,24 @@ class QueueListResponse(BaseModel):
     pages: int
 
 
+class JobResultStats(BaseModel):
+    """Job result statistics for activity history."""
+
+    # Download job results
+    files_downloaded: int | None = None
+    total_bytes: int | None = None
+    has_archives: bool | None = None
+
+    # Extraction job results
+    archives_extracted: int | None = None
+    files_created: int | None = None
+    nested_archives: int | None = None
+
+    # Import job results
+    files_imported: int | None = None
+    library_path: str | None = None
+
+
 class ActivityItemResponse(BaseModel):
     """Schema for a completed job in activity history."""
 
@@ -73,7 +91,10 @@ class ActivityItemResponse(BaseModel):
     finished_at: datetime | None = None
     duration_ms: int | None = None
 
-    # Result info
+    # Result stats (bytes, files, etc.)
+    result: JobResultStats | None = None
+
+    # Error info
     last_error: str | None = None
     attempts: int = 0
 

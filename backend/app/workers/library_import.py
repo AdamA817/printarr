@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 from app.core.logging import get_logger
@@ -10,6 +12,9 @@ from app.services.library import LibraryError, LibraryImportService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
 logger = get_logger(__name__)
+
+# Throttle progress updates to avoid database spam
+PROGRESS_UPDATE_INTERVAL_SECONDS = 1.0
 
 
 class ImportToLibraryWorker(BaseWorker):
@@ -43,7 +48,9 @@ class ImportToLibraryWorker(BaseWorker):
         """
         super().__init__(poll_interval=poll_interval, worker_id=worker_id)
 
-    async def process(self, job: Job, payload: dict[str, Any] | None) -> None:
+    async def process(
+        self, job: Job, payload: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         """Process an import job.
 
         Moves design files from staging to the organized library
@@ -52,6 +59,9 @@ class ImportToLibraryWorker(BaseWorker):
         Args:
             job: The Job instance to process.
             payload: Parsed payload dict (expects design_id).
+
+        Returns:
+            Result dict with files_imported, total_bytes, and library_path.
 
         Raises:
             NonRetryableError: For missing design or staging directory.
@@ -84,6 +94,13 @@ class ImportToLibraryWorker(BaseWorker):
                 total_bytes=result["total_bytes"],
                 library_path=result["library_path"],
             )
+
+            # Return result for storage in job
+            return {
+                "files_imported": result["files_imported"],
+                "total_bytes": result["total_bytes"],
+                "library_path": result["library_path"],
+            }
 
         except LibraryError as e:
             error_msg = str(e)
@@ -118,11 +135,37 @@ class ImportToLibraryWorker(BaseWorker):
 
         Returns:
             A callback function for tracking import progress.
+
+        Note:
+            Updates job progress in the database, throttled to avoid spam.
         """
+        last_update_time = 0.0
+
         def sync_progress(current: int, total: int) -> None:
-            # Log progress
-            if total > 0:
-                percent = int((current / total) * 100)
+            nonlocal last_update_time
+
+            if total <= 0:
+                return
+
+            percent = int((current / total) * 100)
+            now = time.time()
+
+            # Throttle updates
+            should_update = (
+                now - last_update_time >= PROGRESS_UPDATE_INTERVAL_SECONDS
+                or current >= total  # Always update on completion
+            )
+
+            if should_update:
+                last_update_time = now
+
+                # Schedule async database update
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self.update_progress(current, total))
+                except RuntimeError:
+                    pass
+
                 logger.debug(
                     "import_progress",
                     current=current,

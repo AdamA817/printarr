@@ -49,7 +49,9 @@ class DownloadWorker(BaseWorker):
         """
         super().__init__(poll_interval=poll_interval, worker_id=worker_id)
 
-    async def process(self, job: Job, payload: dict[str, Any] | None) -> None:
+    async def process(
+        self, job: Job, payload: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         """Process a download job.
 
         Downloads all attachments for a design from Telegram,
@@ -59,6 +61,9 @@ class DownloadWorker(BaseWorker):
         Args:
             job: The Job instance to process.
             payload: Parsed payload dict (expects design_id).
+
+        Returns:
+            Result dict with files_downloaded and total_bytes.
 
         Raises:
             NonRetryableError: If design not found or no attachments.
@@ -124,6 +129,13 @@ class DownloadWorker(BaseWorker):
                         design_id=design_id,
                         import_job_id=import_job.id,
                     )
+
+            # Return result for storage in job
+            return {
+                "files_downloaded": result["files_downloaded"],
+                "total_bytes": result["total_bytes"],
+                "has_archives": result["has_archives"],
+            }
 
         except DownloadError as e:
             error_msg = str(e)

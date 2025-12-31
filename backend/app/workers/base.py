@@ -76,7 +76,9 @@ class BaseWorker(ABC):
         self._started_at: datetime | None = None
 
     @abstractmethod
-    async def process(self, job: Job, payload: dict[str, Any] | None) -> None:
+    async def process(
+        self, job: Job, payload: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
         """Process a single job.
 
         Subclasses must implement this method. The job is already claimed
@@ -85,6 +87,10 @@ class BaseWorker(ABC):
         Args:
             job: The Job instance to process.
             payload: Parsed payload dict from job.payload_json.
+
+        Returns:
+            Optional result dict with completion stats (bytes, files, etc.)
+            that will be stored in the job's result_json field.
 
         Raises:
             Any exception will be caught and logged, and the job
@@ -166,10 +172,10 @@ class BaseWorker(ABC):
                     job_type=job.type.value,
                 )
 
-                await self.process(job, payload)
+                result = await self.process(job, payload)
 
-                # Mark success
-                await queue.complete(job.id, success=True)
+                # Mark success with optional result
+                await queue.complete(job.id, success=True, result=result)
                 self._jobs_processed += 1
 
             except Exception as e:
