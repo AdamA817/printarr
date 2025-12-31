@@ -434,7 +434,7 @@ class LibraryImportService:
                     image_data=image_data,
                     source=PreviewSource.EMBEDDED_3MF,
                     kind=PreviewKind.THUMBNAIL,
-                    original_filename=original_filename or f"{threemf_path.stem}_thumbnail.png",
+                    filename=original_filename or f"{threemf_path.stem}_thumbnail.png",
                 )
                 await db.commit()
 

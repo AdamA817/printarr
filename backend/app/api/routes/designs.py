@@ -29,6 +29,8 @@ from app.schemas.design import (
     PreviewSummary,
     TagSummary,
 )
+from app.services.preview import PreviewService
+from app.services.tag import TagService
 from app.services.thangs import ThangsAdapter
 
 logger = get_logger(__name__)
@@ -63,6 +65,8 @@ class RefreshMetadataResponse(BaseModel):
     design_id: str
     sources_refreshed: int
     sources_failed: int
+    images_cached: int = 0
+    tags_imported: int = 0
 
 
 class ThangsLinkRequest(BaseModel):
@@ -470,6 +474,11 @@ async def refresh_metadata(
     # Update database with fetched metadata
     sources_refreshed = 0
     sources_failed = 0
+    total_images_cached = 0
+    total_tags_imported = 0
+
+    # Collect metadata for processing
+    successful_metadata: list[dict] = []
 
     for result_item in fetched_results:
         if result_item["success"] and result_item["metadata"]:
@@ -485,22 +494,74 @@ async def refresh_metadata(
                 )
             )
             sources_refreshed += 1
+            successful_metadata.append(metadata)
         else:
             sources_failed += 1
 
     await db.commit()
+
+    # Cache images and import tags for successful fetches
+    if successful_metadata:
+        preview_service = PreviewService(db)
+        tag_service = TagService(db)
+        thangs_adapter = ThangsAdapter(db)
+
+        for metadata in successful_metadata:
+            # Cache images from Thangs (up to 10 per model)
+            image_urls = metadata.get("images", [])
+            if image_urls:
+                try:
+                    cached = await thangs_adapter.cache_thangs_images(
+                        design_id=design_id,
+                        image_urls=image_urls,
+                        preview_service=preview_service,
+                    )
+                    total_images_cached += cached
+                except Exception as e:
+                    logger.warning(
+                        "thangs_image_cache_failed",
+                        design_id=design_id,
+                        error=str(e),
+                    )
+
+            # Import tags from Thangs
+            tags = metadata.get("tags", [])
+            if tags:
+                try:
+                    imported = await thangs_adapter.import_thangs_tags(
+                        design_id=design_id,
+                        tags=tags,
+                        tag_service=tag_service,
+                    )
+                    total_tags_imported += imported
+                except Exception as e:
+                    logger.warning(
+                        "thangs_tag_import_failed",
+                        design_id=design_id,
+                        error=str(e),
+                    )
+
+        # Auto-select primary preview if images were cached
+        if total_images_cached > 0:
+            await preview_service.auto_select_primary(design_id)
+
+        await db.commit()
 
     logger.info(
         "metadata_refreshed",
         design_id=design_id,
         refreshed=sources_refreshed,
         failed=sources_failed,
+        images_cached=total_images_cached,
+        tags_imported=total_tags_imported,
     )
 
     return RefreshMetadataResponse(
         design_id=design_id,
         sources_refreshed=sources_refreshed,
         sources_failed=sources_failed,
+        images_cached=total_images_cached,
+        tags_imported=total_tags_imported,
     )
 
 
@@ -526,10 +587,22 @@ async def _fetch_thangs_metadata(client: httpx.AsyncClient, model_id: str) -> di
         elif "author" in data:
             designer = data["author"]
 
+        # Extract image URLs from various possible fields
+        images = []
+        if "images" in data and isinstance(data["images"], list):
+            for img in data["images"]:
+                if isinstance(img, str):
+                    images.append(img)
+                elif isinstance(img, dict) and "url" in img:
+                    images.append(img["url"])
+        elif "thumbnails" in data and isinstance(data["thumbnails"], list):
+            images = [t for t in data["thumbnails"] if isinstance(t, str)]
+
         return {
             "title": data.get("name") or data.get("title"),
             "designer": designer,
             "tags": data.get("tags", []),
+            "images": images,
         }
     elif response.status_code == 404:
         logger.warning("thangs_model_not_found", model_id=model_id)

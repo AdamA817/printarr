@@ -936,10 +936,10 @@ class ThangsAdapter:
 
                 await preview_service.save_preview(
                     design_id=design_id,
-                    image_data=image_data,
                     source=PreviewSource.THANGS,
+                    image_data=image_data,
+                    filename=filename,
                     kind=PreviewKind.GALLERY if i > 0 else PreviewKind.THUMBNAIL,
-                    original_filename=filename,
                 )
                 cached_count += 1
 
