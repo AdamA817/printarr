@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 from app.core.logging import get_logger
@@ -11,6 +13,10 @@ from app.services.download import DownloadError, DownloadService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
 logger = get_logger(__name__)
+
+# Throttle progress updates to avoid database spam
+PROGRESS_UPDATE_INTERVAL_SECONDS = 1.0
+PROGRESS_UPDATE_MIN_PERCENT_CHANGE = 2
 
 
 class DownloadWorker(BaseWorker):
@@ -86,9 +92,10 @@ class DownloadWorker(BaseWorker):
                 has_archives=result["has_archives"],
             )
 
-            # Queue extraction if archives were downloaded
+            # Queue next step based on whether archives exist
             # This needs a session, so we open one briefly
             if result["has_archives"]:
+                # Archives present - queue extraction first
                 async with async_session_maker() as db:
                     service_with_db = DownloadService(db)
                     extraction_job_id = await service_with_db.queue_extraction(design_id)
@@ -100,6 +107,23 @@ class DownloadWorker(BaseWorker):
                             design_id=design_id,
                             extraction_job_id=extraction_job_id,
                         )
+            else:
+                # No archives - queue import directly
+                async with async_session_maker() as db:
+                    from app.services.job_queue import JobQueueService
+                    queue = JobQueueService(db)
+                    import_job = await queue.enqueue(
+                        JobType.IMPORT_TO_LIBRARY,
+                        design_id=design_id,
+                        priority=5,
+                    )
+                    await db.commit()
+
+                    logger.info(
+                        "import_job_queued",
+                        design_id=design_id,
+                        import_job_id=import_job.id,
+                    )
 
         except DownloadError as e:
             error_msg = str(e)
@@ -124,17 +148,49 @@ class DownloadWorker(BaseWorker):
 
         Returns:
             A callback function for tracking download progress.
-        """
-        async def update_progress(current: int, total: int) -> None:
-            await self.update_progress(current, total)
 
-        # Since Telethon's progress callback is synchronous,
-        # we need a sync wrapper. For now, just log progress.
+        Note:
+            Telethon's progress callback is synchronous, but we need to
+            update the database asynchronously. We use asyncio.create_task()
+            to schedule updates from within the sync callback, throttled
+            to avoid database spam.
+        """
+        # Track state for throttling
+        last_update_time = 0.0
+        last_update_percent = -PROGRESS_UPDATE_MIN_PERCENT_CHANGE  # Force first update
+
         def sync_progress(current: int, total: int) -> None:
-            # Log significant progress milestones
-            if total > 0:
-                percent = int((current / total) * 100)
-                if percent % 25 == 0:  # Log at 0%, 25%, 50%, 75%, 100%
+            nonlocal last_update_time, last_update_percent
+
+            if total <= 0:
+                return
+
+            percent = int((current / total) * 100)
+            now = time.time()
+
+            # Check if we should throttle this update
+            time_since_update = now - last_update_time
+            percent_change = abs(percent - last_update_percent)
+
+            should_update = (
+                time_since_update >= PROGRESS_UPDATE_INTERVAL_SECONDS
+                and percent_change >= PROGRESS_UPDATE_MIN_PERCENT_CHANGE
+            ) or percent >= 100  # Always update on completion
+
+            if should_update:
+                last_update_time = now
+                last_update_percent = percent
+
+                # Schedule async database update
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self.update_progress(current, total))
+                except RuntimeError:
+                    # No running loop - just log
+                    pass
+
+                # Log progress at significant milestones
+                if percent % 25 == 0 or percent >= 100:
                     logger.debug(
                         "download_progress",
                         current=current,
