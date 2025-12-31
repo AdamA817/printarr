@@ -116,6 +116,13 @@ class DownloadService:
         staging_dir = self._get_staging_dir(design_id)
         staging_dir.mkdir(parents=True, exist_ok=True)
 
+        logger.debug(
+            "staging_dir_created",
+            design_id=design_id,
+            staging_dir=str(staging_dir),
+            exists=staging_dir.exists(),
+        )
+
         # PHASE 2: Download files (NO database session held)
         downloaded_count = 0
         total_bytes = 0
@@ -331,8 +338,39 @@ class DownloadService:
             if not downloaded_path:
                 raise DownloadError("Download returned no path")
 
-            sha256 = await self._compute_file_hash(Path(downloaded_path))
-            file_size = Path(downloaded_path).stat().st_size
+            downloaded_path_obj = Path(downloaded_path)
+
+            # Verify file exists
+            if not downloaded_path_obj.exists():
+                raise DownloadError(f"Downloaded file not found: {downloaded_path}")
+
+            # If Telethon saved to a different location, move to staging
+            if downloaded_path_obj.parent.resolve() != staging_dir.resolve():
+                logger.warning(
+                    "download_path_mismatch",
+                    expected_dir=str(staging_dir),
+                    actual_path=str(downloaded_path),
+                )
+                import shutil
+                correct_path = staging_dir / downloaded_path_obj.name
+                # Handle collision
+                if correct_path.exists():
+                    base = correct_path.stem
+                    ext = correct_path.suffix
+                    counter = 1
+                    while correct_path.exists():
+                        correct_path = staging_dir / f"{base}_{counter}{ext}"
+                        counter += 1
+                shutil.move(str(downloaded_path_obj), str(correct_path))
+                downloaded_path = str(correct_path)
+                downloaded_path_obj = correct_path
+                logger.info(
+                    "download_moved_to_staging",
+                    new_path=str(correct_path),
+                )
+
+            sha256 = await self._compute_file_hash(downloaded_path_obj)
+            file_size = downloaded_path_obj.stat().st_size
 
         except TelegramRateLimitError as e:
             # Update status to FAILED

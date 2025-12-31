@@ -131,7 +131,7 @@ router = APIRouter(prefix="/designs", tags=["designs"])
 async def list_designs(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    status: str | None = Query(None, description="Filter by status"),
+    status: DesignStatus | None = Query(None, description="Filter by status"),
     channel_id: str | None = Query(None, description="Filter by channel ID"),
     file_type: str | None = Query(None, description="Filter by primary file type (STL, 3MF, OBJ, etc.)"),
     multicolor: MulticolorStatus | None = Query(None, description="Filter by multicolor status"),
