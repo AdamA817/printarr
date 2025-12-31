@@ -8,6 +8,7 @@ from app.services.job_queue import JobQueueService
 from app.services.library import LibraryError, LibraryImportService
 from app.services.preview import PreviewError, PreviewService
 from app.services.settings import SettingsError, SettingsService, SettingsValidationError
+from app.services.tag import TagError, TagService
 from app.services.thangs import ThangsAdapter
 
 __all__ = [
@@ -25,5 +26,7 @@ __all__ = [
     "SettingsError",
     "SettingsService",
     "SettingsValidationError",
+    "TagError",
+    "TagService",
     "ThangsAdapter",
 ]

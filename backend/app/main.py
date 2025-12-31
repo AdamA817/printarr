@@ -43,6 +43,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await preview_service.ensure_directories()
     logger.info("preview_directories_initialized")
 
+    # Seed predefined tags
+    from app.db.session import async_session_maker
+    from app.services.tag import TagService
+    async with async_session_maker() as db:
+        tag_service = TagService(db)
+        tags_created = await tag_service.seed_predefined_tags()
+        await db.commit()
+        if tags_created > 0:
+            logger.info("predefined_tags_seeded", count=tags_created)
+
     # Initialize Telegram service if configured
     telegram_service = TelegramService.get_instance()
     telegram_authenticated = False
