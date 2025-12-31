@@ -137,17 +137,19 @@ Channels like Wicked STL post designs across multiple messages:
 
 ---
 
-## v0.5 - Downloads & Library
+## v0.5 - Downloads & Library ✅
 **Goal**: Download files and organize into library
 
 ### Scope
-- [ ] Job queue system (database-backed)
-- [ ] Download worker
-- [ ] "Want" / "Download" buttons
-- [ ] Download to staging directory
-- [ ] Archive extraction (zip, rar, 7z)
-- [ ] Import to library with folder structure
-- [ ] Activity page (queue, history)
+- [x] Job queue system (database-backed) - DEC-017
+- [x] Download worker with session-per-operation pattern - DEC-019
+- [x] "Want" / "Download" buttons on cards and detail page
+- [x] Download to staging directory
+- [x] Archive extraction (zip, rar, 7z, multi-part RAR)
+- [x] Import to library with configurable folder templates - DEC-018
+- [x] Activity page (Queue + History tabs, Radarr-style)
+- [x] Settings page for library configuration
+- [x] Priority-based download queue
 
 ### Success Criteria
 - Mark design as "Wanted"
@@ -158,6 +160,10 @@ Channels like Wicked STL post designs across multiple messages:
 - Auto-download modes
 - Preview generation
 - Multicolor detection
+
+### Technical Notes
+- SQLite concurrency issue discovered and resolved (DEC-019)
+- Session-per-operation pattern established for all long-running I/O
 
 ---
 
@@ -276,9 +282,9 @@ Channels like Wicked STL post designs across multiple messages:
 
 ## Current Status
 
-**Active Version**: v0.5 (next)
+**Active Version**: v0.6 (next)
 
-**Last Updated**: 2025-12-30
+**Last Updated**: 2025-12-31
 
 ---
 
@@ -290,8 +296,8 @@ Channels like Wicked STL post designs across multiple messages:
 | v0.2 | Telegram | ✅ Complete | Auth + connection |
 | v0.3 | Ingestion | ✅ Complete | Parse + detect designs + Thangs auto-link |
 | v0.4 | Catalog UI | ✅ Complete | Radarr-style browsing + Thangs + FlareSolverr |
-| v0.5 | Downloads | 🔜 Next | Job queue + library |
-| v0.6 | Live Monitoring & Discovery | - | Continuous ingestion + channel discovery |
+| v0.5 | Downloads | ✅ Complete | Job queue + library + session-per-operation pattern |
+| v0.6 | Live Monitoring & Discovery | 🔜 Next | Continuous ingestion + channel discovery |
 | v0.7 | Previews & Metadata | - | Images + tags + Thangs enrichment |
 | v0.8 | Deduplication | - | Handle duplicates |
 | v1.0 | Production | - | Full release |
