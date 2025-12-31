@@ -1,5 +1,5 @@
 // Must match backend/app/db/models/enums.py exactly
-export type DesignStatus = 'DISCOVERED' | 'WANTED' | 'DOWNLOADING' | 'DOWNLOADED' | 'ORGANIZED'
+export type DesignStatus = 'DISCOVERED' | 'WANTED' | 'DOWNLOADING' | 'DOWNLOADED' | 'EXTRACTING' | 'EXTRACTED' | 'IMPORTING' | 'ORGANIZED' | 'FAILED'
 export type MulticolorStatus = 'UNKNOWN' | 'SINGLE' | 'MULTI'
 export type MetadataAuthority = 'TELEGRAM' | 'THANGS' | 'PRINTABLES' | 'USER'
 export type ExternalSourceType = 'THANGS' | 'PRINTABLES' | 'THINGIVERSE'

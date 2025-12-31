@@ -6,7 +6,11 @@ const statusColors: Record<DesignStatus, string> = {
   WANTED: 'bg-accent-primary text-white',
   DOWNLOADING: 'bg-accent-warning text-white',
   DOWNLOADED: 'bg-accent-success text-white',
+  EXTRACTING: 'bg-accent-warning text-white',
+  EXTRACTED: 'bg-accent-success text-white',
+  IMPORTING: 'bg-accent-warning text-white',
   ORGANIZED: 'bg-accent-success text-white',
+  FAILED: 'bg-accent-danger text-white',
 }
 
 const statusLabels: Record<DesignStatus, string> = {
@@ -14,7 +18,11 @@ const statusLabels: Record<DesignStatus, string> = {
   WANTED: 'Wanted',
   DOWNLOADING: 'Downloading',
   DOWNLOADED: 'Downloaded',
+  EXTRACTING: 'Extracting',
+  EXTRACTED: 'Extracted',
+  IMPORTING: 'Importing',
   ORGANIZED: 'Organized',
+  FAILED: 'Failed',
 }
 
 interface StatusBadgeProps {

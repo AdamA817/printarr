@@ -97,7 +97,7 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, 
         )}
 
         {/* Action button in corner (visible on hover, except for completed states) */}
-        {showActions && (design.status === 'DISCOVERED' || design.status === 'WANTED' || design.status === 'DOWNLOADING') && (
+        {showActions && (design.status === 'DISCOVERED' || design.status === 'WANTED' || design.status === 'DOWNLOADING' || design.status === 'FAILED') && (
           <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
             <DesignActions
               designId={design.id}

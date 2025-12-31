@@ -117,6 +117,26 @@ function FolderIcon({ className }: { className?: string }) {
   )
 }
 
+function RefreshIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+      <path d="M16 16h5v5" />
+    </svg>
+  )
+}
+
 export function DesignActions({
   designId,
   status,
@@ -174,6 +194,11 @@ export function DesignActions({
 
   const handleCancel = (e: React.MouseEvent) => {
     handleAction(e, () => cancelDownload.mutateAsync(designId))
+  }
+
+  const handleRetry = (e: React.MouseEvent) => {
+    // Retry a failed download by re-triggering the download workflow
+    handleAction(e, () => downloadDesign.mutateAsync(designId))
   }
 
   // Render based on status
@@ -297,6 +322,35 @@ export function DesignActions({
           <FolderIcon className={sizeClasses[size]} />
           In Library
         </span>
+      )
+
+    case 'FAILED':
+      return variant === 'icon' ? (
+        <button
+          onClick={handleRetry}
+          disabled={isLoading}
+          className="p-1.5 rounded-full bg-accent-danger/20 hover:bg-accent-danger/30 text-accent-danger transition-colors disabled:opacity-50"
+          title="Retry Download"
+        >
+          {isLoading ? (
+            <LoadingSpinner className={sizeClasses[size]} />
+          ) : (
+            <RefreshIcon className={sizeClasses[size]} />
+          )}
+        </button>
+      ) : (
+        <button
+          onClick={handleRetry}
+          disabled={isLoading}
+          className={`${buttonSizeClasses[size]} rounded bg-accent-danger hover:bg-accent-danger/80 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5`}
+        >
+          {isLoading ? (
+            <LoadingSpinner className={sizeClasses[size]} />
+          ) : (
+            <RefreshIcon className={sizeClasses[size]} />
+          )}
+          Retry
+        </button>
       )
 
     default:

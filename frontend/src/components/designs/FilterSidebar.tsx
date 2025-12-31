@@ -15,6 +15,7 @@ const STATUSES: { value: DesignStatus; label: string }[] = [
   { value: 'DOWNLOADING', label: 'Downloading' },
   { value: 'DOWNLOADED', label: 'Downloaded' },
   { value: 'ORGANIZED', label: 'Organized' },
+  { value: 'FAILED', label: 'Failed' },
 ]
 
 const FILE_TYPES = ['STL', '3MF', 'OBJ', 'STEP', 'ZIP', 'RAR']
