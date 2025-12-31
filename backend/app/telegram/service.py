@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from typing import TYPE_CHECKING
 
 from telethon import TelegramClient
+from telethon.sessions import SQLiteSession
 from telethon.errors import (
     AuthKeyError,
     ChannelPrivateError,
@@ -43,6 +45,28 @@ if TYPE_CHECKING:
     from telethon.types import User
 
 logger = get_logger(__name__)
+
+
+class WalSqliteSession(SQLiteSession):
+    """SQLite session with WAL mode and busy timeout for better concurrency.
+
+    Telethon's default SQLiteSession can encounter "database is locked" errors
+    when the client's internal update receiver runs concurrently with our
+    operations. WAL mode and a busy timeout help prevent these issues.
+    """
+
+    def _connect(self):
+        """Override to set WAL mode and busy timeout after connecting."""
+        super()._connect()
+        if self._conn is not None:
+            try:
+                # Set busy timeout to wait up to 30 seconds for locks
+                self._conn.execute("PRAGMA busy_timeout = 30000")
+                # Enable WAL mode for better concurrent access
+                self._conn.execute("PRAGMA journal_mode = WAL")
+                self._conn.commit()
+            except sqlite3.Error as e:
+                logger.warning("sqlite_pragma_failed", error=str(e))
 
 
 class TelegramService:
@@ -136,8 +160,11 @@ class TelegramService:
 
         if self._client is None:
             session_path = str(settings.telegram_session_path)
+            # Use custom session with WAL mode and busy timeout
+            # to prevent "database is locked" errors
+            session = WalSqliteSession(session_path)
             self._client = TelegramClient(
-                session_path,
+                session,
                 settings.telegram_api_id,
                 settings.telegram_api_hash,
             )
