@@ -26,7 +26,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     >
       <div className="p-4 border-b border-bg-tertiary flex items-center justify-between">
         <div className="flex items-center">
-          <img src={logoFull} alt="Printarr" className="h-8" />
+          <img src={logoFull} alt="Printarr" className="h-14" />
         </div>
         <button
           onClick={onClose}
