@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 import re
 import shutil
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +29,9 @@ from app.db.models import (
     DesignStatus,
     TelegramMessage,
 )
+from app.db.models.enums import PreviewKind, PreviewSource
 from app.db.session import async_session_maker
+from app.services.preview import PreviewService
 
 logger = get_logger(__name__)
 
@@ -36,6 +40,15 @@ INVALID_CHARS = re.compile(r'[/\\:*?"<>|]')
 
 # Default template if none configured
 DEFAULT_TEMPLATE = "{designer}/{channel}/{title}"
+
+# Common thumbnail paths inside 3MF files (in priority order)
+THREEMF_THUMBNAIL_PATHS = [
+    "Metadata/thumbnail.png",
+    "thumbnail.png",
+    "3D/Metadata/thumbnail.png",
+    "Metadata/thumbnail.jpg",
+    "thumbnail.jpg",
+]
 
 
 class LibraryError(Exception):
@@ -178,6 +191,16 @@ class LibraryImportService:
             design = await db.get(Design, design_id)
             if design:
                 design.status = DesignStatus.ORGANIZED
+                await db.commit()
+
+        # PHASE 5: Extract 3MF thumbnails (NO database session held during I/O)
+        threemf_thumbnails = await self._extract_3mf_thumbnails(design_id, library_path)
+
+        # PHASE 6: Auto-select primary preview if we extracted any thumbnails
+        if threemf_thumbnails > 0:
+            async with async_session_maker() as db:
+                preview_service = PreviewService(db)
+                await preview_service.auto_select_primary(design_id)
                 await db.commit()
 
         logger.info(
@@ -357,3 +380,117 @@ class LibraryImportService:
     def _get_staging_dir(self, design_id: str) -> Path:
         """Get the staging directory for a design."""
         return settings.staging_path / design_id
+
+    async def _extract_3mf_thumbnails(self, design_id: str, library_path: Path) -> int:
+        """Extract thumbnails from 3MF files in the library folder.
+
+        Args:
+            design_id: The design ID.
+            library_path: Path to the design's library folder.
+
+        Returns:
+            Number of thumbnails extracted.
+        """
+        threemf_files = self._find_3mf_files(library_path)
+        if not threemf_files:
+            return 0
+
+        extracted_count = 0
+
+        for threemf_path in threemf_files:
+            thumbnail_data = await self._extract_thumbnail_from_3mf(threemf_path)
+            if not thumbnail_data:
+                continue
+
+            image_data, original_filename = thumbnail_data
+
+            # Save thumbnail using PreviewService
+            async with async_session_maker() as db:
+                preview_service = PreviewService(db)
+                await preview_service.save_preview(
+                    design_id=design_id,
+                    image_data=image_data,
+                    source=PreviewSource.EMBEDDED_3MF,
+                    kind=PreviewKind.THUMBNAIL,
+                    original_filename=original_filename or f"{threemf_path.stem}_thumbnail.png",
+                )
+                await db.commit()
+
+            extracted_count += 1
+            logger.debug(
+                "extracted_3mf_thumbnail",
+                design_id=design_id,
+                threemf_file=threemf_path.name,
+            )
+
+        if extracted_count > 0:
+            logger.info(
+                "3mf_thumbnails_extracted",
+                design_id=design_id,
+                count=extracted_count,
+            )
+
+        return extracted_count
+
+    def _find_3mf_files(self, directory: Path) -> list[Path]:
+        """Find all 3MF files in a directory (non-recursive).
+
+        Args:
+            directory: Directory to search.
+
+        Returns:
+            List of paths to 3MF files.
+        """
+        if not directory.exists():
+            return []
+
+        return list(directory.glob("*.3mf"))
+
+    async def _extract_thumbnail_from_3mf(
+        self, threemf_path: Path
+    ) -> tuple[bytes, str | None] | None:
+        """Extract embedded thumbnail from a 3MF file.
+
+        3MF files are ZIP archives that may contain thumbnail images
+        at standard locations.
+
+        Args:
+            threemf_path: Path to the 3MF file.
+
+        Returns:
+            Tuple of (image_data, original_filename) or None if no thumbnail.
+        """
+        def _do_extract() -> tuple[bytes, str | None] | None:
+            try:
+                with zipfile.ZipFile(threemf_path, "r") as zf:
+                    # Get list of files in archive
+                    namelist = zf.namelist()
+
+                    # Try each known thumbnail path
+                    for thumb_path in THREEMF_THUMBNAIL_PATHS:
+                        if thumb_path in namelist:
+                            data = zf.read(thumb_path)
+                            if len(data) > 0:
+                                return (data, thumb_path.split("/")[-1])
+
+                    # Also check for any image in Metadata folder
+                    for name in namelist:
+                        if name.startswith("Metadata/") and name.lower().endswith(
+                            (".png", ".jpg", ".jpeg")
+                        ):
+                            data = zf.read(name)
+                            if len(data) > 0:
+                                return (data, name.split("/")[-1])
+
+                return None
+
+            except (zipfile.BadZipFile, Exception) as e:
+                logger.warning(
+                    "3mf_thumbnail_extraction_failed",
+                    file=str(threemf_path),
+                    error=str(e),
+                )
+                return None
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _do_extract)

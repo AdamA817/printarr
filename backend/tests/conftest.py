@@ -2,14 +2,21 @@
 
 import asyncio
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-# Set config path BEFORE importing app modules
+# Create a temporary directory for test paths
+_test_tmp_dir = tempfile.mkdtemp(prefix="printarr_test_")
+_test_cache_path = Path(_test_tmp_dir) / "cache"
+_test_cache_path.mkdir(parents=True, exist_ok=True)
+
+# Set config paths BEFORE importing app modules
 os.environ["PRINTARR_CONFIG_PATH"] = str(Path(__file__).parent / "test_config")
+os.environ["PRINTARR_CACHE_PATH"] = str(_test_cache_path)
 
 from app.db import get_db
 from app.db.base import Base
@@ -89,3 +96,10 @@ def client(test_engine):
 
     # Clean up override
     app.dependency_overrides.clear()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Clean up temp directories after test session."""
+    import shutil
+    if Path(_test_tmp_dir).exists():
+        shutil.rmtree(_test_tmp_dir, ignore_errors=True)
