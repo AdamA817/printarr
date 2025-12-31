@@ -263,6 +263,7 @@ async def start_workers() -> None:
 
     from app.workers.download import DownloadWorker
     from app.workers.extract import ExtractArchiveWorker
+    from app.workers.image import ImageWorker
     from app.workers.library_import import ImportToLibraryWorker
 
     # Register download workers
@@ -270,6 +271,9 @@ async def start_workers() -> None:
     # for SQLite databases. For PostgreSQL, we could use max_concurrent_downloads.
     download_worker_count = 1  # Forced to 1 for SQLite compatibility
     manager.register_worker(DownloadWorker, count=download_worker_count)
+
+    # Register image workers (v0.7: preview image downloads)
+    manager.register_worker(ImageWorker, count=1)
 
     # Register extract workers (single worker is sufficient for CPU-bound extraction)
     manager.register_worker(ExtractArchiveWorker, count=1)

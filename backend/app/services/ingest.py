@@ -17,11 +17,13 @@ from app.db.models import (
     Design,
     DesignSource,
     DesignStatus,
+    JobType,
     MediaType,
     MetadataAuthority,
     MulticolorStatus,
     TelegramMessage,
 )
+from app.services.job_queue import JobQueueService
 from app.services.thangs import ThangsAdapter
 
 if TYPE_CHECKING:
@@ -370,6 +372,13 @@ class IngestService:
         # This is non-blocking - errors are logged but don't fail ingestion
         await self._process_external_urls(design, caption_text)
 
+        # Queue image download job if message has photos (v0.7)
+        await self._queue_image_download_if_needed(
+            design=design,
+            channel=channel,
+            message=message,
+        )
+
         return design
 
     async def _process_external_urls(self, design: Design, caption: str) -> None:
@@ -632,5 +641,64 @@ class IngestService:
             # Log but don't fail - discovery is best-effort
             logger.warning(
                 "channel_discovery_failed",
+                error=str(e),
+            )
+
+    async def _queue_image_download_if_needed(
+        self,
+        design: Design,
+        channel: Channel,
+        message: TelegramMessage,
+    ) -> None:
+        """Queue image download job if message has photo attachments (v0.7).
+
+        Per DEC-030, Telegram images are downloaded via background jobs to
+        keep ingestion fast.
+
+        Args:
+            design: The newly created Design record.
+            channel: The source channel.
+            message: The TelegramMessage record.
+        """
+        try:
+            # Check if message has any photo attachments
+            result = await self.db.execute(
+                select(Attachment.id)
+                .where(
+                    Attachment.message_id == message.id,
+                    Attachment.media_type == MediaType.PHOTO,
+                )
+                .limit(1)
+            )
+            has_photos = result.scalar_one_or_none() is not None
+
+            if not has_photos:
+                return
+
+            # Queue the image download job
+            queue = JobQueueService(self.db)
+            job = await queue.enqueue(
+                JobType.DOWNLOAD_TELEGRAM_IMAGES,
+                design_id=design.id,
+                priority=5,  # Lower priority than file downloads
+                payload={
+                    "design_id": design.id,
+                    "message_id": message.telegram_message_id,
+                    "channel_peer_id": channel.telegram_peer_id,
+                },
+            )
+
+            logger.info(
+                "image_download_job_queued",
+                design_id=design.id,
+                job_id=job.id,
+                message_id=message.telegram_message_id,
+            )
+
+        except Exception as e:
+            # Log but don't fail - image download is non-critical
+            logger.warning(
+                "image_download_queue_failed",
+                design_id=design.id,
                 error=str(e),
             )
