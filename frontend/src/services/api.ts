@@ -55,6 +55,12 @@ import type {
   AddDiscoveredChannelResponse,
   DiscoveredChannelStats,
 } from '@/types/discovered-channel'
+import type {
+  DashboardStatsResponse,
+  CalendarResponse,
+  QueueResponse as DashboardQueueResponse,
+  StorageResponse,
+} from '@/types/dashboard'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -248,4 +254,19 @@ export const discoveredChannelsApi = {
 
   dismiss: (id: string) =>
     api.delete(`/discovered-channels/${id}`),
+}
+
+// Dashboard API (v0.6)
+export const dashboardApi = {
+  stats: () =>
+    api.get<DashboardStatsResponse>('/stats/dashboard').then((r) => r.data),
+
+  calendar: (days = 14) =>
+    api.get<CalendarResponse>('/stats/dashboard/calendar', { params: { days } }).then((r) => r.data),
+
+  queue: () =>
+    api.get<DashboardQueueResponse>('/stats/dashboard/queue').then((r) => r.data),
+
+  storage: () =>
+    api.get<StorageResponse>('/stats/dashboard/storage').then((r) => r.data),
 }
