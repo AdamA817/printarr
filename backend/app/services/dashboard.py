@@ -66,20 +66,13 @@ class DashboardService:
         Returns:
             DashboardStatsResponse with all statistics.
         """
-        # Run all queries in parallel for performance
-        (
-            design_counts,
-            channel_counts,
-            discovered_count,
-            download_stats,
-            library_stats,
-        ) = await asyncio.gather(
-            self._get_design_status_counts(),
-            self._get_channel_counts(),
-            self._get_discovered_channels_count(),
-            self._get_download_stats(),
-            self._get_library_stats(),
-        )
+        # Run queries sequentially - SQLAlchemy async sessions are not
+        # safe for concurrent operations on the same session object
+        design_counts = await self._get_design_status_counts()
+        channel_counts = await self._get_channel_counts()
+        discovered_count = await self._get_discovered_channels_count()
+        download_stats = await self._get_download_stats()
+        library_stats = await self._get_library_stats()
 
         return DashboardStatsResponse(
             designs=design_counts,
@@ -133,7 +126,7 @@ class DashboardService:
                         CalendarDesign(
                             id=design.id,
                             title=design.canonical_title,
-                            thumbnail_url=design.thumbnail_url,
+                            thumbnail_url=None,  # TODO: Add thumbnail_url in v0.7
                         )
                     )
 
