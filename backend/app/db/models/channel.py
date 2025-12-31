@@ -68,9 +68,11 @@ class Channel(Base):
         "TelegramMessage", back_populates="channel", cascade="all, delete-orphan"
     )
     design_sources: Mapped[list[DesignSource]] = relationship(
-        "DesignSource", back_populates="channel"
+        "DesignSource", back_populates="channel", cascade="all, delete-orphan"
     )
-    jobs: Mapped[list[Job]] = relationship("Job", back_populates="channel")
+    jobs: Mapped[list[Job]] = relationship(
+        "Job", back_populates="channel", cascade="all, delete-orphan"
+    )
 
     # Indexes
     __table_args__ = (Index("ix_channels_enabled_sync", "is_enabled", "last_sync_at"),)
