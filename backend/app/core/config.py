@@ -57,6 +57,16 @@ class Settings(BaseSettings):
         description="Maximum concurrent download workers",
     )
 
+    # Sync settings (v0.6)
+    sync_poll_interval: int = Field(
+        default=300,
+        description="Interval in seconds for catch-up sync polling (default 5 minutes)",
+    )
+    sync_enabled: bool = Field(
+        default=True,
+        description="Enable live monitoring service",
+    )
+
     # Library settings
     library_template_global: str = Field(
         default="{designer}/{channel}/{title}",

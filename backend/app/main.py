@@ -26,6 +26,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan events."""
     import asyncio
+    from app.services.sync import SyncService
     from app.workers.manager import start_workers, stop_workers
 
     logger.info(
@@ -38,12 +39,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Initialize Telegram service if configured
     telegram_service = TelegramService.get_instance()
+    telegram_authenticated = False
     if settings.telegram_configured:
         try:
             result = await telegram_service.connect()
+            telegram_authenticated = result.get("authenticated", False)
             logger.info(
                 "telegram_startup_complete",
-                authenticated=result.get("authenticated", False),
+                authenticated=telegram_authenticated,
             )
         except Exception as e:
             # Log but don't fail startup - Telegram can be connected later
@@ -55,7 +58,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     worker_task = asyncio.create_task(start_workers())
     logger.info("background_workers_starting")
 
+    # Start sync service for live monitoring (v0.6)
+    sync_service = SyncService.get_instance()
+    sync_task = None
+    if settings.sync_enabled and telegram_authenticated:
+        sync_task = asyncio.create_task(sync_service.start())
+        logger.info("sync_service_starting")
+    elif not settings.sync_enabled:
+        logger.info("sync_service_disabled_by_config")
+    else:
+        logger.info("sync_service_skipped_not_authenticated")
+
     yield
+
+    # Stop sync service
+    if sync_task:
+        logger.info("stopping_sync_service")
+        await sync_service.stop()
+        sync_task.cancel()
+        try:
+            await sync_task
+        except asyncio.CancelledError:
+            pass
 
     # Stop background workers
     logger.info("stopping_background_workers")
