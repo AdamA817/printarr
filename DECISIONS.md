@@ -479,6 +479,39 @@ v0.5 needs decisions on download priority model, library folder structure, and a
 
 ---
 
+### DEC-019: SQLite Concurrency Limitations
+**Date**: 2025-12-31
+**Status**: Issue Identified - Needs Resolution
+
+**Context**
+During v0.5 E2E testing, critical database locking issues were discovered when using SQLite with async workers. When the download worker performs long-running file downloads from Telegram, it holds a database connection open, blocking:
+- Other workers from picking up jobs
+- API requests to update/cancel jobs
+- Maintenance tasks like requeuing stale jobs
+
+Despite WAL mode and busy_timeout settings, SQLite's write lock architecture fundamentally conflicts with long-running async operations.
+
+**Options to Consider**
+1. **Refactor to release connection during I/O** - Download files outside of database session, only use DB briefly for status updates
+2. **Switch to PostgreSQL** - Better concurrent write support, more complexity
+3. **Serialize workers** - Only run one worker at a time, simplest but slowest
+4. **Use connection pooling differently** - Separate pools for workers vs API
+
+**Immediate Mitigation Applied**
+- Reduced download workers to 1
+- Added commit after job claim to release lock before processing
+- Added WAL mode and 30-second busy_timeout
+
+**Resolution Needed**
+The download service needs refactoring to not hold database connections during file downloads. This is a priority bug for v0.5 stabilization.
+
+**Consequences**
+- Queue management (priority, cancel) may fail during active downloads
+- Other workers blocked until download completes
+- System appears unresponsive during large file downloads
+
+---
+
 ## Pending Decisions
 
 ### To Decide: Preview Rendering Engine
