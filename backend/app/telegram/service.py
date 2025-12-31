@@ -221,10 +221,11 @@ class TelegramService:
         if not self.is_connected() or self._client is None:
             return False
 
-        try:
-            return await self._client.is_user_authorized()
-        except Exception:
-            return False
+        async with self._lock:
+            try:
+                return await self._client.is_user_authorized()
+            except Exception:
+                return False
 
     async def get_current_user(self) -> User | None:
         """Get the currently authenticated user.
@@ -235,13 +236,14 @@ class TelegramService:
         if not self.is_connected() or self._client is None:
             return None
 
-        try:
-            if await self._client.is_user_authorized():
-                return await self._client.get_me()
-        except Exception as e:
-            logger.warning("telegram_get_user_error", error=str(e))
+        async with self._lock:
+            try:
+                if await self._client.is_user_authorized():
+                    return await self._client.get_me()
+            except Exception as e:
+                logger.warning("telegram_get_user_error", error=str(e))
 
-        return None
+            return None
 
     async def start_auth(self, phone: str) -> dict:
         """Start the authentication process by sending a verification code.
@@ -260,24 +262,25 @@ class TelegramService:
         self._ensure_connected()
         assert self._client is not None
 
-        try:
-            result = await self._client.send_code_request(phone)
-            self._phone_code_hash = result.phone_code_hash
-            self._pending_phone = phone
+        async with self._lock:
+            try:
+                result = await self._client.send_code_request(phone)
+                self._phone_code_hash = result.phone_code_hash
+                self._pending_phone = phone
 
-            logger.info("telegram_code_sent", phone=phone[:4] + "****")
-            return {
-                "status": "code_required",
-                "phone_code_hash": result.phone_code_hash,
-            }
+                logger.info("telegram_code_sent", phone=phone[:4] + "****")
+                return {
+                    "status": "code_required",
+                    "phone_code_hash": result.phone_code_hash,
+                }
 
-        except PhoneNumberInvalidError:
-            logger.warning("telegram_phone_invalid", phone=phone[:4] + "****")
-            raise TelegramPhoneInvalidError()
+            except PhoneNumberInvalidError:
+                logger.warning("telegram_phone_invalid", phone=phone[:4] + "****")
+                raise TelegramPhoneInvalidError()
 
-        except FloodWaitError as e:
-            logger.warning("telegram_rate_limited", retry_after=e.seconds)
-            raise TelegramRateLimitError(e.seconds)
+            except FloodWaitError as e:
+                logger.warning("telegram_rate_limited", retry_after=e.seconds)
+                raise TelegramRateLimitError(e.seconds)
 
     async def complete_auth(
         self,
@@ -308,62 +311,63 @@ class TelegramService:
         self._ensure_connected()
         assert self._client is not None
 
-        try:
-            await self._client.sign_in(
-                phone=phone,
-                code=code,
-                phone_code_hash=phone_code_hash,
-            )
+        async with self._lock:
+            try:
+                await self._client.sign_in(
+                    phone=phone,
+                    code=code,
+                    phone_code_hash=phone_code_hash,
+                )
 
-            # Clear pending auth state
-            self._phone_code_hash = None
-            self._pending_phone = None
+                # Clear pending auth state
+                self._phone_code_hash = None
+                self._pending_phone = None
 
-            user = await self._client.get_me()
-            logger.info(
-                "telegram_authenticated",
-                user_id=user.id if user else None,
-                username=user.username if user else None,
-            )
-            return {"status": "authenticated"}
+                user = await self._client.get_me()
+                logger.info(
+                    "telegram_authenticated",
+                    user_id=user.id if user else None,
+                    username=user.username if user else None,
+                )
+                return {"status": "authenticated"}
 
-        except SessionPasswordNeededError:
-            if password:
-                # Try to complete 2FA
-                try:
-                    await self._client.sign_in(password=password)
+            except SessionPasswordNeededError:
+                if password:
+                    # Try to complete 2FA
+                    try:
+                        await self._client.sign_in(password=password)
 
-                    # Clear pending auth state
-                    self._phone_code_hash = None
-                    self._pending_phone = None
+                        # Clear pending auth state
+                        self._phone_code_hash = None
+                        self._pending_phone = None
 
-                    user = await self._client.get_me()
-                    logger.info(
-                        "telegram_authenticated_2fa",
-                        user_id=user.id if user else None,
-                        username=user.username if user else None,
-                    )
-                    return {"status": "authenticated"}
-                except Exception as e:
-                    if "password" in str(e).lower():
-                        logger.warning("telegram_2fa_password_invalid")
-                        raise TelegramPasswordInvalidError()
-                    raise
-            else:
-                logger.info("telegram_2fa_required")
-                raise TelegramPasswordRequiredError()
+                        user = await self._client.get_me()
+                        logger.info(
+                            "telegram_authenticated_2fa",
+                            user_id=user.id if user else None,
+                            username=user.username if user else None,
+                        )
+                        return {"status": "authenticated"}
+                    except Exception as e:
+                        if "password" in str(e).lower():
+                            logger.warning("telegram_2fa_password_invalid")
+                            raise TelegramPasswordInvalidError()
+                        raise
+                else:
+                    logger.info("telegram_2fa_required")
+                    raise TelegramPasswordRequiredError()
 
-        except PhoneCodeInvalidError:
-            logger.warning("telegram_code_invalid")
-            raise TelegramCodeInvalidError()
+            except PhoneCodeInvalidError:
+                logger.warning("telegram_code_invalid")
+                raise TelegramCodeInvalidError()
 
-        except PhoneCodeExpiredError:
-            logger.warning("telegram_code_expired")
-            raise TelegramCodeExpiredError()
+            except PhoneCodeExpiredError:
+                logger.warning("telegram_code_expired")
+                raise TelegramCodeExpiredError()
 
-        except FloodWaitError as e:
-            logger.warning("telegram_rate_limited", retry_after=e.seconds)
-            raise TelegramRateLimitError(e.seconds)
+            except FloodWaitError as e:
+                logger.warning("telegram_rate_limited", retry_after=e.seconds)
+                raise TelegramRateLimitError(e.seconds)
 
     async def logout(self) -> dict:
         """Log out and clear the session.
@@ -371,18 +375,19 @@ class TelegramService:
         Returns:
             Dict with 'status' key.
         """
-        if self._client is not None and self.is_connected():
-            try:
-                await self._client.log_out()
-                logger.info("telegram_logged_out")
-            except Exception as e:
-                logger.warning("telegram_logout_error", error=str(e))
+        async with self._lock:
+            if self._client is not None and self.is_connected():
+                try:
+                    await self._client.log_out()
+                    logger.info("telegram_logged_out")
+                except Exception as e:
+                    logger.warning("telegram_logout_error", error=str(e))
 
-        # Clear state
-        self._phone_code_hash = None
-        self._pending_phone = None
+            # Clear state
+            self._phone_code_hash = None
+            self._pending_phone = None
 
-        return {"status": "logged_out"}
+            return {"status": "logged_out"}
 
     @staticmethod
     def _parse_channel_link(link: str) -> tuple[str, str]:
