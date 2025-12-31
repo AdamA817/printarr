@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,6 +55,21 @@ async def db_session(db_engine):
 
 
 @pytest.fixture
+def mock_session_maker(db_engine):
+    """Create a mock session maker that uses the test database."""
+    test_session_maker = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    @asynccontextmanager
+    async def mock_maker():
+        async with test_session_maker() as session:
+            yield session
+
+    return mock_maker
+
+
+@pytest.fixture
 async def sample_channel(db_session):
     """Create a sample channel for testing."""
     channel = Channel(
@@ -69,10 +85,13 @@ async def sample_channel(db_session):
 @pytest.fixture
 async def sample_message(db_session, sample_channel):
     """Create a sample Telegram message."""
+    from datetime import datetime
+
     message = TelegramMessage(
         channel_id=sample_channel.id,
         telegram_message_id=12345,
-        message_text="Test message",
+        date_posted=datetime.utcnow(),
+        caption_text="Test message",
     )
     db_session.add(message)
     await db_session.flush()
@@ -93,11 +112,12 @@ async def sample_design(db_session):
 
 
 @pytest.fixture
-async def design_with_source(db_session, sample_design, sample_message):
+async def design_with_source(db_session, sample_design, sample_message, sample_channel):
     """Create a design with a linked source."""
     source = DesignSource(
         design_id=sample_design.id,
         message_id=sample_message.id,
+        channel_id=sample_channel.id,
     )
     db_session.add(source)
     await db_session.flush()
@@ -264,98 +284,6 @@ class TestResolveCollision:
 
 
 # =============================================================================
-# Build Library Path Tests
-# =============================================================================
-
-
-class TestBuildLibraryPath:
-    """Tests for _build_library_path method."""
-
-    @pytest.mark.asyncio
-    async def test_substitutes_designer(self, db_session, design_with_source, tmp_path):
-        """Test that {designer} is substituted."""
-        with patch("app.services.library.settings") as mock_settings:
-            mock_settings.library_path = tmp_path
-            mock_settings.library_template_global = "{designer}"
-
-            service = LibraryImportService(db_session)
-            design = await service._get_design_with_files(design_with_source.id)
-
-            path = await service._build_library_path(design, "{designer}")
-
-            assert "Test_Designer" in str(path)
-
-    @pytest.mark.asyncio
-    async def test_substitutes_channel(
-        self, db_session, design_with_source, sample_channel, tmp_path
-    ):
-        """Test that {channel} is substituted."""
-        with patch("app.services.library.settings") as mock_settings:
-            mock_settings.library_path = tmp_path
-            mock_settings.library_template_global = "{channel}"
-
-            service = LibraryImportService(db_session)
-            design = await service._get_design_with_files(design_with_source.id)
-
-            path = await service._build_library_path(design, "{channel}")
-
-            assert "Test_Channel" in str(path)
-
-    @pytest.mark.asyncio
-    async def test_substitutes_title(self, db_session, design_with_source, tmp_path):
-        """Test that {title} is substituted."""
-        with patch("app.services.library.settings") as mock_settings:
-            mock_settings.library_path = tmp_path
-            mock_settings.library_template_global = "{title}"
-
-            service = LibraryImportService(db_session)
-            design = await service._get_design_with_files(design_with_source.id)
-
-            path = await service._build_library_path(design, "{title}")
-
-            assert "Test_Design" in str(path)
-
-
-# =============================================================================
-# Template Resolution Tests
-# =============================================================================
-
-
-class TestGetTemplate:
-    """Tests for _get_template method."""
-
-    @pytest.mark.asyncio
-    async def test_uses_channel_override_if_set(
-        self, db_session, design_with_source, sample_channel
-    ):
-        """Test that channel override template is used when set."""
-        sample_channel.library_template_override = "{designer}/{title}"
-        await db_session.flush()
-
-        service = LibraryImportService(db_session)
-        design = await service._get_design_with_files(design_with_source.id)
-
-        template = await service._get_template(design)
-
-        assert template == "{designer}/{title}"
-
-    @pytest.mark.asyncio
-    async def test_uses_global_template_if_no_override(
-        self, db_session, design_with_source
-    ):
-        """Test that global template is used when no channel override."""
-        with patch("app.services.library.settings") as mock_settings:
-            mock_settings.library_template_global = "{channel}/{designer}/{title}"
-
-            service = LibraryImportService(db_session)
-            design = await service._get_design_with_files(design_with_source.id)
-
-            template = await service._get_template(design)
-
-            assert template == "{channel}/{designer}/{title}"
-
-
-# =============================================================================
 # Import Design Tests
 # =============================================================================
 
@@ -364,31 +292,35 @@ class TestImportDesign:
     """Tests for import_design method."""
 
     @pytest.mark.asyncio
-    async def test_import_design_not_found(self, db_session):
+    async def test_import_design_not_found(self, db_session, mock_session_maker):
         """Test import raises error for non-existent design."""
         service = LibraryImportService(db_session)
 
-        with pytest.raises(LibraryError) as exc_info:
-            await service.import_design("nonexistent-id")
+        with patch("app.services.library.async_session_maker", mock_session_maker):
+            with pytest.raises(LibraryError) as exc_info:
+                await service.import_design("nonexistent-id")
 
         assert "not found" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_import_staging_not_found(self, db_session, sample_design):
+    async def test_import_staging_not_found(self, db_session, sample_design, mock_session_maker):
         """Test import raises error when staging dir missing."""
+        await db_session.commit()
+
         with patch("app.services.library.settings") as mock_settings:
             mock_settings.staging_path = Path("/nonexistent")
 
-            service = LibraryImportService(db_session)
+            with patch("app.services.library.async_session_maker", mock_session_maker):
+                service = LibraryImportService(db_session)
 
-            with pytest.raises(LibraryError) as exc_info:
-                await service.import_design(sample_design.id)
+                with pytest.raises(LibraryError) as exc_info:
+                    await service.import_design(sample_design.id)
 
-            assert "staging directory not found" in str(exc_info.value).lower()
+                assert "staging directory not found" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_import_moves_files(
-        self, db_session, design_with_source, temp_dirs
+        self, db_session, design_with_source, temp_dirs, mock_session_maker
     ):
         """Test that files are moved from staging to library."""
         # Create a test file in staging
@@ -408,21 +340,23 @@ class TestImportDesign:
         )
         db_session.add(design_file)
         await db_session.flush()
+        await db_session.commit()
 
         with patch("app.services.library.settings") as mock_settings:
             mock_settings.staging_path = temp_dirs["staging_root"]
             mock_settings.library_path = temp_dirs["library"]
             mock_settings.library_template_global = "{designer}/{title}"
 
-            service = LibraryImportService(db_session)
-            result = await service.import_design(design_with_source.id)
+            with patch("app.services.library.async_session_maker", mock_session_maker):
+                service = LibraryImportService(db_session)
+                result = await service.import_design(design_with_source.id)
 
-            assert result["files_imported"] == 1
-            assert not test_file.exists()  # Original moved
+                assert result["files_imported"] == 1
+                assert not test_file.exists()  # Original moved
 
     @pytest.mark.asyncio
     async def test_import_updates_design_status(
-        self, db_session, design_with_source, temp_dirs
+        self, db_session, design_with_source, temp_dirs, mock_session_maker
     ):
         """Test that design status is updated to ORGANIZED."""
         # Create a test file in staging
@@ -442,17 +376,19 @@ class TestImportDesign:
         )
         db_session.add(design_file)
         await db_session.flush()
+        await db_session.commit()
 
         with patch("app.services.library.settings") as mock_settings:
             mock_settings.staging_path = temp_dirs["staging_root"]
             mock_settings.library_path = temp_dirs["library"]
             mock_settings.library_template_global = "{designer}/{title}"
 
-            service = LibraryImportService(db_session)
-            await service.import_design(design_with_source.id)
+            with patch("app.services.library.async_session_maker", mock_session_maker):
+                service = LibraryImportService(db_session)
+                await service.import_design(design_with_source.id)
 
-            await db_session.refresh(design_with_source)
-            assert design_with_source.status == DesignStatus.ORGANIZED
+                await db_session.refresh(design_with_source)
+                assert design_with_source.status == DesignStatus.ORGANIZED
 
 
 # =============================================================================

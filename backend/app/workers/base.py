@@ -5,10 +5,8 @@ from __future__ import annotations
 import asyncio
 import signal
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.db.models import Job, JobStatus, JobType
@@ -151,7 +149,7 @@ class BaseWorker(ABC):
                         self._shutdown_event.wait(),
                         timeout=self.poll_interval,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
                 return
 

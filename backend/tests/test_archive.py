@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tarfile
 import zipfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -54,6 +55,21 @@ async def db_session(db_engine):
     )
     async with async_session() as session:
         yield session
+
+
+@pytest.fixture
+def mock_session_maker(db_engine):
+    """Create a mock session maker that uses the test database."""
+    test_session_maker = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    @asynccontextmanager
+    async def mock_maker():
+        async with test_session_maker() as session:
+            yield session
+
+    return mock_maker
 
 
 @pytest.fixture
@@ -379,31 +395,27 @@ class TestComputeFileHash:
 # =============================================================================
 
 
-class TestCreateDesignFile:
-    """Tests for _create_design_file method."""
+class TestPrepareFileInfo:
+    """Tests for _prepare_file_info method."""
 
     @pytest.mark.asyncio
-    async def test_creates_design_file_record(
+    async def test_prepares_file_info(
         self, db_session, sample_design, temp_staging
     ):
-        """Test creating a DesignFile record for an extracted file."""
+        """Test preparing file info for an extracted file."""
         # Create a test file
         test_file = temp_staging / "model.stl"
         test_file.write_bytes(b"STL content")
 
         extractor = ArchiveExtractor(db_session)
-        design_file = await extractor._create_design_file(
-            sample_design.id, test_file, temp_staging
-        )
+        file_info = await extractor._prepare_file_info(test_file, temp_staging)
 
-        assert design_file.design_id == sample_design.id
-        assert design_file.filename == "model.stl"
-        assert design_file.ext == ".stl"
-        assert design_file.file_kind == FileKind.MODEL
-        assert design_file.model_kind == ModelKind.STL
-        assert design_file.is_from_archive is True
-        assert design_file.size_bytes == len(b"STL content")
-        assert design_file.sha256 is not None
+        assert file_info.filename == "model.stl"
+        assert file_info.ext == ".stl"
+        assert file_info.file_kind == FileKind.MODEL
+        assert file_info.model_kind == ModelKind.STL
+        assert file_info.size_bytes == len(b"STL content")
+        assert file_info.sha256 is not None
 
     @pytest.mark.asyncio
     async def test_creates_relative_path(
@@ -417,11 +429,9 @@ class TestCreateDesignFile:
         test_file.write_bytes(b"STL content")
 
         extractor = ArchiveExtractor(db_session)
-        design_file = await extractor._create_design_file(
-            sample_design.id, test_file, temp_staging
-        )
+        file_info = await extractor._prepare_file_info(test_file, temp_staging)
 
-        assert design_file.relative_path == "models/part.stl"
+        assert file_info.relative_path == "models/part.stl"
 
 
 # =============================================================================
@@ -433,30 +443,32 @@ class TestErrorHandling:
     """Tests for error handling."""
 
     @pytest.mark.asyncio
-    async def test_extract_design_not_found(self, db_session):
+    async def test_extract_design_not_found(self, db_session, mock_session_maker):
         """Test extraction raises error for non-existent design."""
         extractor = ArchiveExtractor(db_session)
 
-        with pytest.raises(ArchiveError) as exc_info:
-            await extractor.extract_design_archives("nonexistent-id")
+        with patch("app.services.archive.async_session_maker", mock_session_maker):
+            with pytest.raises(ArchiveError) as exc_info:
+                await extractor.extract_design_archives("nonexistent-id")
 
         assert "not found" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
     async def test_extract_staging_not_found(
-        self, db_session, sample_design
+        self, db_session, sample_design, mock_session_maker
     ):
         """Test extraction raises error when staging dir missing."""
         extractor = ArchiveExtractor(db_session)
 
-        # Mock settings to use a non-existent staging path
-        with patch("app.services.archive.settings") as mock_settings:
-            mock_settings.staging_path = Path("/nonexistent")
+        # Mock session maker and settings
+        with patch("app.services.archive.async_session_maker", mock_session_maker):
+            with patch("app.services.archive.settings") as mock_settings:
+                mock_settings.staging_path = Path("/nonexistent")
 
-            with pytest.raises(ArchiveError) as exc_info:
-                await extractor.extract_design_archives(sample_design.id)
+                with pytest.raises(ArchiveError) as exc_info:
+                    await extractor.extract_design_archives(sample_design.id)
 
-            assert "staging directory not found" in str(exc_info.value).lower()
+                assert "staging directory not found" in str(exc_info.value).lower()
 
 
 # =============================================================================

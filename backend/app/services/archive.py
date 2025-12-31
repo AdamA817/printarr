@@ -12,9 +12,10 @@ import re
 import shutil
 import tarfile
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,7 +39,8 @@ ARCHIVE_EXTENSIONS = {".zip", ".rar", ".7z", ".tar.gz", ".tgz", ".tar"}
 
 # Multi-part RAR pattern: .part1.rar, .part01.rar, .part001.rar, etc.
 MULTIPART_RAR_PATTERN = re.compile(r"\.part0*1\.rar$", re.IGNORECASE)
-MULTIPART_RAR_SECONDARY = re.compile(r"\.part0*[2-9]\d*\.rar$", re.IGNORECASE)
+# Secondary parts: .part2.rar, .part02.rar, .part10.rar, .part100.rar, etc.
+MULTIPART_RAR_SECONDARY = re.compile(r"\.part(0*[2-9]\d*|[1-9]\d+)\.rar$", re.IGNORECASE)
 
 # Model file extensions for classification
 MODEL_EXTENSIONS = {

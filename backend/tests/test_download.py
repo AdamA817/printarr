@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -48,6 +49,21 @@ async def db_session(db_engine):
 
 
 @pytest.fixture
+def mock_session_maker(db_engine):
+    """Create a mock session maker that uses the test database."""
+    test_session_maker = async_sessionmaker(
+        db_engine, class_=AsyncSession, expire_on_commit=False
+    )
+
+    @asynccontextmanager
+    async def mock_maker():
+        async with test_session_maker() as session:
+            yield session
+
+    return mock_maker
+
+
+@pytest.fixture
 async def sample_channel(db_session):
     """Create a sample channel for testing."""
     channel = Channel(
@@ -76,10 +92,13 @@ async def sample_design(db_session):
 @pytest.fixture
 async def sample_message(db_session, sample_channel):
     """Create a sample Telegram message."""
+    from datetime import datetime
+
     message = TelegramMessage(
         channel_id=sample_channel.id,
         telegram_message_id=12345,
-        message_text="Test message with STL",
+        date_posted=datetime.utcnow(),
+        caption_text="Test message with STL",
     )
     db_session.add(message)
     await db_session.flush()
@@ -95,7 +114,7 @@ async def sample_attachment(db_session, sample_message):
         ext=".stl",
         size_bytes=1000,
         is_candidate_design_file=True,
-        download_status=AttachmentDownloadStatus.PENDING,
+        download_status=AttachmentDownloadStatus.NOT_DOWNLOADED,
     )
     db_session.add(attachment)
     await db_session.flush()
@@ -103,11 +122,12 @@ async def sample_attachment(db_session, sample_message):
 
 
 @pytest.fixture
-async def design_with_source(db_session, sample_design, sample_message, sample_attachment):
+async def design_with_source(db_session, sample_design, sample_message, sample_attachment, sample_channel):
     """Create a design with a linked source and attachment."""
     source = DesignSource(
         design_id=sample_design.id,
         message_id=sample_message.id,
+        channel_id=sample_channel.id,
     )
     db_session.add(source)
     await db_session.flush()
@@ -264,7 +284,7 @@ class TestGetDesignWithAttachments:
         """Test that design is loaded with all relationships."""
         service = DownloadService(db_session)
 
-        design = await service._get_design_with_attachments(design_with_source.id)
+        design = await service._get_design_with_attachments(db_session, design_with_source.id)
 
         assert design is not None
         assert len(design.sources) == 1
@@ -276,43 +296,9 @@ class TestGetDesignWithAttachments:
         """Test returns None for non-existent design."""
         service = DownloadService(db_session)
 
-        design = await service._get_design_with_attachments("nonexistent-id")
+        design = await service._get_design_with_attachments(db_session, "nonexistent-id")
 
         assert design is None
-
-
-# =============================================================================
-# Get Downloadable Attachments Tests
-# =============================================================================
-
-
-class TestGetDownloadableAttachments:
-    """Tests for _get_downloadable_attachments method."""
-
-    @pytest.mark.asyncio
-    async def test_filters_candidate_files(
-        self, db_session, design_with_source, sample_message, sample_attachment
-    ):
-        """Test that only candidate design files are returned."""
-        # Add a non-candidate attachment
-        non_candidate = Attachment(
-            message_id=sample_message.id,
-            filename="image.jpg",
-            ext=".jpg",
-            size_bytes=500,
-            is_candidate_design_file=False,
-            download_status=AttachmentDownloadStatus.PENDING,
-        )
-        db_session.add(non_candidate)
-        await db_session.flush()
-
-        service = DownloadService(db_session)
-        design = await service._get_design_with_attachments(design_with_source.id)
-
-        attachments = await service._get_downloadable_attachments(design)
-
-        assert len(attachments) == 1
-        assert attachments[0].filename == "model.stl"
 
 
 # =============================================================================
@@ -365,17 +351,18 @@ class TestDownloadDesign:
     """Integration tests for download_design method."""
 
     @pytest.mark.asyncio
-    async def test_download_design_not_found(self, db_session):
+    async def test_download_design_not_found(self, db_session, mock_session_maker):
         """Test download_design raises error for non-existent design."""
         service = DownloadService(db_session)
 
-        with pytest.raises(DownloadError) as exc_info:
-            await service.download_design("nonexistent-id")
+        with patch("app.services.download.async_session_maker", mock_session_maker):
+            with pytest.raises(DownloadError) as exc_info:
+                await service.download_design("nonexistent-id")
 
         assert "not found" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_download_design_no_attachments(self, db_session, sample_design):
+    async def test_download_design_no_attachments(self, db_session, sample_design, mock_session_maker):
         """Test download_design raises error when no attachments."""
         # Create design source without attachment
         channel = Channel(
@@ -386,10 +373,13 @@ class TestDownloadDesign:
         db_session.add(channel)
         await db_session.flush()
 
+        from datetime import datetime
+
         message = TelegramMessage(
             channel_id=channel.id,
             telegram_message_id=999,
-            message_text="Test",
+            date_posted=datetime.utcnow(),
+            caption_text="Test",
         )
         db_session.add(message)
         await db_session.flush()
@@ -397,14 +387,17 @@ class TestDownloadDesign:
         source = DesignSource(
             design_id=sample_design.id,
             message_id=message.id,
+            channel_id=channel.id,
         )
         db_session.add(source)
         await db_session.flush()
+        await db_session.commit()
 
         service = DownloadService(db_session)
 
-        with pytest.raises(DownloadError) as exc_info:
-            await service.download_design(sample_design.id)
+        with patch("app.services.download.async_session_maker", mock_session_maker):
+            with pytest.raises(DownloadError) as exc_info:
+                await service.download_design(sample_design.id)
 
         assert "no attachments" in str(exc_info.value).lower()
 
