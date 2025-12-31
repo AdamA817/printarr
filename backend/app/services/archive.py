@@ -29,6 +29,7 @@ from app.db.models import (
     JobType,
     ModelKind,
 )
+from app.db.models.enums import PreviewKind, PreviewSource
 from app.db.session import async_session_maker
 from app.services.job_queue import JobQueueService
 
@@ -53,6 +54,29 @@ MODEL_EXTENSIONS = {
 
 # Image extensions
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+# Preview extraction patterns (v0.7 - per DEC-031)
+# Priority 1: Explicit preview files (highest priority)
+EXPLICIT_PREVIEW_PATTERNS = [
+    re.compile(r"^preview\.(jpg|jpeg|png|gif|webp)$", re.IGNORECASE),
+    re.compile(r"^thumbnail\.(jpg|jpeg|png|gif|webp)$", re.IGNORECASE),
+    re.compile(r"^cover\.(jpg|jpeg|png|gif|webp)$", re.IGNORECASE),
+    re.compile(r"^render\.(jpg|jpeg|png|gif|webp)$", re.IGNORECASE),
+]
+# Priority 2: Images in preview folders
+FOLDER_PREVIEW_PATTERNS = [
+    re.compile(r"^images?/[^/]+\.(jpg|jpeg|png|gif|webp)$", re.IGNORECASE),
+    re.compile(r"^previews?/[^/]+\.(jpg|jpeg|png|gif|webp)$", re.IGNORECASE),
+    re.compile(r"^renders?/[^/]+\.(jpg|jpeg|png|gif|webp)$", re.IGNORECASE),
+    re.compile(r"^photos?/[^/]+\.(jpg|jpeg|png|gif|webp)$", re.IGNORECASE),
+]
+# Priority 3: Root-level images (lowest priority)
+ROOT_IMAGE_PATTERN = re.compile(r"^[^/]+\.(jpg|jpeg|png|gif|webp)$", re.IGNORECASE)
+
+# Preview extraction limits
+MAX_PREVIEW_IMAGES = 10
+MIN_PREVIEW_SIZE_BYTES = 10 * 1024  # 10KB - skip tiny icons
+MAX_PREVIEW_SIZE_BYTES = 10 * 1024 * 1024  # 10MB - skip huge renders
 
 
 class ArchiveError(Exception):
@@ -91,6 +115,17 @@ class ExtractedFileInfo:
     sha256: str
     file_kind: FileKind
     model_kind: ModelKind
+
+
+@dataclass
+class PreviewCandidate:
+    """Info about a potential preview image found in an archive."""
+
+    file_path: Path
+    relative_path: str
+    filename: str
+    size_bytes: int
+    priority: int  # 1=explicit, 2=folder, 3=root
 
 
 class ArchiveExtractor:
@@ -214,6 +249,12 @@ class ArchiveExtractor:
 
             await db.commit()
 
+        # PHASE 3.5: Extract preview images (v0.7 - per DEC-031)
+        previews_saved = await self._extract_preview_images(
+            design_id=design_id,
+            extracted_files=all_extracted_files,
+        )
+
         # PHASE 4: Update design status (brief session)
         async with async_session_maker() as db:
             design = await db.get(Design, design_id)
@@ -227,6 +268,7 @@ class ArchiveExtractor:
             archives_extracted=total_archives,
             files_created=len(all_extracted_files),
             nested_archives=nested_count,
+            previews_extracted=previews_saved,
         )
 
         return {
@@ -234,6 +276,7 @@ class ArchiveExtractor:
             "archives_extracted": total_archives,
             "files_created": len(all_extracted_files),
             "nested_archives": nested_count,
+            "previews_extracted": previews_saved,
         }
 
     async def queue_import(self, design_id: str) -> str:
@@ -499,3 +542,169 @@ class ArchiveExtractor:
 
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _delete)
+
+    async def _extract_preview_images(
+        self,
+        design_id: str,
+        extracted_files: list[ExtractedFileInfo],
+    ) -> int:
+        """Extract preview images from extracted files.
+
+        Per DEC-031, scans for preview images using priority patterns:
+        1. Explicit files: preview.*, thumbnail.*, cover.*, render.*
+        2. Preview folders: images/, previews/, renders/, photos/
+        3. Root-level images
+
+        Args:
+            design_id: The design ID.
+            extracted_files: List of extracted file info.
+
+        Returns:
+            Number of preview images saved.
+        """
+        # Find preview candidates
+        candidates = self._find_preview_candidates(extracted_files)
+
+        if not candidates:
+            return 0
+
+        # Sort by priority (lower = higher priority)
+        candidates.sort(key=lambda c: (c.priority, c.filename))
+
+        # Take top N candidates
+        selected = candidates[:MAX_PREVIEW_IMAGES]
+
+        # Save previews using PreviewService
+        from app.services.preview import PreviewService
+
+        saved_count = 0
+        async with async_session_maker() as db:
+            preview_service = PreviewService(db)
+
+            for candidate in selected:
+                try:
+                    # Read image data
+                    image_data = await self._read_file(candidate.file_path)
+
+                    # Save as preview
+                    await preview_service.save_preview(
+                        design_id=design_id,
+                        source=PreviewSource.ARCHIVE,
+                        image_data=image_data,
+                        filename=candidate.filename,
+                        kind=PreviewKind.THUMBNAIL,
+                    )
+                    saved_count += 1
+
+                    logger.debug(
+                        "preview_extracted",
+                        design_id=design_id,
+                        filename=candidate.filename,
+                        priority=candidate.priority,
+                    )
+
+                except Exception as e:
+                    logger.warning(
+                        "preview_extraction_failed",
+                        design_id=design_id,
+                        filename=candidate.filename,
+                        error=str(e),
+                    )
+                    continue
+
+            # Auto-select primary if we saved any
+            if saved_count > 0:
+                await preview_service.auto_select_primary(design_id)
+
+            await db.commit()
+
+        logger.info(
+            "previews_extracted",
+            design_id=design_id,
+            candidates_found=len(candidates),
+            saved=saved_count,
+        )
+
+        return saved_count
+
+    def _find_preview_candidates(
+        self, extracted_files: list[ExtractedFileInfo]
+    ) -> list[PreviewCandidate]:
+        """Find preview image candidates from extracted files.
+
+        Returns candidates sorted by priority:
+        1. Explicit preview files (preview.*, thumbnail.*, etc.)
+        2. Images in preview folders (images/, previews/, etc.)
+        3. Root-level images
+
+        Args:
+            extracted_files: List of extracted file info.
+
+        Returns:
+            List of preview candidates with priority assigned.
+        """
+        candidates = []
+
+        for file_info in extracted_files:
+            # Skip non-image files
+            if file_info.ext.lower() not in IMAGE_EXTENSIONS:
+                continue
+
+            # Skip tiny files (likely icons)
+            if file_info.size_bytes < MIN_PREVIEW_SIZE_BYTES:
+                continue
+
+            # Skip huge files (likely source renders)
+            if file_info.size_bytes > MAX_PREVIEW_SIZE_BYTES:
+                continue
+
+            # Determine priority based on path pattern
+            relative = file_info.relative_path
+            priority = self._get_preview_priority(relative)
+
+            if priority > 0:  # 0 = not a preview candidate
+                candidates.append(
+                    PreviewCandidate(
+                        file_path=file_info.file_path,
+                        relative_path=relative,
+                        filename=file_info.filename,
+                        size_bytes=file_info.size_bytes,
+                        priority=priority,
+                    )
+                )
+
+        return candidates
+
+    def _get_preview_priority(self, relative_path: str) -> int:
+        """Get preview priority for a file path.
+
+        Returns:
+            Priority level (1=highest, 3=lowest, 0=not a preview)
+        """
+        # Normalize path separators
+        normalized = relative_path.replace("\\", "/")
+
+        # Priority 1: Explicit preview files
+        for pattern in EXPLICIT_PREVIEW_PATTERNS:
+            if pattern.match(normalized):
+                return 1
+
+        # Priority 2: Images in preview folders
+        for pattern in FOLDER_PREVIEW_PATTERNS:
+            if pattern.match(normalized):
+                return 2
+
+        # Priority 3: Root-level images
+        if ROOT_IMAGE_PATTERN.match(normalized):
+            return 3
+
+        return 0  # Not a preview candidate
+
+    async def _read_file(self, file_path: Path) -> bytes:
+        """Read file contents asynchronously."""
+        def _read() -> bytes:
+            with open(file_path, "rb") as f:
+                return f.read()
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _read)
