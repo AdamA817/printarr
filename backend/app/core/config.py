@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "Printarr"
-    version: str = "0.5.0"
+    version: str = "0.6.0"
     debug: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
@@ -60,11 +60,19 @@ class Settings(BaseSettings):
     # Sync settings (v0.6)
     sync_poll_interval: int = Field(
         default=300,
-        description="Interval in seconds for catch-up sync polling (default 5 minutes)",
+        ge=60,
+        le=3600,
+        description="Interval in seconds for catch-up sync polling (60-3600, default 5 minutes)",
     )
     sync_enabled: bool = Field(
         default=True,
         description="Enable live monitoring service",
+    )
+    sync_batch_size: int = Field(
+        default=100,
+        ge=10,
+        le=500,
+        description="Maximum messages to process per sync batch (10-500)",
     )
 
     # Library settings

@@ -75,7 +75,22 @@ Recommended mounts (host paths are examples):
 - `DEFAULT_BACKFILL_MODE` (ALL_HISTORY | LAST_N_MESSAGES | LAST_N_DAYS)
 - `DEFAULT_BACKFILL_VALUE` (int)
 
-### 3.6 Library Templates
+### 3.6 Live Monitoring (v0.6+)
+
+These settings control the live monitoring service that continuously ingests new posts from monitored channels.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PRINTARR_SYNC_ENABLED` | `true` | Enable/disable live monitoring service |
+| `PRINTARR_SYNC_POLL_INTERVAL` | `300` | Catch-up sync interval in seconds (60-3600) |
+| `PRINTARR_SYNC_BATCH_SIZE` | `100` | Maximum messages to process per sync batch (10-500) |
+
+**Notes:**
+- Poll interval minimum is 60 seconds to avoid Telegram rate limits
+- Batch size affects memory usage during sync operations
+- Disabling sync does not affect manual backfill operations
+
+### 3.7 Library Templates
 
 The library template controls how downloaded designs are organized in your library folder.
 
@@ -227,7 +242,59 @@ These are required for the archive extraction service to handle compressed desig
 
 ---
 
-## 10. Unraid Template Notes
+## 10. Live Monitoring Behavior (v0.6+)
+
+The live monitoring service continuously ingests new posts from monitored channels using two complementary mechanisms:
+
+### Real-time Updates
+- Uses Telegram's MTProto connection to receive new messages instantly
+- No polling required for new posts while connected
+- Updates appear in Printarr within seconds of being posted
+
+### Catch-up Sync
+- Runs periodically (default: every 5 minutes) to catch missed messages
+- Handles messages received during disconnection or downtime
+- Processes messages in configurable batches to manage memory
+- Only fetches messages newer than the last processed message per channel
+
+### Service States
+
+| State | Description |
+|-------|-------------|
+| Running | Service is connected and monitoring channels |
+| Syncing | Catch-up sync is in progress |
+| Stopped | Service is disabled via `PRINTARR_SYNC_ENABLED=false` |
+| Disconnected | Telegram session not authenticated |
+
+### Health Check
+
+The `/api/health` endpoint includes monitoring service status:
+```json
+{
+  "status": "healthy",
+  "services": {
+    "sync": {
+      "enabled": true,
+      "connected": true,
+      "last_sync": "2025-01-01T12:00:00Z",
+      "channels_monitored": 5
+    }
+  }
+}
+```
+
+### Troubleshooting
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| New posts not appearing | Telegram disconnected | Check health endpoint, re-authenticate if needed |
+| High memory usage during sync | Large batch size | Reduce `PRINTARR_SYNC_BATCH_SIZE` |
+| Rate limiting errors | Poll interval too low | Increase `PRINTARR_SYNC_POLL_INTERVAL` (min 60s) |
+| Sync service not starting | Disabled in config | Set `PRINTARR_SYNC_ENABLED=true` |
+
+---
+
+## 11. Unraid Template Notes
 
 - Provide Unraid template fields for:
   - Library path

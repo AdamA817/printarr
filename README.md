@@ -25,8 +25,15 @@ Inspired by the Radarr/Sonarr UX paradigm, adapted for 3D printing workflows.
 - Activity page with real-time queue and history views
 - Priority-based job queue with retry support
 
+### Live Monitoring (v0.6)
+- Continuous ingestion of new posts from monitored channels
+- Real-time updates via Telegram MTProto connection
+- Catch-up sync for missed messages during downtime
+- Per-channel download modes (manual, auto-new, auto-all)
+- Configurable polling interval and batch size
+- Channel discovery from forwarded messages and mentions
+
 ### Coming Soon
-- Live channel monitoring with auto-download (v0.6)
 - Preview image generation (v0.7)
 - Deduplication (v0.8)
 
@@ -105,6 +112,9 @@ cp scripts/deploy.conf.example scripts/deploy.conf
 | `PRINTARR_MAX_CONCURRENT_DOWNLOADS` | No | 3 | Maximum simultaneous Telegram downloads (1-10) |
 | `PRINTARR_LIBRARY_TEMPLATE` | No | `{designer}/{channel}/{title}` | Library folder structure template |
 | `PRINTARR_FLARESOLVERR_URL` | No | - | FlareSolverr URL for Thangs integration |
+| `PRINTARR_SYNC_ENABLED` | No | true | Enable live monitoring service |
+| `PRINTARR_SYNC_POLL_INTERVAL` | No | 300 | Catch-up sync interval in seconds (60-3600) |
+| `PRINTARR_SYNC_BATCH_SIZE` | No | 100 | Max messages per sync batch (10-500) |
 
 ### Volume Mounts
 

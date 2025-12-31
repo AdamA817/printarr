@@ -74,4 +74,16 @@
   <Config Name="FlareSolverr URL" Target="PRINTARR_FLARESOLVERR_URL" Default=""
           Mode="" Description="Optional: URL to FlareSolverr instance for Thangs integration. Example: http://192.168.1.x:8191/v1. Leave blank if not using FlareSolverr."
           Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Live Sync Enabled" Target="PRINTARR_SYNC_ENABLED" Default="true"
+          Mode="" Description="Enable live monitoring to automatically ingest new posts from channels"
+          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="Sync Poll Interval" Target="PRINTARR_SYNC_POLL_INTERVAL" Default="300"
+          Mode="" Description="Catch-up sync interval in seconds (60-3600). Default: 300 (5 minutes)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">300</Config>
+
+  <Config Name="Sync Batch Size" Target="PRINTARR_SYNC_BATCH_SIZE" Default="100"
+          Mode="" Description="Maximum messages to process per sync batch (10-500)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
 </Container>
