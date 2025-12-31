@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.routes import activity, channels, designs, discovered_channels, health, queue, settings, stats, telegram, thangs
+from app.api.routes import activity, channels, designs, discovered_channels, health, previews, queue, settings, stats, telegram, thangs
 
 api_router = APIRouter(prefix="/api")
 
@@ -15,6 +15,7 @@ v1_router.include_router(activity.router)
 v1_router.include_router(channels.router)
 v1_router.include_router(designs.router)
 v1_router.include_router(discovered_channels.router)
+v1_router.include_router(previews.router)
 v1_router.include_router(queue.router)
 v1_router.include_router(settings.router)
 v1_router.include_router(stats.router)

@@ -37,6 +37,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         port=settings.port,
     )
 
+    # Ensure preview directories exist
+    from app.services.preview import PreviewService
+    preview_service = PreviewService()
+    await preview_service.ensure_directories()
+    logger.info("preview_directories_initialized")
+
     # Initialize Telegram service if configured
     telegram_service = TelegramService.get_instance()
     telegram_authenticated = False
