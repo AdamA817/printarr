@@ -27,8 +27,11 @@ Recommended mounts (host paths are examples):
   - Database and internal state
   - Example host path: `/mnt/user/appdata/telegram-3d-catalog/data`
 
-- `/staging`  
+- `/staging`
   - Temporary downloads and extraction workspace
+  - Files are downloaded from Telegram here, extracted, then moved to library
+  - **Auto-cleanup**: Empty directories are removed after successful import
+  - **Archive behavior**: Archives can be deleted after extraction (configurable in Settings)
   - Example host path: `/mnt/user/downloads/telegram-3d-staging`
 
 - `/library`  
@@ -73,9 +76,32 @@ Recommended mounts (host paths are examples):
 - `DEFAULT_BACKFILL_VALUE` (int)
 
 ### 3.6 Library Templates
-- `LIBRARY_TEMPLATE_GLOBAL`  
-  Default: `/<DesignerOrUnknown>/<Channel>/<DesignTitle>/`
-- `DESIGNER_UNKNOWN_VALUE` (default: `Unknown`)
+
+The library template controls how downloaded designs are organized in your library folder.
+
+- `PRINTARR_LIBRARY_TEMPLATE`
+  Default: `{designer}/{channel}/{title}`
+
+**Available Variables:**
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `{designer}` | Design creator/author | `WickedSTL` |
+| `{channel}` | Source Telegram channel | `3d_printing_models` |
+| `{title}` | Design title (required) | `Thor Bust` |
+| `{date}` | Full date (YYYY-MM-DD) | `2024-01-15` |
+| `{year}` | Year | `2024` |
+| `{month}` | Month | `01` |
+
+**Example paths with different templates:**
+- `{designer}/{title}` → `/library/WickedSTL/Thor Bust/`
+- `{year}/{month}/{title}` → `/library/2024/01/Thor Bust/`
+- `{channel}/{designer}/{title}` → `/library/3d_printing_models/WickedSTL/Thor Bust/`
+
+**Notes:**
+- The `{title}` variable is required in all templates
+- Invalid characters (/, \, :, *, ?, ", <, >, |) are replaced with underscores
+- Maximum path segment length: 200 characters
+- Templates can be customized per-channel in the Settings UI
 
 ---
 

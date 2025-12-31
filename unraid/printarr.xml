@@ -8,9 +8,11 @@
   <Support>https://github.com/AdamA817/printarr</Support>
   <Project>https://github.com/AdamA817/printarr</Project>
   <Overview>
-    Printarr is a self-hosted web application that monitors Telegram channels
-    for 3D-printable designs, catalogs them, and manages downloads into a
-    structured local library. Inspired by Radarr/Sonarr.
+    Printarr monitors Telegram channels for 3D-printable designs and organizes
+    them into a structured library. Features include: Radarr-style catalog UI,
+    Thangs metadata integration, archive extraction (ZIP/RAR/7z), configurable
+    library folder templates, and a download queue with activity tracking.
+    Inspired by Radarr/Sonarr for 3D printing workflows.
   </Overview>
   <Category>MediaApp:Other Productivity:</Category>
   <WebUI>http://[IP]:[PORT:3333]</WebUI>
@@ -37,7 +39,7 @@
           Type="Path" Display="always" Required="true" Mask="false"/>
 
   <Config Name="Staging Path" Target="/staging" Default="/mnt/user/downloads/printarr-staging"
-          Mode="rw" Description="Temporary downloads and extraction workspace"
+          Mode="rw" Description="Temporary workspace for downloads and archive extraction. Files are downloaded here, extracted, then moved to Library. Auto-cleaned after successful import."
           Type="Path" Display="always" Required="true" Mask="false"/>
 
   <Config Name="Library Path" Target="/library" Default="/mnt/user/3d-library"
@@ -53,8 +55,13 @@
           Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
 
   <Config Name="Max Concurrent Downloads" Target="PRINTARR_MAX_CONCURRENT_DOWNLOADS"
-          Default="3" Mode="" Description="Maximum simultaneous Telegram downloads"
+          Default="3" Mode="" Description="Maximum simultaneous Telegram downloads (1-10)"
           Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
+
+  <Config Name="Library Template" Target="PRINTARR_LIBRARY_TEMPLATE"
+          Default="{designer}/{channel}/{title}" Mode=""
+          Description="Folder structure template for organizing downloads. Variables: {designer}, {channel}, {title}, {date}, {year}, {month}. Must include {title}."
+          Type="Variable" Display="advanced" Required="false" Mask="false">{designer}/{channel}/{title}</Config>
 
   <Config Name="Telegram API ID" Target="TELEGRAM_API_ID" Default=""
           Mode="" Description="Telegram API ID from https://my.telegram.org (required)"

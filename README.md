@@ -6,12 +6,29 @@ Inspired by the Radarr/Sonarr UX paradigm, adapted for 3D printing workflows.
 
 ## Features
 
+### Channel Monitoring
 - Monitor Telegram channels (public and private) via MTProto
-- Backfill historical content and continuously ingest new posts
-- Build a searchable, deduplicated design catalog
-- Download designs into a structured library on demand or automatically
-- Preserve source attribution and metadata
-- Generate preview images
+- Backfill historical content from channels
+- Automatic design detection from posts containing 3D files
+
+### Design Catalog (v0.4)
+- Radarr-style grid and list views for browsing designs
+- Filter by status, channel, file type
+- Thangs integration for metadata enrichment
+- Manual and automatic Thangs linking
+- Multi-message design merging for split archives
+
+### Downloads & Library (v0.5)
+- One-click download with "Want" / "Download" buttons
+- Archive extraction (ZIP, RAR, 7z, TAR)
+- Configurable library folder structure with template variables
+- Activity page with real-time queue and history views
+- Priority-based job queue with retry support
+
+### Coming Soon
+- Live channel monitoring with auto-download (v0.6)
+- Preview image generation (v0.7)
+- Deduplication (v0.8)
 
 ## Quick Start
 
@@ -85,6 +102,9 @@ cp scripts/deploy.conf.example scripts/deploy.conf
 | `TELEGRAM_API_HASH` | Yes | - | Telegram API Hash |
 | `PRINTARR_PORT` | No | 3333 | Web UI port |
 | `PRINTARR_LOG_LEVEL` | No | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| `PRINTARR_MAX_CONCURRENT_DOWNLOADS` | No | 3 | Maximum simultaneous Telegram downloads (1-10) |
+| `PRINTARR_LIBRARY_TEMPLATE` | No | `{designer}/{channel}/{title}` | Library folder structure template |
+| `PRINTARR_FLARESOLVERR_URL` | No | - | FlareSolverr URL for Thangs integration |
 
 ### Volume Mounts
 

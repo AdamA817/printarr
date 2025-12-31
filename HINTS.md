@@ -666,6 +666,76 @@ await page.goto('http://10.0.0.27:3333/');  // Replace with your actual IP
 
 ---
 
+### Download & Library Debugging (v0.5)
+
+#### Checking Download Status
+```bash
+# View active jobs in queue
+curl -s http://localhost:3333/api/v1/queue/ | jq '.items[:5]'
+
+# View job history (completed/failed)
+curl -s http://localhost:3333/api/v1/activity/ | jq '.items[:5]'
+
+# Check specific design status
+curl -s http://localhost:3333/api/v1/designs/{design_id} | jq '{status, title}'
+```
+
+#### Common Download Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Download stuck at 0% | Telegram rate limiting | Wait and retry; downloads auto-retry with backoff |
+| `FloodWaitError` | Too many Telegram requests | Automatic retry after wait period; reduce concurrent downloads |
+| Extraction fails | Missing system packages | Verify `unrar` and `7z` installed: `docker exec printarr unrar --version` |
+| Password protected archive | Archive requires password | Non-retryable; need manual intervention |
+| Missing archive parts | Multi-part RAR incomplete | Ensure all `.partN.rar` files are available in the same design |
+| Library import fails | Permission denied | Check volume mount permissions; may need `chmod 777` on host dirs |
+
+#### Manually Queue a Download
+```bash
+# Queue a specific design for download
+curl -X POST http://localhost:3333/api/v1/designs/{design_id}/download
+
+# Queue with high priority
+curl -X POST "http://localhost:3333/api/v1/designs/{design_id}/download?priority=10"
+```
+
+#### Inspecting Staging/Library Directories
+```bash
+# Check what's in staging
+docker exec printarr ls -la /staging/
+
+# Check a specific design's staging folder
+docker exec printarr ls -la /staging/{design_id}/
+
+# Check library structure
+docker exec printarr find /library -type f -name "*.stl" | head -10
+```
+
+#### Retrying Failed Jobs
+```bash
+# Get failed job IDs
+curl -s "http://localhost:3333/api/v1/activity/?status=FAILED" | jq '.items[].id'
+
+# Retry via UI: Activity page → Failed tab → Retry button
+# Or re-queue the design:
+curl -X POST http://localhost:3333/api/v1/designs/{design_id}/download
+```
+
+#### Archive Extraction Issues
+```bash
+# Test unrar works
+docker exec printarr unrar --version
+
+# Test 7z works
+docker exec printarr 7z --help | head -5
+
+# Check Python packages
+docker exec printarr python -c "import rarfile, py7zr; print('OK')"
+```
+
+---
+
 ### Channel Profiling
 
 The `scripts/profile_channels.py` script analyzes Telegram channels from `TEST_CHANNELS.md` and generates profiles showing what features each channel has.
