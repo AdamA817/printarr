@@ -1,5 +1,14 @@
 import axios from 'axios'
-import type { Channel, ChannelCreate, ChannelUpdate, ChannelList } from '@/types/channel'
+import type {
+  Channel,
+  ChannelCreate,
+  ChannelUpdate,
+  ChannelList,
+  DownloadMode,
+  DownloadModePreviewResponse,
+  DownloadModeRequest,
+  DownloadModeResponse,
+} from '@/types/channel'
 import type {
   DesignList,
   DesignListParams,
@@ -88,6 +97,15 @@ export const channelsApi = {
 
   triggerBackfill: (id: string, request?: BackfillRequest) =>
     api.post<BackfillResponse>(`/channels/${id}/backfill`, request).then((r) => r.data),
+
+  // Download mode endpoints (v0.6)
+  previewDownloadMode: (id: string, newMode: DownloadMode) =>
+    api.get<DownloadModePreviewResponse>(`/channels/${id}/download-mode/preview`, {
+      params: { new_mode: newMode },
+    }).then((r) => r.data),
+
+  updateDownloadMode: (id: string, request: DownloadModeRequest) =>
+    api.post<DownloadModeResponse>(`/channels/${id}/download-mode`, request).then((r) => r.data),
 }
 
 export const healthApi = {

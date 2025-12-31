@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { channelsApi, type ChannelListParams } from '@/services/api'
-import type { ChannelCreate, ChannelUpdate } from '@/types/channel'
+import type { ChannelCreate, ChannelUpdate, DownloadMode, DownloadModeRequest } from '@/types/channel'
 
 export function useChannels(params?: ChannelListParams) {
   return useQuery({
@@ -89,6 +89,28 @@ export function useTriggerBackfill() {
       // Invalidate designs and stats since backfill may have created new designs
       queryClient.invalidateQueries({ queryKey: ['designs'] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
+}
+
+// Download mode hooks (v0.6)
+export function useDownloadModePreview(channelId: string, newMode: DownloadMode | null) {
+  return useQuery({
+    queryKey: ['downloadModePreview', channelId, newMode],
+    queryFn: () => channelsApi.previewDownloadMode(channelId, newMode!),
+    enabled: !!channelId && newMode === 'DOWNLOAD_ALL',
+  })
+}
+
+export function useUpdateDownloadMode() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ channelId, request }: { channelId: string; request: DownloadModeRequest }) =>
+      channelsApi.updateDownloadMode(channelId, request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['channels'] })
+      queryClient.invalidateQueries({ queryKey: ['queue'] })
     },
   })
 }

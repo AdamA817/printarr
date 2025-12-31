@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Channel } from '@/types/channel'
 import { MessagesPanel } from './MessagesPanel'
+import { DownloadModeBadge } from './DownloadModeBadge'
 import { useTriggerBackfill } from '@/hooks/useChannels'
 
 interface ChannelCardProps {
@@ -67,6 +68,9 @@ export function ChannelCard({ channel, onEdit, onDelete, isDeleting }: ChannelCa
           >
             {channel.is_enabled ? 'Enabled' : 'Disabled'}
           </span>
+
+          {/* Download Mode Badge */}
+          <DownloadModeBadge mode={channel.download_mode} />
 
           {/* Run Backfill button */}
           {telegramId && (

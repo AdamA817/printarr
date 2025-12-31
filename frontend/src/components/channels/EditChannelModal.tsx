@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { Channel, ChannelUpdate, BackfillMode, DownloadMode } from '@/types/channel'
+import { DownloadModeSelector } from './DownloadModeSelector'
 
 interface EditChannelModalProps {
   isOpen: boolean
@@ -22,6 +23,8 @@ export function EditChannelModal({
   const [isEnabled, setIsEnabled] = useState(true)
   const [backfillMode, setBackfillMode] = useState<BackfillMode>('ALL_HISTORY')
   const [backfillValue, setBackfillValue] = useState(0)
+  // Download mode is now managed via the DownloadModeSelector component
+  // which calls the dedicated API endpoint directly
   const [downloadMode, setDownloadMode] = useState<DownloadMode>('MANUAL')
 
   // Pre-fill form when channel changes
@@ -44,6 +47,7 @@ export function EditChannelModal({
     const updates: ChannelUpdate = {}
 
     // Only include changed fields
+    // Note: download_mode is handled separately by DownloadModeSelector
     if (title.trim() !== channel.title) {
       updates.title = title.trim()
     }
@@ -55,9 +59,6 @@ export function EditChannelModal({
     }
     if (backfillValue !== channel.backfill_value) {
       updates.backfill_value = backfillValue
-    }
-    if (downloadMode !== channel.download_mode) {
-      updates.download_mode = downloadMode
     }
 
     // Only submit if there are actual changes
@@ -185,29 +186,13 @@ export function EditChannelModal({
             </div>
           )}
 
-          {/* Download Mode */}
-          <div>
-            <label
-              htmlFor="download-mode"
-              className="block text-sm font-medium text-text-secondary mb-1"
-            >
-              Download Mode
-            </label>
-            <select
-              id="download-mode"
-              value={downloadMode}
-              onChange={(e) => setDownloadMode(e.target.value as DownloadMode)}
-              className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary"
-            >
-              <option value="MANUAL">Manual</option>
-              <option value="DOWNLOAD_ALL">Download All</option>
-              <option value="DOWNLOAD_ALL_NEW">Download All New</option>
-            </select>
-            <p className="mt-1 text-xs text-text-muted">
-              {downloadMode === 'MANUAL' && 'Manually approve each download'}
-              {downloadMode === 'DOWNLOAD_ALL' && 'Automatically download all designs'}
-              {downloadMode === 'DOWNLOAD_ALL_NEW' && 'Automatically download new designs only'}
-            </p>
+          {/* Download Mode - uses dedicated API with confirmation flow */}
+          <div className="border-t border-bg-tertiary pt-4 mt-4">
+            <DownloadModeSelector
+              channelId={channel.id}
+              currentMode={downloadMode}
+              onModeChange={setDownloadMode}
+            />
           </div>
 
           {/* Actions */}

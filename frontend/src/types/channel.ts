@@ -58,3 +58,22 @@ export interface ChannelList {
   page_size: number
   pages: number
 }
+
+// Download mode preview/update types (for confirmation flow)
+export interface DownloadModePreviewResponse {
+  channel_id: string
+  current_mode: DownloadMode
+  new_mode: DownloadMode
+  designs_to_queue: number
+}
+
+export interface DownloadModeRequest {
+  download_mode: DownloadMode
+  confirm_bulk_download?: boolean
+}
+
+export interface DownloadModeResponse {
+  channel_id: string
+  download_mode: DownloadMode
+  designs_queued: number
+}
