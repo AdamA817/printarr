@@ -9,7 +9,9 @@ interface HeaderProps {
 
 const pageTitles: Record<string, string> = {
   '/': 'Dashboard',
+  '/designs': 'Designs',
   '/channels': 'Channels',
+  '/activity': 'Activity',
   '/settings': 'Settings',
 }
 

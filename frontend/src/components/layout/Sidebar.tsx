@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import logoIcon from '@/assets/logo-40.png'
+import logoFull from '@/assets/logo-full.png'
 
 interface SidebarProps {
   isOpen: boolean
@@ -25,9 +25,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       `}
     >
       <div className="p-4 border-b border-bg-tertiary flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <img src={logoIcon} alt="" className="w-8 h-8" />
-          <h1 className="text-xl font-bold text-accent-primary">Printarr</h1>
+        <div className="flex items-center">
+          <img src={logoFull} alt="Printarr" className="h-8" />
         </div>
         <button
           onClick={onClose}
