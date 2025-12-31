@@ -29,8 +29,8 @@ class DesignTag(Base):
         String(36), ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
     )
 
-    # Tag metadata
-    source: Mapped[TagSource] = mapped_column(Enum(TagSource), default=TagSource.AUTO)
+    # Tag metadata - source indicates how the tag was assigned
+    source: Mapped[TagSource] = mapped_column(Enum(TagSource), default=TagSource.USER)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

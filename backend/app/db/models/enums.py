@@ -99,16 +99,36 @@ class ModelKind(str, enum.Enum):
 class TagSource(str, enum.Enum):
     """Source of a tag assignment."""
 
-    AUTO = "AUTO"
-    MANUAL = "MANUAL"
+    AUTO_CAPTION = "AUTO_CAPTION"  # Extracted from message caption
+    AUTO_FILENAME = "AUTO_FILENAME"  # Extracted from filename
+    AUTO_THANGS = "AUTO_THANGS"  # Imported from Thangs metadata
+    USER = "USER"  # Manually added by user
+
+
+class PreviewSource(str, enum.Enum):
+    """Source of a preview image."""
+
+    TELEGRAM = "TELEGRAM"  # Downloaded from Telegram post
+    THANGS = "THANGS"  # Cached from Thangs
+    EMBEDDED_3MF = "EMBEDDED_3MF"  # Extracted from 3MF file
+    RENDERED = "RENDERED"  # Generated via stl-thumb
+    ARCHIVE = "ARCHIVE"  # Extracted from archive (preview.jpg, etc.)
 
 
 class PreviewKind(str, enum.Enum):
     """Kind of preview asset."""
 
-    TELEGRAM_IMAGE = "TELEGRAM_IMAGE"
-    THREE_MF_EMBEDDED = "THREE_MF_EMBEDDED"
-    RENDERED = "RENDERED"
+    THUMBNAIL = "THUMBNAIL"  # Small preview for cards (max 400px)
+    FULL = "FULL"  # Full-size preview for detail view
+    GALLERY = "GALLERY"  # Additional gallery image
+
+
+class MulticolorSource(str, enum.Enum):
+    """Source of multicolor classification."""
+
+    HEURISTIC = "HEURISTIC"  # Detected from caption/filename keywords
+    THREE_MF_ANALYSIS = "3MF_ANALYSIS"  # Parsed from 3MF file
+    USER_OVERRIDE = "USER_OVERRIDE"  # Manually set by user
 
 
 class JobType(str, enum.Enum):

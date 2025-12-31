@@ -24,8 +24,10 @@ from app.db.models.enums import (
     MediaType,
     MetadataAuthority,
     ModelKind,
+    MulticolorSource,
     MulticolorStatus,
     PreviewKind,
+    PreviewSource,
     TagSource,
     TitleSource,
 )
@@ -66,8 +68,10 @@ __all__ = [
     "MediaType",
     "MetadataAuthority",
     "ModelKind",
+    "MulticolorSource",
     "MulticolorStatus",
     "PreviewKind",
+    "PreviewSource",
     "TagSource",
     "TitleSource",
 ]

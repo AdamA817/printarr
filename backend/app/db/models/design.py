@@ -10,7 +10,12 @@ from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Float, Index, Intege
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.models.enums import DesignStatus, MetadataAuthority, MulticolorStatus
+from app.db.models.enums import (
+    DesignStatus,
+    MetadataAuthority,
+    MulticolorSource,
+    MulticolorStatus,
+)
 
 if TYPE_CHECKING:
     from app.db.models.design_file import DesignFile
@@ -36,6 +41,10 @@ class Design(Base):
     canonical_designer: Mapped[str] = mapped_column(String(255), default="Unknown")
     multicolor: Mapped[MulticolorStatus] = mapped_column(
         Enum(MulticolorStatus), default=MulticolorStatus.UNKNOWN
+    )
+    # Source of multicolor detection (per DEC-029)
+    multicolor_source: Mapped[MulticolorSource | None] = mapped_column(
+        Enum(MulticolorSource), nullable=True
     )
     status: Mapped[DesignStatus] = mapped_column(
         Enum(DesignStatus), default=DesignStatus.DISCOVERED
