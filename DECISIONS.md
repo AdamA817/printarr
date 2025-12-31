@@ -479,9 +479,9 @@ v0.5 needs decisions on download priority model, library folder structure, and a
 
 ---
 
-### DEC-019: SQLite Concurrency Limitations
+### DEC-019: SQLite Concurrency - Session-Per-Operation Pattern
 **Date**: 2025-12-31
-**Status**: Issue Identified - Needs Resolution
+**Status**: Resolved
 
 **Context**
 During v0.5 E2E testing, critical database locking issues were discovered when using SQLite with async workers. When the download worker performs long-running file downloads from Telegram, it holds a database connection open, blocking:
@@ -491,24 +491,37 @@ During v0.5 E2E testing, critical database locking issues were discovered when u
 
 Despite WAL mode and busy_timeout settings, SQLite's write lock architecture fundamentally conflicts with long-running async operations.
 
-**Options to Consider**
+**Options Considered**
 1. **Refactor to release connection during I/O** - Download files outside of database session, only use DB briefly for status updates
 2. **Switch to PostgreSQL** - Better concurrent write support, more complexity
 3. **Serialize workers** - Only run one worker at a time, simplest but slowest
 4. **Use connection pooling differently** - Separate pools for workers vs API
 
-**Immediate Mitigation Applied**
-- Reduced download workers to 1
-- Added commit after job claim to release lock before processing
-- Added WAL mode and 30-second busy_timeout
+**Decision**
+Option 1: Session-per-operation pattern. The download service was refactored to:
+1. Open brief session to read design/attachment info, commit, close
+2. Download files with NO database session held
+3. Open brief session to record success/failure, commit, close
 
-**Resolution Needed**
-The download service needs refactoring to not hold database connections during file downloads. This is a priority bug for v0.5 stabilization.
+This pattern applies to all long-running I/O operations.
+
+**Implementation**
+- `DownloadService.download_design()` uses `async_session_maker()` for brief operations only
+- `AttachmentDownloadInfo` dataclass holds plain data (not ORM objects) for use outside sessions
+- Each phase (read, download, write) uses independent sessions
+- `BaseWorker` commits after claiming job before calling `process()`
+
+**Verification**
+E2E testing confirmed:
+- Priority updates work during active downloads
+- Job cancellation works during active downloads
+- Multiple workers can process jobs concurrently
+- API remains responsive during large file downloads
 
 **Consequences**
-- Queue management (priority, cancel) may fail during active downloads
-- Other workers blocked until download completes
-- System appears unresponsive during large file downloads
+- SQLite remains viable for single-user self-hosted use case
+- Pattern must be followed for any future long-running operations
+- Slightly more complex code, but clear phase separation
 
 ---
 
