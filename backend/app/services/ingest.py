@@ -24,6 +24,7 @@ from app.db.models import (
     MulticolorStatus,
     TelegramMessage,
 )
+from app.services.autotag import AutoTagService
 from app.services.job_queue import JobQueueService
 from app.services.multicolor import get_multicolor_detector
 from app.services.thangs import ThangsAdapter
@@ -389,6 +390,9 @@ class IngestService:
         # This is non-blocking - errors are logged but don't fail ingestion
         await self._process_external_urls(design, caption_text)
 
+        # Auto-tag from caption and filenames (v0.7)
+        await self._auto_tag_design(design, caption_text, filenames)
+
         # Queue image download job if message has photos (v0.7)
         await self._queue_image_download_if_needed(
             design=design,
@@ -514,6 +518,37 @@ class IngestService:
             )
         )
         return list(result.scalars().all())
+
+    async def _auto_tag_design(
+        self,
+        design: Design,
+        caption: str | None,
+        filenames: list[str],
+    ) -> None:
+        """Auto-tag a design from caption and filenames.
+
+        Extracts hashtags and keywords, creates tags, and associates them.
+        """
+        try:
+            autotag_service = AutoTagService(self.db)
+            result = await autotag_service.auto_tag_design(
+                design_id=design.id,
+                caption=caption,
+                filenames=filenames,
+            )
+            if result.get("tags_added", 0) > 0:
+                logger.debug(
+                    "auto_tags_applied",
+                    design_id=design.id,
+                    tags_added=result["tags_added"],
+                )
+        except Exception as e:
+            # Non-blocking - don't fail ingestion for tagging errors
+            logger.warning(
+                "auto_tagging_failed",
+                design_id=design.id,
+                error=str(e),
+            )
 
     def detect_split_archive(self, filename: str) -> SplitArchiveInfo | None:
         """Detect if a filename is a split archive and extract info.
