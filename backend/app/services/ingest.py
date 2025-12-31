@@ -139,6 +139,9 @@ class IngestService:
         # Process attachments
         attachments = await self._process_attachments(message, message_data)
 
+        # Process channel discovery (v0.6)
+        await self._process_channel_discovery(message_data)
+
         # Check if this is a design post
         has_design_files = any(a.is_candidate_design_file for a in attachments)
 
@@ -603,3 +606,31 @@ class IngestService:
         )
 
         return existing_design
+
+    async def _process_channel_discovery(self, message_data: dict[str, Any]) -> None:
+        """Process a message for channel discovery (v0.6).
+
+        Detects channel references from forwards, links, and mentions,
+        and tracks them in the DiscoveredChannel table.
+
+        Args:
+            message_data: Parsed message data from TelegramService.
+        """
+        try:
+            from app.services.discovery import DiscoveryService
+
+            discovery = DiscoveryService(self.db)
+            discovered = await discovery.process_message(message_data)
+
+            if discovered:
+                logger.debug(
+                    "channels_discovered",
+                    count=len(discovered),
+                    usernames=[c.username for c in discovered if c.username],
+                )
+        except Exception as e:
+            # Log but don't fail - discovery is best-effort
+            logger.warning(
+                "channel_discovery_failed",
+                error=str(e),
+            )
