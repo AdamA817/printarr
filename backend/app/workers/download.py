@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.core.logging import get_logger
-from app.db.models import Design, DesignStatus, Job, JobType
+from app.db.models import Job, JobType
 from app.db.session import async_session_maker
 from app.services.download import DownloadError, DownloadService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
@@ -23,6 +23,8 @@ class DownloadWorker(BaseWorker):
     4. Queuing extraction if archives are present
 
     Uses the DownloadService for actual download logic.
+    The DownloadService uses session-per-operation pattern to avoid
+    holding database locks during long file downloads.
     """
 
     job_types = [JobType.DOWNLOAD_DESIGN]
@@ -66,28 +68,32 @@ class DownloadWorker(BaseWorker):
             design_id=design_id,
         )
 
-        async with async_session_maker() as db:
-            service = DownloadService(db)
+        try:
+            # DownloadService manages its own sessions for download_design
+            # This prevents holding locks during long Telegram downloads
+            service = DownloadService()
+            result = await service.download_design(
+                design_id,
+                progress_callback=self._make_progress_callback(),
+            )
 
-            try:
-                # Download with progress tracking
-                result = await service.download_design(
-                    design_id,
-                    progress_callback=self._make_progress_callback(),
-                )
+            logger.info(
+                "download_job_complete",
+                job_id=job.id,
+                design_id=design_id,
+                files_downloaded=result["files_downloaded"],
+                total_bytes=result["total_bytes"],
+                has_archives=result["has_archives"],
+            )
 
-                logger.info(
-                    "download_job_complete",
-                    job_id=job.id,
-                    design_id=design_id,
-                    files_downloaded=result["files_downloaded"],
-                    total_bytes=result["total_bytes"],
-                    has_archives=result["has_archives"],
-                )
+            # Queue extraction if archives were downloaded
+            # This needs a session, so we open one briefly
+            if result["has_archives"]:
+                async with async_session_maker() as db:
+                    service_with_db = DownloadService(db)
+                    extraction_job_id = await service_with_db.queue_extraction(design_id)
+                    await db.commit()
 
-                # Queue extraction if archives were downloaded
-                if result["has_archives"]:
-                    extraction_job_id = await service.queue_extraction(design_id)
                     if extraction_job_id:
                         logger.info(
                             "extraction_job_queued",
@@ -95,25 +101,23 @@ class DownloadWorker(BaseWorker):
                             extraction_job_id=extraction_job_id,
                         )
 
-                await db.commit()
+        except DownloadError as e:
+            error_msg = str(e)
+            logger.error(
+                "download_job_error",
+                job_id=job.id,
+                design_id=design_id,
+                error=error_msg,
+            )
 
-            except DownloadError as e:
-                error_msg = str(e)
-                logger.error(
-                    "download_job_error",
-                    job_id=job.id,
-                    design_id=design_id,
-                    error=error_msg,
-                )
-
-                # Check if this is a retryable error
-                if "Rate limited" in error_msg:
-                    raise RetryableError(error_msg)
-                elif "not found" in error_msg.lower():
-                    raise NonRetryableError(error_msg)
-                else:
-                    # Default to retryable for other download errors
-                    raise RetryableError(error_msg)
+            # Check if this is a retryable error
+            if "Rate limited" in error_msg:
+                raise RetryableError(error_msg)
+            elif "not found" in error_msg.lower():
+                raise NonRetryableError(error_msg)
+            else:
+                # Default to retryable for other download errors
+                raise RetryableError(error_msg)
 
     def _make_progress_callback(self):
         """Create a progress callback that updates job progress.

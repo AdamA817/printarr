@@ -1,24 +1,26 @@
-"""Archive extraction service for unpacking design archives."""
+"""Archive extraction service for unpacking design archives.
+
+NOTE: This service uses the "session-per-operation" pattern to avoid
+holding database locks during long I/O operations. See DEC-019.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
-import os
 import re
 import shutil
 import tarfile
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models import (
-    Attachment,
     Design,
     DesignFile,
     DesignStatus,
@@ -26,6 +28,7 @@ from app.db.models import (
     JobType,
     ModelKind,
 )
+from app.db.session import async_session_maker
 from app.services.job_queue import JobQueueService
 
 logger = get_logger(__name__)
@@ -74,10 +77,36 @@ class MissingPartError(ArchiveError):
     pass
 
 
-class ArchiveExtractor:
-    """Service for extracting archive files."""
+@dataclass
+class ExtractedFileInfo:
+    """Info about an extracted file for creating DesignFile records."""
 
-    def __init__(self, db: AsyncSession):
+    file_path: Path
+    relative_path: str
+    filename: str
+    ext: str
+    size_bytes: int
+    sha256: str
+    file_kind: FileKind
+    model_kind: ModelKind
+
+
+class ArchiveExtractor:
+    """Service for extracting archive files.
+
+    This service uses the "session-per-operation" pattern:
+    - Database sessions are only held during brief read/write operations
+    - Long I/O operations (extraction) happen outside any session
+    - This prevents SQLite locking issues during large archive extraction
+    """
+
+    def __init__(self, db: AsyncSession | None = None):
+        """Initialize the archive extractor.
+
+        Args:
+            db: Optional session for queue_import method.
+                For extract_design_archives, sessions are managed internally.
+        """
         self.db = db
 
     async def extract_design_archives(
@@ -87,40 +116,36 @@ class ArchiveExtractor:
     ) -> dict[str, Any]:
         """Extract all archives for a design.
 
-        Args:
-            design_id: The design ID.
-            progress_callback: Optional callback for progress updates.
-
-        Returns:
-            Dictionary with extraction results.
-
-        Raises:
-            ArchiveError: If extraction fails.
+        Uses session-per-operation pattern to avoid holding locks during extraction.
         """
-        design = await self.db.get(Design, design_id)
-        if not design:
-            raise ArchiveError(f"Design not found: {design_id}")
-
         staging_dir = self._get_staging_dir(design_id)
-        if not staging_dir.exists():
-            raise ArchiveError(f"Staging directory not found: {staging_dir}")
 
-        # Find all archives in staging directory
-        archives = self._find_archives(staging_dir)
-        if not archives:
-            logger.info("no_archives_found", design_id=design_id)
-            return {
-                "design_id": design_id,
-                "archives_extracted": 0,
-                "files_created": 0,
-                "nested_archives": 0,
-            }
+        # PHASE 1: Validate and update status (brief session)
+        async with async_session_maker() as db:
+            design = await db.get(Design, design_id)
+            if not design:
+                raise ArchiveError(f"Design not found: {design_id}")
 
-        design.status = DesignStatus.EXTRACTING
-        await self.db.flush()
+            if not staging_dir.exists():
+                raise ArchiveError(f"Staging directory not found: {staging_dir}")
 
+            # Find all archives
+            archives = self._find_archives(staging_dir)
+            if not archives:
+                logger.info("no_archives_found", design_id=design_id)
+                return {
+                    "design_id": design_id,
+                    "archives_extracted": 0,
+                    "files_created": 0,
+                    "nested_archives": 0,
+                }
+
+            design.status = DesignStatus.EXTRACTING
+            await db.commit()
+
+        # PHASE 2: Extract archives (NO database session held)
         total_archives = len(archives)
-        files_created = 0
+        all_extracted_files: list[ExtractedFileInfo] = []
         nested_count = 0
 
         for i, archive_path in enumerate(archives):
@@ -132,17 +157,17 @@ class ArchiveExtractor:
                 total=total_archives,
             )
 
-            # Extract the archive
-            extracted_files = await self._extract_archive(archive_path, staging_dir)
-            files_created += len(extracted_files)
+            # Extract the archive (no DB)
+            extracted_paths = await self._extract_archive(archive_path, staging_dir)
 
-            # Create DesignFile records for extracted files
-            for file_path in extracted_files:
-                await self._create_design_file(design_id, file_path, staging_dir)
+            # Process extracted files and compute hashes (no DB)
+            for file_path in extracted_paths:
+                file_info = await self._prepare_file_info(file_path, staging_dir)
+                all_extracted_files.append(file_info)
 
-            # Check for nested archives (single level only)
+            # Check for nested archives
             nested_archives = [
-                f for f in extracted_files
+                f for f in extracted_paths
                 if f.suffix.lower() in ARCHIVE_EXTENSIONS
                 or str(f).lower().endswith((".tar.gz", ".tgz"))
             ]
@@ -153,12 +178,12 @@ class ArchiveExtractor:
                     design_id=design_id,
                     archive=nested.name,
                 )
-                nested_files = await self._extract_archive(nested, staging_dir)
-                files_created += len(nested_files)
+                nested_paths = await self._extract_archive(nested, staging_dir)
                 nested_count += 1
 
-                for file_path in nested_files:
-                    await self._create_design_file(design_id, file_path, staging_dir)
+                for file_path in nested_paths:
+                    file_info = await self._prepare_file_info(file_path, staging_dir)
+                    all_extracted_files.append(file_info)
 
                 # Delete nested archive after extraction
                 await self._delete_file(nested)
@@ -169,33 +194,51 @@ class ArchiveExtractor:
             if progress_callback:
                 progress_callback(i + 1, total_archives)
 
-        design.status = DesignStatus.EXTRACTED
-        await self.db.flush()
+        # PHASE 3: Create DesignFile records (brief session)
+        async with async_session_maker() as db:
+            for file_info in all_extracted_files:
+                design_file = DesignFile(
+                    design_id=design_id,
+                    relative_path=file_info.relative_path,
+                    filename=file_info.filename,
+                    ext=file_info.ext,
+                    size_bytes=file_info.size_bytes,
+                    sha256=file_info.sha256,
+                    file_kind=file_info.file_kind,
+                    model_kind=file_info.model_kind,
+                    is_from_archive=True,
+                )
+                db.add(design_file)
+
+            await db.commit()
+
+        # PHASE 4: Update design status (brief session)
+        async with async_session_maker() as db:
+            design = await db.get(Design, design_id)
+            if design:
+                design.status = DesignStatus.EXTRACTED
+                await db.commit()
 
         logger.info(
             "extraction_complete",
             design_id=design_id,
             archives_extracted=total_archives,
-            files_created=files_created,
+            files_created=len(all_extracted_files),
             nested_archives=nested_count,
         )
 
         return {
             "design_id": design_id,
             "archives_extracted": total_archives,
-            "files_created": files_created,
+            "files_created": len(all_extracted_files),
             "nested_archives": nested_count,
         }
 
     async def queue_import(self, design_id: str) -> str:
-        """Queue an import job for the design.
+        """Queue an import job for the design."""
+        if self.db is None:
+            raise ArchiveError("Database session required for queue_import")
 
-        Args:
-            design_id: The design ID.
-
-        Returns:
-            The job ID.
-        """
         queue = JobQueueService(self.db)
         job = await queue.enqueue(
             JobType.IMPORT_TO_LIBRARY,
@@ -204,15 +247,35 @@ class ArchiveExtractor:
         )
         return job.id
 
+    async def _prepare_file_info(
+        self, file_path: Path, staging_dir: Path
+    ) -> ExtractedFileInfo:
+        """Prepare file info for creating DesignFile record later."""
+        relative_path = str(file_path.relative_to(staging_dir))
+        ext = file_path.suffix.lower()
+        file_kind = self._classify_file(ext)
+        model_kind = MODEL_EXTENSIONS.get(ext, ModelKind.UNKNOWN)
+
+        size_bytes = file_path.stat().st_size
+        sha256 = await self._compute_file_hash(file_path)
+
+        return ExtractedFileInfo(
+            file_path=file_path,
+            relative_path=relative_path,
+            filename=file_path.name,
+            ext=ext,
+            size_bytes=size_bytes,
+            sha256=sha256,
+            file_kind=file_kind,
+            model_kind=model_kind,
+        )
+
     def _get_staging_dir(self, design_id: str) -> Path:
         """Get the staging directory for a design."""
         return settings.staging_path / design_id
 
     def _find_archives(self, directory: Path) -> list[Path]:
-        """Find all archives in a directory, skipping secondary multi-part files.
-
-        Returns archives sorted by name for consistent processing.
-        """
+        """Find all archives in a directory, skipping secondary multi-part files."""
         archives = []
 
         for file_path in directory.iterdir():
@@ -234,10 +297,7 @@ class ArchiveExtractor:
         return sorted(archives, key=lambda p: p.name)
 
     async def _extract_archive(self, archive_path: Path, output_dir: Path) -> list[Path]:
-        """Extract an archive to the output directory.
-
-        Returns list of extracted file paths.
-        """
+        """Extract an archive to the output directory."""
         suffix = archive_path.suffix.lower()
         name_lower = archive_path.name.lower()
 
@@ -262,17 +322,14 @@ class ArchiveExtractor:
         def _do_extract() -> list[Path]:
             extracted = []
             with zipfile.ZipFile(archive_path, "r") as zf:
-                # Check for password protection
                 for info in zf.infolist():
-                    if info.flag_bits & 0x1:  # Encrypted
+                    if info.flag_bits & 0x1:
                         raise PasswordProtectedError(f"Archive is password protected: {archive_path.name}")
 
                 for member in zf.namelist():
-                    # Skip directories and __MACOSX entries
                     if member.endswith("/") or member.startswith("__MACOSX"):
                         continue
 
-                    # Extract preserving structure
                     target = output_dir / member
                     target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -301,7 +358,6 @@ class ArchiveExtractor:
                         raise PasswordProtectedError(f"Archive is password protected: {archive_path.name}")
 
                     for member in rf.namelist():
-                        # Skip directories
                         if member.endswith("/"):
                             continue
 
@@ -337,10 +393,8 @@ class ArchiveExtractor:
                     if sz.needs_password():
                         raise PasswordProtectedError(f"Archive is password protected: {archive_path.name}")
 
-                    # Extract all files
                     sz.extractall(path=output_dir)
 
-                    # Get list of extracted files
                     for member in sz.getnames():
                         target = output_dir / member
                         if target.is_file():
@@ -360,7 +414,6 @@ class ArchiveExtractor:
         """Extract a tar archive (.tar, .tar.gz, .tgz)."""
         def _do_extract() -> list[Path]:
             extracted = []
-
             mode = "r:gz" if archive_path.name.lower().endswith((".tar.gz", ".tgz")) else "r"
 
             try:
@@ -369,7 +422,6 @@ class ArchiveExtractor:
                         if not member.isfile():
                             continue
 
-                        # Security: prevent path traversal
                         if member.name.startswith("/") or ".." in member.name:
                             continue
 
@@ -389,39 +441,6 @@ class ArchiveExtractor:
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _do_extract)
-
-    async def _create_design_file(
-        self,
-        design_id: str,
-        file_path: Path,
-        staging_dir: Path,
-    ) -> DesignFile:
-        """Create a DesignFile record for an extracted file."""
-        relative_path = str(file_path.relative_to(staging_dir))
-        ext = file_path.suffix.lower()
-        file_kind = self._classify_file(ext)
-        model_kind = MODEL_EXTENSIONS.get(ext, ModelKind.UNKNOWN)
-
-        # Compute file hash and size
-        size_bytes = file_path.stat().st_size
-        sha256 = await self._compute_file_hash(file_path)
-
-        design_file = DesignFile(
-            design_id=design_id,
-            relative_path=relative_path,
-            filename=file_path.name,
-            ext=ext,
-            size_bytes=size_bytes,
-            sha256=sha256,
-            file_kind=file_kind,
-            model_kind=model_kind,
-            is_from_archive=True,
-        )
-
-        self.db.add(design_file)
-        await self.db.flush()
-
-        return design_file
 
     def _classify_file(self, ext: str) -> FileKind:
         """Classify a file by extension."""
@@ -456,17 +475,12 @@ class ArchiveExtractor:
         await loop.run_in_executor(None, _delete)
 
     async def _delete_archive_and_parts(self, archive_path: Path) -> None:
-        """Delete an archive and any multi-part RAR files.
-
-        For multi-part RAR, also deletes .part2.rar, .part3.rar, etc.
-        """
+        """Delete an archive and any multi-part RAR files."""
         def _delete() -> None:
-            # Delete the main archive
             if archive_path.exists():
                 archive_path.unlink()
                 logger.debug("deleted_archive", path=str(archive_path))
 
-            # Check for multi-part RAR parts
             if MULTIPART_RAR_PATTERN.search(archive_path.name.lower()):
                 parent = archive_path.parent
                 base_pattern = re.sub(

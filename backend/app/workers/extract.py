@@ -31,6 +31,8 @@ class ExtractArchiveWorker(BaseWorker):
     6. Queuing IMPORT_TO_LIBRARY job when complete
 
     Uses the ArchiveExtractor service for actual extraction.
+    The ArchiveExtractor uses session-per-operation pattern to avoid
+    holding database locks during long extraction operations.
     """
 
     job_types = [JobType.EXTRACT_ARCHIVE]
@@ -73,73 +75,75 @@ class ExtractArchiveWorker(BaseWorker):
             design_id=design_id,
         )
 
-        async with async_session_maker() as db:
-            extractor = ArchiveExtractor(db)
+        try:
+            # ArchiveExtractor manages its own sessions for extract_design_archives
+            # This prevents holding locks during long extraction operations
+            extractor = ArchiveExtractor()
+            result = await extractor.extract_design_archives(
+                design_id,
+                progress_callback=self._make_progress_callback(),
+            )
 
-            try:
-                # Extract with progress tracking
-                result = await extractor.extract_design_archives(
-                    design_id,
-                    progress_callback=self._make_progress_callback(),
-                )
+            logger.info(
+                "extract_job_complete",
+                job_id=job.id,
+                design_id=design_id,
+                archives_extracted=result["archives_extracted"],
+                files_created=result["files_created"],
+                nested_archives=result["nested_archives"],
+            )
 
-                logger.info(
-                    "extract_job_complete",
-                    job_id=job.id,
-                    design_id=design_id,
-                    archives_extracted=result["archives_extracted"],
-                    files_created=result["files_created"],
-                    nested_archives=result["nested_archives"],
-                )
+            # Queue import job if files were extracted
+            # This needs a session, so we open one briefly
+            if result["files_created"] > 0:
+                async with async_session_maker() as db:
+                    extractor_with_db = ArchiveExtractor(db)
+                    import_job_id = await extractor_with_db.queue_import(design_id)
+                    await db.commit()
 
-                # Queue import job if files were extracted
-                if result["files_created"] > 0:
-                    import_job_id = await extractor.queue_import(design_id)
                     logger.info(
                         "import_job_queued",
                         design_id=design_id,
                         import_job_id=import_job_id,
                     )
 
-                await db.commit()
+        except PasswordProtectedError as e:
+            logger.error(
+                "extract_password_protected",
+                job_id=job.id,
+                design_id=design_id,
+                error=str(e),
+            )
+            raise NonRetryableError(str(e))
 
-            except PasswordProtectedError as e:
-                logger.error(
-                    "extract_password_protected",
-                    job_id=job.id,
-                    design_id=design_id,
-                    error=str(e),
-                )
-                raise NonRetryableError(str(e))
+        except CorruptedArchiveError as e:
+            logger.error(
+                "extract_corrupted_archive",
+                job_id=job.id,
+                design_id=design_id,
+                error=str(e),
+            )
+            raise NonRetryableError(str(e))
 
-            except CorruptedArchiveError as e:
-                logger.error(
-                    "extract_corrupted_archive",
-                    job_id=job.id,
-                    design_id=design_id,
-                    error=str(e),
-                )
-                raise NonRetryableError(str(e))
+        except MissingPartError as e:
+            logger.error(
+                "extract_missing_part",
+                job_id=job.id,
+                design_id=design_id,
+                error=str(e),
+            )
+            raise NonRetryableError(str(e))
 
-            except MissingPartError as e:
-                logger.error(
-                    "extract_missing_part",
-                    job_id=job.id,
-                    design_id=design_id,
-                    error=str(e),
-                )
-                raise NonRetryableError(str(e))
-
-            except ArchiveError as e:
-                error_msg = str(e)
-                logger.error(
-                    "extract_job_error",
-                    job_id=job.id,
-                    design_id=design_id,
-                    error=error_msg,
-                )
-                # Default to retryable for generic archive errors
-                raise RetryableError(error_msg)
+        except ArchiveError as e:
+            error_msg = str(e)
+            logger.error(
+                "extract_job_error",
+                job_id=job.id,
+                design_id=design_id,
+                error=error_msg,
+            )
+            # Default to retryable for generic archive errors
+            raise RetryableError(error_msg)
 
     def _make_progress_callback(self):
         """Create a progress callback for tracking extraction progress.

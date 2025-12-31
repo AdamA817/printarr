@@ -6,7 +6,6 @@ from typing import Any
 
 from app.core.logging import get_logger
 from app.db.models import Job, JobType
-from app.db.session import async_session_maker
 from app.services.library import LibraryError, LibraryImportService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
@@ -24,6 +23,8 @@ class ImportToLibraryWorker(BaseWorker):
     5. Cleaning up empty staging directories
 
     Uses the LibraryImportService for actual import logic.
+    The LibraryImportService uses session-per-operation pattern to avoid
+    holding database locks during file move operations.
     """
 
     job_types = [JobType.IMPORT_TO_LIBRARY]
@@ -66,54 +67,51 @@ class ImportToLibraryWorker(BaseWorker):
             design_id=design_id,
         )
 
-        async with async_session_maker() as db:
-            service = LibraryImportService(db)
+        try:
+            # LibraryImportService manages its own sessions for import_design
+            # This prevents holding locks during file move operations
+            service = LibraryImportService()
+            result = await service.import_design(
+                design_id,
+                progress_callback=self._make_progress_callback(),
+            )
 
-            try:
-                # Import with progress tracking
-                result = await service.import_design(
-                    design_id,
-                    progress_callback=self._make_progress_callback(),
-                )
+            logger.info(
+                "import_job_complete",
+                job_id=job.id,
+                design_id=design_id,
+                files_imported=result["files_imported"],
+                total_bytes=result["total_bytes"],
+                library_path=result["library_path"],
+            )
 
-                logger.info(
-                    "import_job_complete",
-                    job_id=job.id,
-                    design_id=design_id,
-                    files_imported=result["files_imported"],
-                    total_bytes=result["total_bytes"],
-                    library_path=result["library_path"],
-                )
+        except LibraryError as e:
+            error_msg = str(e)
+            logger.error(
+                "import_job_error",
+                job_id=job.id,
+                design_id=design_id,
+                error=error_msg,
+            )
 
-                await db.commit()
-
-            except LibraryError as e:
-                error_msg = str(e)
-                logger.error(
-                    "import_job_error",
-                    job_id=job.id,
-                    design_id=design_id,
-                    error=error_msg,
-                )
-
-                # Check if this is a retryable error
-                if "not found" in error_msg.lower():
-                    raise NonRetryableError(error_msg)
-                else:
-                    # File system errors may be transient
-                    raise RetryableError(error_msg)
-
-            except OSError as e:
-                # File system errors
-                error_msg = str(e)
-                logger.error(
-                    "import_filesystem_error",
-                    job_id=job.id,
-                    design_id=design_id,
-                    error=error_msg,
-                )
-                # Retry file system errors (might be temporary disk issues)
+            # Check if this is a retryable error
+            if "not found" in error_msg.lower():
+                raise NonRetryableError(error_msg)
+            else:
+                # File system errors may be transient
                 raise RetryableError(error_msg)
+
+        except OSError as e:
+            # File system errors
+            error_msg = str(e)
+            logger.error(
+                "import_filesystem_error",
+                job_id=job.id,
+                design_id=design_id,
+                error=error_msg,
+            )
+            # Retry file system errors (might be temporary disk issues)
+            raise RetryableError(error_msg)
 
     def _make_progress_callback(self):
         """Create a progress callback for tracking import progress.

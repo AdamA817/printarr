@@ -1,10 +1,15 @@
-"""Library import service for organizing design files."""
+"""Library import service for organizing design files.
+
+NOTE: This service uses the "session-per-operation" pattern to avoid
+holding database locks during file I/O operations. See DEC-019.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import re
 import shutil
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +27,7 @@ from app.db.models import (
     DesignStatus,
     TelegramMessage,
 )
+from app.db.session import async_session_maker
 
 logger = get_logger(__name__)
 
@@ -38,10 +44,43 @@ class LibraryError(Exception):
     pass
 
 
-class LibraryImportService:
-    """Service for importing files from staging to the library."""
+@dataclass
+class DesignInfo:
+    """Design info needed for import (no ORM objects)."""
 
-    def __init__(self, db: AsyncSession):
+    id: str
+    display_title: str | None
+    display_designer: str | None
+    channel_title: str
+    channel_template_override: str | None
+
+
+@dataclass
+class FileToMove:
+    """Info about a file to move."""
+
+    design_file_id: str
+    relative_path: str
+    filename: str
+    size_bytes: int | None
+    source_path: Path
+
+
+class LibraryImportService:
+    """Service for importing files from staging to the library.
+
+    This service uses the "session-per-operation" pattern:
+    - Database sessions are only held during brief read/write operations
+    - File I/O operations (moves) happen outside any session
+    - This prevents SQLite locking issues during slow file operations
+    """
+
+    def __init__(self, db: AsyncSession | None = None):
+        """Initialize the library import service.
+
+        Args:
+            db: Optional session (not used by import_design which manages its own).
+        """
         self.db = db
 
     async def import_design(
@@ -51,85 +90,95 @@ class LibraryImportService:
     ) -> dict[str, Any]:
         """Import a design's files from staging to the library.
 
-        Args:
-            design_id: The design ID.
-            progress_callback: Optional callback for progress updates.
-
-        Returns:
-            Dictionary with import results.
-
-        Raises:
-            LibraryError: If import fails.
+        Uses session-per-operation pattern to avoid holding locks during file moves.
         """
-        design = await self._get_design_with_files(design_id)
-        if not design:
-            raise LibraryError(f"Design not found: {design_id}")
-
         staging_dir = self._get_staging_dir(design_id)
-        if not staging_dir.exists():
-            raise LibraryError(f"Staging directory not found: {staging_dir}")
 
-        design.status = DesignStatus.IMPORTING
-        await self.db.flush()
+        # PHASE 1: Gather design info and file list (brief session)
+        async with async_session_maker() as db:
+            design = await self._get_design_with_files(db, design_id)
+            if not design:
+                raise LibraryError(f"Design not found: {design_id}")
 
-        # Get template for this design
-        template = await self._get_template(design)
+            if not staging_dir.exists():
+                raise LibraryError(f"Staging directory not found: {staging_dir}")
 
-        # Build library path from template
-        library_path = await self._build_library_path(design, template)
+            # Gather design info as plain data
+            design_info = await self._collect_design_info(db, design)
+
+            # Get files to move
+            files_to_move = await self._collect_files_to_move(db, design_id, staging_dir)
+
+            if not files_to_move:
+                logger.info("no_files_to_import", design_id=design_id)
+                return {
+                    "design_id": design_id,
+                    "files_imported": 0,
+                    "library_path": "",
+                }
+
+            # Update status
+            design.status = DesignStatus.IMPORTING
+            await db.commit()
+
+        # Get template and build library path
+        template = design_info.channel_template_override or settings.library_template_global
+        library_path = self._build_library_path(design_info, template)
+
+        # PHASE 2: Move files (NO database session held)
         library_path.mkdir(parents=True, exist_ok=True)
-
-        # Get all files in staging that need to be moved
-        files = await self._get_design_files(design_id)
-        total_files = len(files)
-
-        if total_files == 0:
-            logger.info("no_files_to_import", design_id=design_id)
-            return {
-                "design_id": design_id,
-                "files_imported": 0,
-                "library_path": str(library_path),
-            }
-
+        total_files = len(files_to_move)
         files_imported = 0
         total_bytes = 0
+        moved_files: list[tuple[str, str, str]] = []  # (design_file_id, new_relative_path, new_filename)
 
-        for i, design_file in enumerate(files):
-            source_path = staging_dir / design_file.relative_path
-            if not source_path.exists():
+        for i, file_info in enumerate(files_to_move):
+            if not file_info.source_path.exists():
                 logger.warning(
                     "file_not_found_in_staging",
                     design_id=design_id,
-                    relative_path=design_file.relative_path,
+                    relative_path=file_info.relative_path,
                 )
                 continue
 
             # Handle filename collision
             target_filename = self._resolve_collision(
-                library_path, design_file.filename
+                library_path, file_info.filename
             )
             target_path = library_path / target_filename
 
-            # Move file
-            await self._move_file(source_path, target_path)
+            # Move file (no DB)
+            await self._move_file(file_info.source_path, target_path)
 
-            # Update DesignFile record with new location
+            # Record the move for DB update
             new_relative_path = str(target_path.relative_to(settings.library_path))
-            design_file.relative_path = new_relative_path
-            design_file.filename = target_filename
-            await self.db.flush()
+            moved_files.append((file_info.design_file_id, new_relative_path, target_filename))
 
             files_imported += 1
-            total_bytes += design_file.size_bytes or 0
+            total_bytes += file_info.size_bytes or 0
 
             if progress_callback:
                 progress_callback(i + 1, total_files)
 
-        # Clean up empty staging directory
+        # Clean up staging (no DB)
         await self._cleanup_staging(staging_dir)
 
-        design.status = DesignStatus.ORGANIZED
-        await self.db.flush()
+        # PHASE 3: Update DesignFile records (brief session)
+        async with async_session_maker() as db:
+            for design_file_id, new_relative_path, new_filename in moved_files:
+                design_file = await db.get(DesignFile, design_file_id)
+                if design_file:
+                    design_file.relative_path = new_relative_path
+                    design_file.filename = new_filename
+
+            await db.commit()
+
+        # PHASE 4: Update design status (brief session)
+        async with async_session_maker() as db:
+            design = await db.get(Design, design_id)
+            if design:
+                design.status = DesignStatus.ORGANIZED
+                await db.commit()
 
         logger.info(
             "import_complete",
@@ -146,9 +195,11 @@ class LibraryImportService:
             "library_path": str(library_path),
         }
 
-    async def _get_design_with_files(self, design_id: str) -> Design | None:
+    async def _get_design_with_files(
+        self, db: AsyncSession, design_id: str
+    ) -> Design | None:
         """Get design with sources loaded for template resolution."""
-        result = await self.db.execute(
+        result = await db.execute(
             select(Design)
             .options(
                 selectinload(Design.sources)
@@ -159,56 +210,65 @@ class LibraryImportService:
         )
         return result.scalar_one_or_none()
 
-    async def _get_design_files(self, design_id: str) -> list[DesignFile]:
-        """Get all DesignFile records for a design."""
-        result = await self.db.execute(
-            select(DesignFile).where(DesignFile.design_id == design_id)
-        )
-        return list(result.scalars().all())
-
-    async def _get_template(self, design: Design) -> str:
-        """Get the library template for a design.
-
-        Order of precedence:
-        1. Channel's library_template_override (if set)
-        2. Global LIBRARY_TEMPLATE_GLOBAL setting
-        3. Default template
-        """
-        # Check for channel override
-        if design.sources:
-            for source in design.sources:
-                if source.message and source.message.channel:
-                    channel = source.message.channel
-                    if channel.library_template_override:
-                        return channel.library_template_override
-                    break
-
-        # Use global setting or default
-        return settings.library_template_global
-
-    async def _build_library_path(self, design: Design, template: str) -> Path:
-        """Build the library path from template and design data."""
-        # Gather template variables
-        now = datetime.utcnow()
-
-        variables = {
-            "designer": self._sanitize_name(design.display_designer or "Unknown"),
-            "title": self._sanitize_name(design.display_title or "Untitled"),
-            "date": now.strftime("%Y-%m-%d"),
-            "year": str(now.year),
-            "month": now.strftime("%m"),
-        }
-
-        # Get channel title from sources
+    async def _collect_design_info(
+        self, db: AsyncSession, design: Design
+    ) -> DesignInfo:
+        """Collect design info as plain data."""
         channel_title = "Unknown Channel"
+        channel_template_override = None
+
         if design.sources:
             for source in design.sources:
                 if source.message and source.message.channel:
                     channel_title = source.message.channel.title
+                    channel_template_override = source.message.channel.library_template_override
                     break
-        variables["channel"] = self._sanitize_name(channel_title)
 
-        # Substitute template variables
+        return DesignInfo(
+            id=design.id,
+            display_title=design.display_title,
+            display_designer=design.display_designer,
+            channel_title=channel_title,
+            channel_template_override=channel_template_override,
+        )
+
+    async def _collect_files_to_move(
+        self, db: AsyncSession, design_id: str, staging_dir: Path
+    ) -> list[FileToMove]:
+        """Collect file info as plain data."""
+        result = await db.execute(
+            select(DesignFile).where(DesignFile.design_id == design_id)
+        )
+        design_files = result.scalars().all()
+
+        files_to_move = []
+        for df in design_files:
+            source_path = staging_dir / df.relative_path
+            files_to_move.append(
+                FileToMove(
+                    design_file_id=df.id,
+                    relative_path=df.relative_path,
+                    filename=df.filename,
+                    size_bytes=df.size_bytes,
+                    source_path=source_path,
+                )
+            )
+
+        return files_to_move
+
+    def _build_library_path(self, design_info: DesignInfo, template: str) -> Path:
+        """Build the library path from template and design data."""
+        now = datetime.utcnow()
+
+        variables = {
+            "designer": self._sanitize_name(design_info.display_designer or "Unknown"),
+            "title": self._sanitize_name(design_info.display_title or "Untitled"),
+            "date": now.strftime("%Y-%m-%d"),
+            "year": str(now.year),
+            "month": now.strftime("%m"),
+            "channel": self._sanitize_name(design_info.channel_title),
+        }
+
         path_str = template
         for key, value in variables.items():
             path_str = path_str.replace(f"{{{key}}}", value)
@@ -216,44 +276,28 @@ class LibraryImportService:
         return settings.library_path / path_str
 
     def _sanitize_name(self, name: str) -> str:
-        """Sanitize a name for use in file/folder paths.
-
-        Replaces invalid characters with underscore.
-        Trims whitespace and limits length.
-        """
-        # Replace invalid characters
+        """Sanitize a name for use in file/folder paths."""
         sanitized = INVALID_CHARS.sub("_", name)
-
-        # Replace multiple underscores/spaces with single underscore
         sanitized = re.sub(r"[_\s]+", "_", sanitized)
-
-        # Trim whitespace and underscores from ends
         sanitized = sanitized.strip("_ ")
 
-        # Limit length (leave room for collision suffix)
         if len(sanitized) > 200:
             sanitized = sanitized[:200]
 
-        # Fallback for empty names
         if not sanitized:
             sanitized = "Unknown"
 
         return sanitized
 
     def _resolve_collision(self, directory: Path, filename: str) -> str:
-        """Resolve filename collision by appending numeric suffix.
-
-        Returns a filename that doesn't exist in the directory.
-        """
+        """Resolve filename collision by appending numeric suffix."""
         if not (directory / filename).exists():
             return filename
 
-        # Split filename into base and extension
         path = Path(filename)
         base = path.stem
         ext = path.suffix
 
-        # Try incrementing suffixes
         counter = 1
         while True:
             new_name = f"{base}_{counter}{ext}"
@@ -264,10 +308,7 @@ class LibraryImportService:
                 raise LibraryError(f"Too many filename collisions: {filename}")
 
     async def _move_file(self, source: Path, target: Path) -> None:
-        """Move a file from source to target.
-
-        Uses shutil.move for cross-filesystem support.
-        """
+        """Move a file from source to target."""
         def _do_move() -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(source), str(target))
@@ -282,15 +323,10 @@ class LibraryImportService:
         )
 
     async def _cleanup_staging(self, staging_dir: Path) -> None:
-        """Remove the staging directory if empty.
-
-        Recursively removes empty parent directories up to staging root.
-        """
+        """Remove the staging directory if empty."""
         def _do_cleanup() -> None:
             try:
-                # Remove the design's staging directory
                 if staging_dir.exists():
-                    # Remove only if empty or only contains empty directories
                     self._remove_empty_dirs(staging_dir)
             except Exception as e:
                 logger.warning(
@@ -303,19 +339,14 @@ class LibraryImportService:
         await loop.run_in_executor(None, _do_cleanup)
 
     def _remove_empty_dirs(self, path: Path) -> bool:
-        """Recursively remove empty directories.
-
-        Returns True if the directory was removed.
-        """
+        """Recursively remove empty directories."""
         if not path.is_dir():
             return False
 
-        # First, recursively clean subdirectories
         for child in list(path.iterdir()):
             if child.is_dir():
                 self._remove_empty_dirs(child)
 
-        # Then try to remove this directory (will fail if not empty)
         try:
             path.rmdir()
             logger.debug("removed_empty_dir", path=str(path))
