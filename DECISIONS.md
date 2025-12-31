@@ -525,6 +525,144 @@ E2E testing confirmed:
 
 ---
 
+### DEC-020: Live Monitoring Strategy
+**Date**: 2025-12-30
+**Status**: Accepted
+
+**Context**
+v0.6 introduces live channel monitoring - automatically detecting new posts in Telegram channels. Need to decide between polling (check periodically), real-time (Telethon event handlers), or hybrid approach.
+
+**Options Considered**
+1. **Polling only** - Periodically check each channel for new messages (every N minutes)
+   - Pros: Simple, works reliably, no persistent connection needed
+   - Cons: Delay between post and detection, more API calls
+
+2. **Real-time only** - Use Telethon's event handlers to receive updates instantly
+   - Pros: Near-instant detection, fewer API calls
+   - Cons: Requires persistent connection, reconnection handling
+
+3. **Hybrid** - Real-time when connected, poll on reconnect to catch missed messages
+   - Pros: Best of both worlds - instant when connected, catch-up on reconnect
+   - Cons: More complex implementation
+
+**Decision**
+Hybrid approach with fixed-interval polling:
+- Use Telethon event handlers for real-time new message detection
+- On reconnection, poll all channels to catch messages missed during disconnect
+- Fixed polling interval (configurable, default 5 minutes) for all channels
+- Poll interval applies to catch-up sync, not continuous monitoring
+
+**Implementation Notes**
+- `SyncService` handles real-time subscriptions via `@client.on(events.NewMessage)`
+- On client disconnect/reconnect, query `last_ingested_message_id` to fetch missed messages
+- Environment variable `PRINTARR_SYNC_POLL_INTERVAL` for configurable interval
+- Consider rate limiting to avoid Telegram flood wait
+
+**Consequences**
+- Near-instant design detection during normal operation
+- Resilient to connection drops
+- Must handle Telethon reconnection events properly
+- Worker process must maintain long-running connection
+
+---
+
+### DEC-021: Channel Discovery Data Model
+**Date**: 2025-12-30
+**Status**: Accepted
+
+**Context**
+v0.6 introduces channel discovery - tracking channels referenced in monitored content (forwards, mentions, links) so users can easily find and add related channels.
+
+**Options Considered**
+1. **Dedicated table** - New `DiscoveredChannel` table with reference_count, last_seen, etc.
+   - Pros: Clean separation, queryable fields, flexible schema
+   - Cons: More tables to maintain
+
+2. **Extend Channel model** - Add `is_discovered` flag to existing Channel model
+   - Pros: Single model for all channels
+   - Cons: Mixes monitored/discovered concepts, clutters model
+
+3. **Lightweight JSON** - Store references in a JSON field
+   - Pros: Minimal schema change
+   - Cons: Hard to query, no relationships
+
+**Decision**
+Dedicated `DiscoveredChannel` table with the following design:
+- Separate from `Channel` model (discovered channels are NOT monitored)
+- Store: `telegram_peer_id`, `title`, `username`, `reference_count`, `last_seen_at`, `first_seen_at`
+- Track sources: forwarded messages, @mentions, t.me/ links in captions, links in message text
+- When user adds a discovered channel, create proper `Channel` record and optionally delete discovered entry
+
+**Detection Sources** (all enabled for v0.6):
+1. Forwarded messages (`message.fwd_from.chat`)
+2. t.me/ links in captions
+3. @mentions in captions
+4. t.me/ links in message text
+
+**UI Location**
+Tab on Channels page: "Monitored" (existing) and "Discovered" (new) tabs.
+
+**Consequences**
+- Clean data model separation
+- Easy to show reference counts and discovery metadata
+- One-click "Add Channel" converts discovered to monitored
+- Need to handle deduplication (same channel discovered multiple ways)
+
+---
+
+### DEC-022: Auto-Download Mode Behavior
+**Date**: 2025-12-30
+**Status**: Accepted
+
+**Context**
+The `DownloadMode` enum has three values: `MANUAL`, `DOWNLOAD_ALL_NEW`, `DOWNLOAD_ALL`. Need to clarify exact behavior for each mode.
+
+**Decision**
+- **MANUAL**: No automatic downloads. User must explicitly trigger download for each design.
+- **DOWNLOAD_ALL_NEW**: Only auto-download designs detected AFTER the mode is enabled. Existing DISCOVERED designs remain in DISCOVERED status until manually downloaded.
+- **DOWNLOAD_ALL**: One-time bulk queue of all existing DISCOVERED designs, PLUS auto-download all future designs. Acts like DOWNLOAD_ALL_NEW after initial queue.
+
+**Rationale**
+- DOWNLOAD_ALL_NEW is "prospective" - users enable it when they want new content going forward
+- DOWNLOAD_ALL is "retroactive + prospective" - users want everything from this channel
+- This prevents surprise bulk downloads when enabling DOWNLOAD_ALL_NEW
+
+**Consequences**
+- Clear user expectations for each mode
+- DOWNLOAD_ALL needs confirmation dialog (may queue many downloads)
+- UI should show counts (e.g., "This will queue 47 existing designs")
+
+---
+
+### DEC-023: Dashboard Design for v0.6
+**Date**: 2025-12-30
+**Status**: Accepted
+
+**Context**
+v0.6 includes a dashboard. Need to decide scope for initial implementation.
+
+**Options Considered**
+1. **Minimal** - Total designs, downloads today, active channels count
+2. **Radarr-style** - Calendar view, storage stats, queue summary
+3. **Analytics-focused** - Graphs over time, per-channel stats
+
+**Decision**
+Radarr-style dashboard with:
+- **Calendar view**: Recent additions by date (last 7-14 days)
+- **Storage stats**: Library size, staging size, total designs count
+- **Queue summary**: Active downloads, queued count, recent completions
+- **Quick actions**: Resume paused, clear completed
+
+This provides visual overview similar to Radarr/Sonarr dashboards without complex analytics.
+
+**Consequences**
+- More UI work than minimal approach
+- Need API endpoints for aggregated stats
+- Calendar component required (use existing React calendar library)
+- Storage calculation needs efficient implementation (cache results)
+
+---
+
 ## Pending Decisions
 
 ### To Decide: Preview Rendering Engine
