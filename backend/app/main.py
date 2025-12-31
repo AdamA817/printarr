@@ -25,6 +25,9 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan events."""
+    import asyncio
+    from app.workers.manager import start_workers, stop_workers
+
     logger.info(
         "starting_application",
         app_name=settings.app_name,
@@ -48,7 +51,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.info("telegram_not_configured")
 
+    # Start background workers (download, extract, import)
+    worker_task = asyncio.create_task(start_workers())
+    logger.info("background_workers_starting")
+
     yield
+
+    # Stop background workers
+    logger.info("stopping_background_workers")
+    await stop_workers()
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
 
     # Disconnect Telegram on shutdown
     if telegram_service.is_connected():

@@ -265,8 +265,11 @@ async def start_workers() -> None:
     from app.workers.extract import ExtractArchiveWorker
     from app.workers.library_import import ImportToLibraryWorker
 
-    # Register download workers (configurable count)
-    manager.register_worker(DownloadWorker, count=settings.max_concurrent_downloads)
+    # Register download workers
+    # NOTE: SQLite doesn't handle concurrent writes well, so we limit to 1 worker
+    # for SQLite databases. For PostgreSQL, we could use max_concurrent_downloads.
+    download_worker_count = 1  # Forced to 1 for SQLite compatibility
+    manager.register_worker(DownloadWorker, count=download_worker_count)
 
     # Register extract workers (single worker is sufficient for CPU-bound extraction)
     manager.register_worker(ExtractArchiveWorker, count=1)

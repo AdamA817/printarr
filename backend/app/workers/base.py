@@ -149,6 +149,11 @@ class BaseWorker(ABC):
                     pass
                 return
 
+            # CRITICAL: Commit the job claim BEFORE processing to release
+            # the database lock. This allows the process() method to use
+            # its own session without deadlocking with this one.
+            await db.commit()
+
             # Process the job
             self._current_job = job
             payload = queue.get_payload(job)
