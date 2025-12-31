@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import func, select, update, delete
+from sqlalchemy import case, func, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
@@ -120,9 +120,9 @@ class TagService:
         if result.scalar_one_or_none():
             raise TagError(f"Tag already assigned to design")
 
-        # Check tag count
+        # Check tag count (DesignTag has composite PK, count design_id)
         count_result = await self.db.execute(
-            select(func.count(DesignTag.id)).where(
+            select(func.count(DesignTag.design_id)).where(
                 DesignTag.design_id == design_id
             )
         )
@@ -182,11 +182,16 @@ class TagService:
         # Delete the association
         await self.db.delete(design_tag)
 
-        # Decrement usage count
+        # Decrement usage count (using case() for SQLite compatibility)
         await self.db.execute(
             update(Tag)
             .where(Tag.id == tag_id)
-            .values(usage_count=func.greatest(Tag.usage_count - 1, 0))
+            .values(
+                usage_count=case(
+                    (Tag.usage_count > 0, Tag.usage_count - 1),
+                    else_=0
+                )
+            )
         )
 
         await self.db.flush()
