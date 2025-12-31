@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "printarr"
-version = "0.2.0"
+version = "0.5.0"
 description = "Self-hosted web application for monitoring Telegram channels for 3D-printable designs"
 readme = "README.md"
 requires-python = ">=3.11"
