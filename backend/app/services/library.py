@@ -29,8 +29,9 @@ from app.db.models import (
     DesignStatus,
     TelegramMessage,
 )
-from app.db.models.enums import PreviewKind, PreviewSource
+from app.db.models.enums import JobType, PreviewKind, PreviewSource
 from app.db.session import async_session_maker
+from app.services.job_queue import JobQueueService
 from app.services.preview import PreviewService
 
 logger = get_logger(__name__)
@@ -202,6 +203,17 @@ class LibraryImportService:
                 preview_service = PreviewService(db)
                 await preview_service.auto_select_primary(design_id)
                 await db.commit()
+
+        # PHASE 7: Queue render job for STL preview generation
+        async with async_session_maker() as db:
+            queue = JobQueueService(db)
+            await queue.enqueue(
+                job_type=JobType.GENERATE_RENDER,
+                design_id=design_id,
+                payload={"design_id": design_id},
+            )
+            await db.commit()
+            logger.debug("render_job_queued", design_id=design_id)
 
         logger.info(
             "import_complete",

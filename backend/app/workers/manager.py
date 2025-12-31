@@ -265,6 +265,7 @@ async def start_workers() -> None:
     from app.workers.extract import ExtractArchiveWorker
     from app.workers.image import ImageWorker
     from app.workers.library_import import ImportToLibraryWorker
+    from app.workers.render import RenderWorker
 
     # Register download workers
     # NOTE: SQLite doesn't handle concurrent writes well, so we limit to 1 worker
@@ -280,6 +281,9 @@ async def start_workers() -> None:
 
     # Register import workers (single worker to avoid race conditions)
     manager.register_worker(ImportToLibraryWorker, count=1)
+
+    # Register render workers (CPU-bound, single worker is sufficient)
+    manager.register_worker(RenderWorker, count=1)
 
     logger.info("starting_workers", worker_count=manager.worker_count)
     await manager.start()
