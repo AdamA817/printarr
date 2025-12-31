@@ -472,86 +472,89 @@ class TelegramService:
         link_type, identifier = self._parse_channel_link(link)
         logger.info("resolving_channel", link_type=link_type, identifier=identifier[:20])
 
-        try:
-            if link_type == "username":
-                # Resolve public channel by username
-                entity = await self._client.get_entity(identifier)
+        # Use lock to prevent concurrent Telethon operations from causing
+        # SQLite session database locks
+        async with self._lock:
+            try:
+                if link_type == "username":
+                    # Resolve public channel by username
+                    entity = await self._client.get_entity(identifier)
 
-            elif link_type in ("invite", "joinchat"):
-                # Check invite link without joining
-                try:
-                    result = await self._client(CheckChatInviteRequest(hash=identifier))
+                elif link_type in ("invite", "joinchat"):
+                    # Check invite link without joining
+                    try:
+                        result = await self._client(CheckChatInviteRequest(hash=identifier))
 
-                    if isinstance(result, ChatInviteAlready):
-                        # Already a member, get the actual chat
-                        entity = result.chat
-                    elif isinstance(result, ChatInvite):
-                        # Not a member, return info from invite
-                        return {
-                            "id": None,  # Can't get ID without joining
-                            "title": result.title,
-                            "username": None,
-                            "type": "channel" if result.channel else "group",
-                            "members_count": result.participants_count,
-                            "photo_url": None,
-                            "is_invite": True,
-                            "invite_hash": identifier,
-                        }
-                    else:
-                        entity = result
-                except InviteHashInvalidError:
-                    raise TelegramChannelNotFoundError("Invalid invite link")
-                except InviteHashExpiredError:
-                    raise TelegramChannelNotFoundError("Invite link has expired")
-            else:
-                raise TelegramInvalidLinkError(f"Unknown link type: {link_type}")
-
-            # Determine channel type
-            if isinstance(entity, Channel):
-                if entity.megagroup:
-                    channel_type = "supergroup"
+                        if isinstance(result, ChatInviteAlready):
+                            # Already a member, get the actual chat
+                            entity = result.chat
+                        elif isinstance(result, ChatInvite):
+                            # Not a member, return info from invite
+                            return {
+                                "id": None,  # Can't get ID without joining
+                                "title": result.title,
+                                "username": None,
+                                "type": "channel" if result.channel else "group",
+                                "members_count": result.participants_count,
+                                "photo_url": None,
+                                "is_invite": True,
+                                "invite_hash": identifier,
+                            }
+                        else:
+                            entity = result
+                    except InviteHashInvalidError:
+                        raise TelegramChannelNotFoundError("Invalid invite link")
+                    except InviteHashExpiredError:
+                        raise TelegramChannelNotFoundError("Invite link has expired")
                 else:
-                    channel_type = "channel"
-            elif isinstance(entity, Chat):
-                channel_type = "group"
-            else:
-                channel_type = "unknown"
+                    raise TelegramInvalidLinkError(f"Unknown link type: {link_type}")
 
-            # Get member count if available
-            members_count = None
-            if hasattr(entity, "participants_count"):
-                members_count = entity.participants_count
+                # Determine channel type
+                if isinstance(entity, Channel):
+                    if entity.megagroup:
+                        channel_type = "supergroup"
+                    else:
+                        channel_type = "channel"
+                elif isinstance(entity, Chat):
+                    channel_type = "group"
+                else:
+                    channel_type = "unknown"
 
-            result = {
-                "id": entity.id,
-                "title": getattr(entity, "title", None) or getattr(entity, "name", "Unknown"),
-                "username": getattr(entity, "username", None),
-                "type": channel_type,
-                "members_count": members_count,
-                "photo_url": None,  # TODO: Implement photo URL extraction
-            }
+                # Get member count if available
+                members_count = None
+                if hasattr(entity, "participants_count"):
+                    members_count = entity.participants_count
 
-            logger.info(
-                "channel_resolved",
-                channel_id=result["id"],
-                title=result["title"],
-                type=result["type"],
-            )
-            return result
+                result = {
+                    "id": entity.id,
+                    "title": getattr(entity, "title", None) or getattr(entity, "name", "Unknown"),
+                    "username": getattr(entity, "username", None),
+                    "type": channel_type,
+                    "members_count": members_count,
+                    "photo_url": None,  # TODO: Implement photo URL extraction
+                }
 
-        except (UsernameInvalidError, UsernameNotOccupiedError):
-            raise TelegramChannelNotFoundError(f"Channel not found: {identifier}")
+                logger.info(
+                    "channel_resolved",
+                    channel_id=result["id"],
+                    title=result["title"],
+                    type=result["type"],
+                )
+                return result
 
-        except ChannelPrivateError:
-            raise TelegramAccessDeniedError("Cannot access private channel")
+            except (UsernameInvalidError, UsernameNotOccupiedError):
+                raise TelegramChannelNotFoundError(f"Channel not found: {identifier}")
 
-        except FloodWaitError as e:
-            logger.warning("telegram_rate_limited", retry_after=e.seconds)
-            raise TelegramRateLimitError(e.seconds)
+            except ChannelPrivateError:
+                raise TelegramAccessDeniedError("Cannot access private channel")
 
-        except ValueError as e:
-            # Telethon raises ValueError for various entity resolution issues
-            raise TelegramChannelNotFoundError(str(e))
+            except FloodWaitError as e:
+                logger.warning("telegram_rate_limited", retry_after=e.seconds)
+                raise TelegramRateLimitError(e.seconds)
+
+            except ValueError as e:
+                # Telethon raises ValueError for various entity resolution issues
+                raise TelegramChannelNotFoundError(str(e))
 
     async def get_messages(
         self,
@@ -580,42 +583,45 @@ class TelegramService:
         # Clamp limit
         limit = max(1, min(100, limit))
 
-        try:
-            # Get the channel entity first
+        # Use lock to prevent concurrent Telethon operations from causing
+        # SQLite session database locks
+        async with self._lock:
             try:
-                entity = await self._client.get_entity(channel_id)
-            except (UsernameInvalidError, UsernameNotOccupiedError, ValueError):
-                raise TelegramChannelNotFoundError(f"Channel not found: {channel_id}")
+                # Get the channel entity first
+                try:
+                    entity = await self._client.get_entity(channel_id)
+                except (UsernameInvalidError, UsernameNotOccupiedError, ValueError):
+                    raise TelegramChannelNotFoundError(f"Channel not found: {channel_id}")
 
-            # Fetch messages
-            messages_data = []
-            async for message in self._client.iter_messages(entity, limit=limit):
-                msg_data = await self._parse_message(message)
-                messages_data.append(msg_data)
+                # Fetch messages
+                messages_data = []
+                async for message in self._client.iter_messages(entity, limit=limit):
+                    msg_data = await self._parse_message(message)
+                    messages_data.append(msg_data)
 
-            # Get channel info
-            channel_info = {
-                "id": entity.id,
-                "title": getattr(entity, "title", None) or getattr(entity, "name", "Unknown"),
-            }
+                # Get channel info
+                channel_info = {
+                    "id": entity.id,
+                    "title": getattr(entity, "title", None) or getattr(entity, "name", "Unknown"),
+                }
 
-            logger.info(
-                "messages_fetched",
-                channel_id=entity.id,
-                count=len(messages_data),
-            )
+                logger.info(
+                    "messages_fetched",
+                    channel_id=entity.id,
+                    count=len(messages_data),
+                )
 
-            return {
-                "messages": messages_data,
-                "channel": channel_info,
-            }
+                return {
+                    "messages": messages_data,
+                    "channel": channel_info,
+                }
 
-        except ChannelPrivateError:
-            raise TelegramAccessDeniedError("Cannot access private channel")
+            except ChannelPrivateError:
+                raise TelegramAccessDeniedError("Cannot access private channel")
 
-        except FloodWaitError as e:
-            logger.warning("telegram_rate_limited", retry_after=e.seconds)
-            raise TelegramRateLimitError(e.seconds)
+            except FloodWaitError as e:
+                logger.warning("telegram_rate_limited", retry_after=e.seconds)
+                raise TelegramRateLimitError(e.seconds)
 
     async def _parse_message(self, message) -> dict:
         """Parse a Telegram message into a dict.
