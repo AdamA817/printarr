@@ -750,11 +750,231 @@ if db_channel and db_channel.username:
 
 ---
 
+### DEC-026: Preview Rendering Engine
+**Date**: 2025-12-31
+**Status**: Accepted
+
+**Context**
+v0.7 introduces preview image generation for downloaded STL/3MF files. Need to choose a rendering approach that balances quality, performance, and deployment simplicity.
+
+**Options Considered**
+1. **stl-thumb** - Rust CLI tool, fast, simple, basic renders
+2. **OpenSCAD** - Mature, headless rendering, more control
+3. **Three.js server-side** - Node process, high quality, more complex
+4. **Blender headless** - Best quality, heaviest resource usage
+5. **Skip for v0.7** - Only use Telegram/Thangs images, defer rendering
+
+**Decision**
+stl-thumb. Rationale:
+- Single binary, easy to add to Docker image
+- Fast rendering (< 1s per model)
+- Sufficient quality for catalog thumbnails
+- No additional runtime dependencies (Node, Python, etc.)
+- Can upgrade to better renderer later if needed
+
+**Implementation**
+- Render resolution: 400×400px
+- Output format: PNG
+- Trigger: POST_DOWNLOAD_ANALYSIS job
+
+**Consequences**
+- Simple deployment
+- May need upgrade for complex models with materials/colors
+- Can be replaced with better renderer in future version
+
+---
+
+### DEC-027: Preview Image Storage Strategy
+**Date**: 2025-12-31
+**Status**: Accepted
+
+**Context**
+Need to decide where to store preview images (Telegram, Thangs, archive, rendered).
+
+**Options Considered**
+1. **Filesystem** - `/cache/previews/` directory, served via static route
+2. **Database BLOBs** - Simpler backup, slower for large images
+3. **Object storage** - S3-compatible, overkill for single-user
+
+**Decision**
+Filesystem storage at `/cache/previews/` with subdirectories by source:
+```
+/cache/previews/
+├── telegram/{design_id}/
+├── archive/{design_id}/
+├── thangs/{thangs_model_id}/
+├── embedded/{design_id}/
+└── rendered/{design_id}/
+```
+
+**Consequences**
+- Matches existing volume mount pattern (/cache is already mounted)
+- Easy to browse/debug
+- Requires static file serving route in FastAPI
+- Backup requires including /cache volume
+
+---
+
+### DEC-028: Tag Taxonomy
+**Date**: 2025-12-31
+**Status**: Accepted
+
+**Context**
+Need to decide how tags should be organized - free-form vs structured categories.
+
+**Options Considered**
+1. **Free-form** - Any string, user creates tags as needed
+2. **Hierarchical categories** - Predefined categories only
+3. **Hybrid** - Predefined categories + free-form custom tags
+
+**Decision**
+Hybrid approach:
+- Predefined categories with suggested values: Type, Theme, Scale, Complexity, Print Type
+- Free-form tags without category for custom organization
+- Tags normalized to lowercase for deduplication
+- Max 20 tags per design
+
+**Predefined Categories**
+```python
+TAG_CATEGORIES = {
+    "Type": ["Figure", "Bust", "Diorama", "Miniature", "Cosplay", "Prop", "Tool", "Art"],
+    "Theme": ["Sci-Fi", "Fantasy", "Horror", "Anime", "Gaming", "Movie", "Comic"],
+    "Scale": ["28mm", "32mm", "75mm", "1:6", "1:10", "Life Size"],
+    "Complexity": ["Simple", "Moderate", "Complex", "Expert"],
+    "Print Type": ["FDM", "Resin", "Both"],
+}
+```
+
+**Consequences**
+- Flexible for users while providing structure
+- Autocomplete can suggest predefined tags
+- Category filtering possible in future
+- May need tag cleanup/merge features later
+
+---
+
+### DEC-029: Multicolor Detection Strategy
+**Date**: 2025-12-31
+**Status**: Accepted
+
+**Context**
+Need to detect whether designs are multicolor (MMU/AMS compatible) for filtering.
+
+**Options Considered**
+1. **Filename only** - Keywords in filenames/captions
+2. **3MF inspection** - Parse 3MF for multiple materials
+3. **Both** - Combine heuristics + 3MF parsing
+
+**Decision**
+Both approaches, applied at different stages:
+
+**Heuristic Detection (during ingestion)**
+Keywords: "multicolor", "multi-color", "MMU", "AMS", "IDEX", "dual color", "multi material", "[N] color"
+
+**3MF Analysis (post-download)**
+Parse 3MF XML for multiple `<basematerials>` entries or different `materialid` references.
+
+**Data Model**
+- `is_multicolor`: Boolean on Design
+- `multicolor_source`: HEURISTIC | 3MF_ANALYSIS | USER_OVERRIDE
+
+**Consequences**
+- Early detection for filtering before download
+- Accurate confirmation after download
+- User can override if detection is wrong
+
+---
+
+### DEC-030: Telegram Image Download Strategy
+**Date**: 2025-12-31
+**Status**: Accepted
+
+**Context**
+When should Telegram preview images (photos attached to posts) be downloaded?
+
+**Options Considered**
+1. **During ingestion** - Download immediately when design created
+2. **On-demand** - Download when user views design detail
+3. **Background job** - Queue separate job for image downloads
+
+**Decision**
+Background job approach:
+- During ingestion, detect if message has photos
+- Create `DOWNLOAD_TELEGRAM_IMAGES` job
+- ImageWorker processes jobs asynchronously
+- Keeps ingestion fast and decoupled
+
+**Consequences**
+- Ingestion remains fast even with many photos
+- Images may not be immediately available
+- Need new worker/job type
+- Better resilience to Telegram rate limits
+
+---
+
+### DEC-031: Archive Preview Extraction
+**Date**: 2025-12-31
+**Status**: Accepted
+
+**Context**
+Many archives contain preview images (preview.jpg, images/ folder, etc.) that should be extracted and displayed.
+
+**Decision**
+During archive extraction (download phase), scan for preview images:
+
+**Detection Patterns** (priority order)
+1. Explicit files: `preview.*`, `thumbnail.*`, `cover.*`, `render.*`
+2. Preview folders: `images/`, `previews/`, `renders/`, `photos/`
+3. Root-level images: `*.jpg`, `*.png`, `*.gif`, `*.webp`
+
+**Limits**
+- Max 10 preview images per archive
+- Skip images < 10KB (likely icons)
+- Skip images > 10MB (likely source renders)
+
+**Storage**
+- Extract to `/cache/previews/archive/{design_id}/`
+- Create DesignPreview records with `source=ARCHIVE`
+
+**Consequences**
+- Designer-provided previews available without manual upload
+- May extract irrelevant images (logos, instructions)
+- Adds processing time to extraction phase
+
+---
+
+### DEC-032: Primary Preview Selection
+**Date**: 2025-12-31
+**Status**: Accepted
+
+**Context**
+Designs may have multiple preview images from different sources. Need to determine which is shown as the primary/card image.
+
+**Decision**
+Auto-select based on source priority, with manual override:
+
+**Priority Order** (highest to lowest)
+1. RENDERED - We generated it, best quality
+2. EMBEDDED_3MF - Designer's intended preview
+3. ARCHIVE - Designer included it
+4. THANGS - Authoritative external source
+5. TELEGRAM - Channel post image (may be unrelated)
+
+**Implementation**
+- Auto-select runs when previews are added
+- User can manually set any preview as primary via UI
+- Manual selection persists (not overwritten by auto)
+
+**Consequences**
+- Reasonable defaults without user intervention
+- User has full control when needed
+- May need "reset to auto" option
+
+---
+
 ## Pending Decisions
 
-### To Decide: Preview Rendering Engine
-**Context**: How to render STL/3MF to images
-**Status**: Research needed during v0.7
+*No pending decisions at this time.*
 
 ---
 
