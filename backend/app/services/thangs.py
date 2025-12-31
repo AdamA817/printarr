@@ -21,10 +21,14 @@ from app.db.models import (
     ExternalMetadataSource,
     ExternalSourceType,
     MatchMethod,
+    PreviewKind,
+    PreviewSource,
+    TagSource,
 )
 
 if TYPE_CHECKING:
-    pass
+    from app.services.preview import PreviewService
+    from app.services.tag import TagService
 
 # Rate limiting: delay between Thangs API calls (in seconds)
 THANGS_API_DELAY = 0.5
@@ -38,6 +42,9 @@ FLARESOLVERR_TIMEOUT = 60000
 # Max retries for transient failures
 MAX_RETRIES = 3
 RETRY_DELAY = 2.0
+
+# Max images to cache per Thangs model
+MAX_THANGS_IMAGES = 10
 
 
 @dataclass
@@ -886,3 +893,122 @@ class ThangsAdapter:
             "failed": failed,
             "skipped": 0,
         }
+
+    async def cache_thangs_images(
+        self,
+        design_id: str,
+        image_urls: list[str],
+        preview_service: "PreviewService",
+    ) -> int:
+        """Cache preview images from Thangs.
+
+        Args:
+            design_id: The design ID.
+            image_urls: List of image URLs to cache.
+            preview_service: PreviewService instance to save images.
+
+        Returns:
+            Number of images cached.
+        """
+        if not image_urls:
+            return 0
+
+        cached_count = 0
+        client = await self._get_client()
+
+        for i, url in enumerate(image_urls[:MAX_THANGS_IMAGES]):
+            try:
+                response = await client.get(url)
+                if response.status_code != 200:
+                    logger.warning(
+                        "thangs_image_download_failed",
+                        url=url,
+                        status_code=response.status_code,
+                    )
+                    continue
+
+                image_data = response.content
+                if not image_data:
+                    continue
+
+                # Extract filename from URL
+                filename = url.split("/")[-1].split("?")[0] or f"thangs_{i}.jpg"
+
+                await preview_service.save_preview(
+                    design_id=design_id,
+                    image_data=image_data,
+                    source=PreviewSource.THANGS,
+                    kind=PreviewKind.GALLERY if i > 0 else PreviewKind.THUMBNAIL,
+                    original_filename=filename,
+                )
+                cached_count += 1
+
+            except Exception as e:
+                logger.warning(
+                    "thangs_image_cache_error",
+                    url=url,
+                    error=str(e),
+                )
+
+        if cached_count > 0:
+            logger.info(
+                "thangs_images_cached",
+                design_id=design_id,
+                count=cached_count,
+            )
+
+        return cached_count
+
+    async def import_thangs_tags(
+        self,
+        design_id: str,
+        tags: list[str],
+        tag_service: "TagService",
+    ) -> int:
+        """Import tags from Thangs into the design.
+
+        Args:
+            design_id: The design ID.
+            tags: List of tag names from Thangs.
+            tag_service: TagService instance.
+
+        Returns:
+            Number of tags imported.
+        """
+        if not tags:
+            return 0
+
+        imported_count = 0
+
+        for tag_name in tags:
+            try:
+                # Get or create the tag
+                tag = await tag_service.get_or_create_tag(tag_name)
+
+                # Add to design with AUTO_THANGS source
+                try:
+                    await tag_service.add_tag_to_design(
+                        design_id=design_id,
+                        tag_id=tag.id,
+                        source=TagSource.AUTO_THANGS,
+                    )
+                    imported_count += 1
+                except Exception:
+                    # Tag already assigned, skip
+                    pass
+
+            except Exception as e:
+                logger.warning(
+                    "thangs_tag_import_error",
+                    tag_name=tag_name,
+                    error=str(e),
+                )
+
+        if imported_count > 0:
+            logger.info(
+                "thangs_tags_imported",
+                design_id=design_id,
+                count=imported_count,
+            )
+
+        return imported_count
