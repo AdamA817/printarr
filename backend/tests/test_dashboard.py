@@ -74,7 +74,7 @@ class TestDashboardStatsEndpoint:
             DesignStatus.DISCOVERED,
             DesignStatus.WANTED,
             DesignStatus.DOWNLOADED,
-            DesignStatus.IMPORTED,
+            DesignStatus.ORGANIZED,
         ]
         for i, status in enumerate(statuses):
             design = Design(

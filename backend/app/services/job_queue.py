@@ -10,9 +10,16 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
-from app.db.models import Job, JobStatus, JobType
+from app.db.models import Design, DesignStatus, Job, JobStatus, JobType
 
 logger = get_logger(__name__)
+
+# Job types that are related to designs and affect design status
+DESIGN_JOB_TYPES = {
+    JobType.DOWNLOAD_DESIGN,
+    JobType.EXTRACT_ARCHIVE,
+    JobType.IMPORT_TO_LIBRARY,
+}
 
 
 class JobQueueService:
@@ -198,6 +205,10 @@ class JobQueueService:
                     error=error,
                 )
 
+                # Update design status to FAILED if this is a design-related job
+                if job.design_id and job.type in DESIGN_JOB_TYPES:
+                    await self._update_design_status(job.design_id, DesignStatus.FAILED)
+
         await self.db.flush()
         return job
 
@@ -228,6 +239,10 @@ class JobQueueService:
 
         job.status = JobStatus.CANCELED
         job.finished_at = datetime.utcnow()
+
+        # Reset design status to DISCOVERED if this is a design-related job
+        if job.design_id and job.type in DESIGN_JOB_TYPES:
+            await self._update_design_status(job.design_id, DesignStatus.DISCOVERED)
 
         await self.db.flush()
 
@@ -389,6 +404,9 @@ class JobQueueService:
                 design_id=design_id,
                 count=count,
             )
+            # Reset design status to DISCOVERED
+            await self._update_design_status(design_id, DesignStatus.DISCOVERED)
+
         return count
 
     async def requeue_stale_jobs(
@@ -466,3 +484,25 @@ class JobQueueService:
         if not job.result_json:
             return None
         return json.loads(job.result_json)
+
+    async def _update_design_status(
+        self,
+        design_id: str,
+        new_status: DesignStatus,
+    ) -> None:
+        """Update a design's status.
+
+        Args:
+            design_id: The design ID.
+            new_status: The new status to set.
+        """
+        design = await self.db.get(Design, design_id)
+        if design:
+            old_status = design.status
+            design.status = new_status
+            logger.info(
+                "design_status_updated",
+                design_id=design_id,
+                old_status=old_status.value if old_status else None,
+                new_status=new_status.value,
+            )

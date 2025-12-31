@@ -74,6 +74,7 @@ class DesignStatus(str, enum.Enum):
     EXTRACTED = "EXTRACTED"
     IMPORTING = "IMPORTING"
     ORGANIZED = "ORGANIZED"
+    FAILED = "FAILED"  # Final failure after all retries exhausted
 
 
 class FileKind(str, enum.Enum):

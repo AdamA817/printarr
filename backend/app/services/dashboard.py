@@ -265,7 +265,7 @@ class DashboardService:
             wanted=counts_by_status.get(DesignStatus.WANTED, 0),
             downloading=counts_by_status.get(DesignStatus.DOWNLOADING, 0),
             downloaded=counts_by_status.get(DesignStatus.DOWNLOADED, 0),
-            imported=counts_by_status.get(DesignStatus.IMPORTED, 0),
+            imported=counts_by_status.get(DesignStatus.ORGANIZED, 0),  # ORGANIZED = imported to library
             failed=counts_by_status.get(DesignStatus.FAILED, 0),
             total=total,
         )
