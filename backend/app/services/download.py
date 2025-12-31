@@ -22,8 +22,10 @@ from app.db.models import (
     Attachment,
     AttachmentDownloadStatus,
     Design,
+    DesignFile,
     DesignSource,
     DesignStatus,
+    FileKind,
     JobType,
     TelegramMessage,
 )
@@ -39,6 +41,9 @@ logger = get_logger(__name__)
 
 # File extensions that indicate archives needing extraction
 ARCHIVE_EXTENSIONS = {".zip", ".rar", ".7z", ".tar.gz", ".tgz"}
+
+# File extensions for 3D model files
+MODEL_EXTENSIONS = {".stl", ".3mf", ".obj", ".step", ".stp", ".iges", ".igs", ".blend", ".gcode"}
 
 
 class DownloadError(Exception):
@@ -116,6 +121,7 @@ class DownloadService:
         total_bytes = 0
         has_archives = False
         download_paths: list[str] = []
+        downloaded_files: list[dict[str, Any]] = []  # Track file info for DesignFile creation
         total_attachments = len(attachments_info)
 
         for i, att_info in enumerate(attachments_info):
@@ -127,18 +133,56 @@ class DownloadService:
             total_bytes += result["size"]
             download_paths.append(result["path"])
 
+            # Track file info for DesignFile creation
+            downloaded_files.append({
+                "attachment_id": att_info.id,
+                "path": result["path"],
+                "size": result["size"],
+                "sha256": result["sha256"],
+                "ext": att_info.ext,
+                "filename": Path(result["path"]).name,
+            })
+
             if att_info.ext and att_info.ext.lower() in ARCHIVE_EXTENSIONS:
                 has_archives = True
 
             if progress_callback:
                 progress_callback(i + 1, total_attachments)
 
-        # PHASE 3: Update design status (brief session)
+        # PHASE 3: Update design status and create DesignFile records (brief session)
         async with async_session_maker() as db:
             design = await db.get(Design, design_id)
             if design:
                 design.status = DesignStatus.DOWNLOADED
-                await db.commit()
+
+            # For non-archive designs, create DesignFile records now
+            # (archive designs get DesignFile records during extraction)
+            if not has_archives:
+                for file_info in downloaded_files:
+                    ext = file_info["ext"] or ""
+                    ext_lower = ext.lower()
+
+                    # Determine FileKind
+                    if ext_lower in MODEL_EXTENSIONS:
+                        file_kind = FileKind.MODEL
+                    else:
+                        file_kind = FileKind.OTHER
+
+                    # Create DesignFile record
+                    design_file = DesignFile(
+                        design_id=design_id,
+                        source_attachment_id=file_info["attachment_id"],
+                        relative_path=file_info["filename"],  # Just the filename in staging
+                        filename=file_info["filename"],
+                        ext=ext,
+                        size_bytes=file_info["size"],
+                        sha256=file_info["sha256"],
+                        file_kind=file_kind,
+                        is_from_archive=False,
+                    )
+                    db.add(design_file)
+
+            await db.commit()
 
         return {
             "design_id": design_id,
