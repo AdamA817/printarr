@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { DesignListParams, DesignStatus, MulticolorStatus, SortField, SortOrder } from '@/types/design'
 
-const VALID_STATUSES: DesignStatus[] = ['DISCOVERED', 'WANTED', 'DOWNLOADING', 'DOWNLOADED', 'ORGANIZED']
+const VALID_STATUSES: DesignStatus[] = ['DISCOVERED', 'WANTED', 'DOWNLOADING', 'DOWNLOADED', 'ORGANIZED', 'FAILED']
 const VALID_MULTICOLORS: MulticolorStatus[] = ['UNKNOWN', 'SINGLE', 'MULTI']
 const VALID_SORT_FIELDS: SortField[] = ['created_at', 'canonical_title', 'canonical_designer', 'total_size_bytes']
 const VALID_SORT_ORDERS: SortOrder[] = ['ASC', 'DESC']
