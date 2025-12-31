@@ -20,10 +20,12 @@ from app.db.models import (
     JobType,
     MediaType,
     MetadataAuthority,
+    MulticolorSource,
     MulticolorStatus,
     TelegramMessage,
 )
 from app.services.job_queue import JobQueueService
+from app.services.multicolor import get_multicolor_detector
 from app.services.thangs import ThangsAdapter
 
 if TYPE_CHECKING:
@@ -324,12 +326,27 @@ class IngestService:
         # Get file types from attachments
         file_types = await self._get_file_types(message.id)
 
+        # Detect multicolor from caption and filenames (heuristic)
+        filenames = await self._get_attachment_filenames(message.id)
+        detector = get_multicolor_detector()
+        is_multicolor = detector.detect_from_caption_and_files(caption_text, filenames)
+        multicolor_status = MulticolorStatus.MULTI if is_multicolor else MulticolorStatus.UNKNOWN
+        multicolor_source = MulticolorSource.HEURISTIC if is_multicolor else None
+
+        if is_multicolor:
+            logger.debug(
+                "multicolor_detected_heuristic",
+                caption=caption_text[:100] if caption_text else None,
+                filenames=filenames,
+            )
+
         # Create Design
         design = Design(
             canonical_title=title,
             canonical_designer="Unknown",  # Will be enriched later
             status=DesignStatus.DISCOVERED,
-            multicolor=MulticolorStatus.UNKNOWN,
+            multicolor=multicolor_status,
+            multicolor_source=multicolor_source,
             primary_file_types=",".join(file_types) if file_types else None,
             metadata_authority=MetadataAuthority.TELEGRAM,
             # Set split archive fields if this is a split archive
@@ -487,6 +504,16 @@ class IngestService:
         extensions = result.scalars().all()
         # Convert to uppercase without dots for display
         return [ext.lstrip(".").upper() for ext in extensions if ext]
+
+    async def _get_attachment_filenames(self, message_id: str) -> list[str]:
+        """Get all attachment filenames for a message."""
+        result = await self.db.execute(
+            select(Attachment.filename).where(
+                Attachment.message_id == message_id,
+                Attachment.filename.isnot(None),
+            )
+        )
+        return list(result.scalars().all())
 
     def detect_split_archive(self, filename: str) -> SplitArchiveInfo | None:
         """Detect if a filename is a split archive and extract info.

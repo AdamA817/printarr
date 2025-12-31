@@ -29,9 +29,16 @@ from app.db.models import (
     DesignStatus,
     TelegramMessage,
 )
-from app.db.models.enums import JobType, PreviewKind, PreviewSource
+from app.db.models.enums import (
+    JobType,
+    MulticolorSource,
+    MulticolorStatus,
+    PreviewKind,
+    PreviewSource,
+)
 from app.db.session import async_session_maker
 from app.services.job_queue import JobQueueService
+from app.services.multicolor import get_multicolor_detector
 from app.services.preview import PreviewService
 
 logger = get_logger(__name__)
@@ -214,6 +221,9 @@ class LibraryImportService:
             )
             await db.commit()
             logger.debug("render_job_queued", design_id=design_id)
+
+        # PHASE 8: Analyze 3MF files for multicolor detection
+        await self._analyze_3mf_multicolor(design_id, library_path)
 
         logger.info(
             "import_complete",
@@ -506,3 +516,53 @@ class LibraryImportService:
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _do_extract)
+
+    async def _analyze_3mf_multicolor(self, design_id: str, library_path: Path) -> bool:
+        """Analyze 3MF files for multicolor detection.
+
+        Args:
+            design_id: The design ID.
+            library_path: Path to the design's library folder.
+
+        Returns:
+            True if multicolor was detected.
+        """
+        threemf_files = self._find_3mf_files(library_path)
+        if not threemf_files:
+            return False
+
+        detector = get_multicolor_detector()
+        is_multicolor = False
+
+        for threemf_path in threemf_files:
+            detected, details = detector.detect_from_3mf(threemf_path)
+            if detected:
+                is_multicolor = True
+                logger.info(
+                    "multicolor_detected_3mf",
+                    design_id=design_id,
+                    file=threemf_path.name,
+                    color_count=details.get("color_count", 0),
+                )
+                break  # One is enough
+
+        if is_multicolor:
+            # Update design with 3MF analysis result
+            # Only upgrade, don't downgrade from heuristic
+            async with async_session_maker() as db:
+                design = await db.get(Design, design_id)
+                if design:
+                    # Update if not already set or if heuristic set it
+                    if design.multicolor != MulticolorStatus.MULTI:
+                        design.multicolor = MulticolorStatus.MULTI
+                        design.multicolor_source = MulticolorSource.THREE_MF_ANALYSIS
+                        logger.debug(
+                            "multicolor_upgraded_from_3mf",
+                            design_id=design_id,
+                        )
+                    elif design.multicolor_source == MulticolorSource.HEURISTIC:
+                        # Confirm with 3MF analysis (more authoritative)
+                        design.multicolor_source = MulticolorSource.THREE_MF_ANALYSIS
+                    await db.commit()
+
+        return is_multicolor
