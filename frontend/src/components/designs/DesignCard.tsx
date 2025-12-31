@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { StatusBadge } from './StatusBadge'
 import { DesignActions } from './DesignActions'
-import type { DesignListItem } from '@/types/design'
+import { TagList } from './TagManager'
+import type { DesignListItem, PreviewSource } from '@/types/design'
+import { getPreviewUrl } from '@/hooks/usePreviews'
 
 interface DesignCardProps {
   design: DesignListItem
@@ -32,12 +35,27 @@ function getFileTypeIcon(fileTypes: string[]): string {
   return '📄'
 }
 
+// Preview source badge config
+const previewSourceLabels: Record<PreviewSource, string> = {
+  TELEGRAM: 'TG',
+  ARCHIVE: 'AR',
+  EMBEDDED_3MF: '3MF',
+  THANGS: 'TH',
+  RENDERED: 'RN',
+}
+
 export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, showActions = true }: DesignCardProps) {
+  const [imageError, setImageError] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
     onToggleSelect?.(design.id)
   }
+
+  const hasPreview = design.primary_preview && !imageError
+  const previewUrl = design.primary_preview ? getPreviewUrl(design.primary_preview.file_path) : null
 
   return (
     <Link
@@ -46,11 +64,29 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, 
         isSelected ? 'ring-2 ring-accent-primary' : ''
       }`}
     >
-      {/* Thumbnail placeholder */}
-      <div className="aspect-square bg-bg-tertiary flex items-center justify-center relative">
-        <span className="text-4xl opacity-50">
-          {getFileTypeIcon(design.file_types)}
-        </span>
+      {/* Thumbnail / Preview */}
+      <div className="aspect-square bg-bg-tertiary flex items-center justify-center relative overflow-hidden">
+        {/* Preview image or placeholder */}
+        {hasPreview && previewUrl ? (
+          <>
+            {/* Loading skeleton */}
+            {!imageLoaded && (
+              <div className="absolute inset-0 bg-bg-tertiary animate-pulse" />
+            )}
+            <img
+              src={previewUrl}
+              alt={design.canonical_title}
+              className={`w-full h-full object-cover transition-opacity ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+              loading="lazy"
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageError(true)}
+            />
+          </>
+        ) : (
+          <span className="text-4xl opacity-50">
+            {getFileTypeIcon(design.file_types)}
+          </span>
+        )}
 
         {/* Selection checkbox */}
         {onToggleSelect && (
@@ -84,17 +120,38 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, 
           )}
         </div>
 
-        {/* Thangs indicator */}
-        {design.has_thangs_link && (
-          <span
-            className={`absolute top-2 text-accent-primary bg-bg-primary/80 rounded px-1.5 py-0.5 text-xs ${
-              onToggleSelect ? 'right-2' : 'right-2'
-            }`}
-            title="Linked to Thangs"
-          >
-            🔗
-          </span>
-        )}
+        {/* Top-right badges container */}
+        <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+          {/* Multicolor badge */}
+          {design.multicolor === 'MULTI' && (
+            <span
+              className="bg-purple-500/80 text-white text-[9px] px-1.5 py-0.5 rounded font-medium"
+              title="Multicolor / MMU compatible"
+            >
+              MMU
+            </span>
+          )}
+
+          {/* Thangs indicator */}
+          {design.has_thangs_link && (
+            <span
+              className="text-accent-primary bg-bg-primary/80 rounded px-1.5 py-0.5 text-xs"
+              title="Linked to Thangs"
+            >
+              🔗
+            </span>
+          )}
+
+          {/* Preview source badge */}
+          {design.primary_preview && (
+            <span
+              className="bg-black/50 text-white/80 text-[8px] px-1 py-0.5 rounded"
+              title={`Source: ${design.primary_preview.source}`}
+            >
+              {previewSourceLabels[design.primary_preview.source]}
+            </span>
+          )}
+        </div>
 
         {/* Action button in corner (visible on hover, except for completed states) */}
         {showActions && (design.status === 'DISCOVERED' || design.status === 'WANTED' || design.status === 'DOWNLOADING' || design.status === 'FAILED') && (
@@ -120,6 +177,13 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, 
         <p className="text-text-secondary text-xs truncate mt-0.5" title={design.canonical_designer}>
           {design.canonical_designer}
         </p>
+
+        {/* Tags */}
+        {design.tags && design.tags.length > 0 && (
+          <div className="mt-1.5">
+            <TagList tags={design.tags} maxVisible={2} />
+          </div>
+        )}
 
         {/* Footer: Status + File Types */}
         <div className="mt-2 flex items-center justify-between gap-2">

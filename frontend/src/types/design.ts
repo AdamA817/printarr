@@ -5,6 +5,12 @@ export type MetadataAuthority = 'TELEGRAM' | 'THANGS' | 'PRINTABLES' | 'USER'
 export type ExternalSourceType = 'THANGS' | 'PRINTABLES' | 'THINGIVERSE'
 export type MatchMethod = 'LINK' | 'TEXT' | 'GEOMETRY' | 'MANUAL'
 
+// Preview and Tag source types (must match backend enums.py)
+export type PreviewSource = 'TELEGRAM' | 'THANGS' | 'EMBEDDED_3MF' | 'RENDERED' | 'ARCHIVE'
+export type PreviewKind = 'THUMBNAIL' | 'FULL' | 'GALLERY'
+export type TagSource = 'AUTO_CAPTION' | 'AUTO_FILENAME' | 'AUTO_THANGS' | 'USER'
+export type MulticolorSource = 'HEURISTIC' | '3MF_ANALYSIS' | 'USER_OVERRIDE'
+
 // Summary of channel info for design response
 export interface ChannelSummary {
   id: string
@@ -39,6 +45,59 @@ export interface ExternalMetadata {
   created_at: string
 }
 
+// Preview asset (from GET /api/v1/previews/design/{id}/)
+export interface Preview {
+  id: string
+  design_id: string
+  source: PreviewSource
+  kind: PreviewKind
+  file_path: string
+  file_size: number | null
+  original_filename: string | null
+  width: number | null
+  height: number | null
+  telegram_file_id: string | null
+  is_primary: boolean
+  sort_order: number
+  created_at: string
+}
+
+// Preview summary for list responses
+export interface PreviewSummary {
+  id: string
+  source: PreviewSource
+  file_path: string
+  width: number | null
+  height: number | null
+}
+
+// Tag (from GET /api/v1/tags/)
+export interface Tag {
+  id: string
+  name: string
+  category: string | null
+  is_predefined: boolean
+  usage_count: number
+}
+
+// Tag summary for design responses
+export interface TagSummary {
+  id: string
+  name: string
+  category: string | null
+  source: TagSource
+}
+
+// Design tag with assignment info
+export interface DesignTag {
+  id: string
+  name: string
+  category: string | null
+  is_predefined: boolean
+  source: TagSource
+  assigned_at: string | null
+}
+
 // Design list item (from GET /api/v1/designs/)
 export interface DesignListItem {
   id: string
@@ -51,6 +110,9 @@ export interface DesignListItem {
   updated_at: string
   channel: ChannelSummary | null
   has_thangs_link: boolean
+  // v0.7 additions
+  tags: TagSummary[]
+  primary_preview: PreviewSummary | null
 }
 
 // Design detail (from GET /api/v1/designs/{id})
@@ -103,6 +165,8 @@ export interface DesignListParams {
   q?: string // Full-text search on title and designer
   sort_by?: SortField
   sort_order?: SortOrder
+  // v0.7 additions
+  tags?: string[] // Filter by tag names (any match)
 }
 
 // Request/Response types for Thangs link operations
@@ -198,4 +262,55 @@ export interface CancelDownloadResponse {
   design_id: string
   status: DesignStatus
   cancelled_job_id: string | null
+}
+
+// =============================================================================
+// Preview API types (v0.7)
+// =============================================================================
+
+export interface PreviewListResponse {
+  items: Preview[]
+  total: number
+}
+
+export interface UpdatePreviewRequest {
+  is_primary?: boolean
+  sort_order?: number
+}
+
+export interface UpdatePreviewResponse {
+  id: string
+  is_primary: boolean
+  sort_order: number
+  message: string
+}
+
+// =============================================================================
+// Tag API types (v0.7)
+// =============================================================================
+
+export interface TagListResponse {
+  items: Tag[]
+  total: number
+}
+
+export interface TagCategoriesResponse {
+  categories: Record<string, Tag[]>
+}
+
+export interface AddTagsRequest {
+  tags: string[]
+  source?: TagSource
+}
+
+export interface AddTagsResponse {
+  added: string[]
+  already_present: string[]
+  created: string[]
+}
+
+export interface RemoveTagResponse {
+  design_id: string
+  tag_id: string
+  message: string
 }

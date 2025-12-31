@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useChannels } from '@/hooks/useChannels'
+import { useTags } from '@/hooks/useTags'
 import type { DesignListParams, DesignStatus, MulticolorStatus } from '@/types/design'
 
 interface FilterSidebarProps {
@@ -35,6 +37,15 @@ const THANGS_OPTIONS: { value: boolean | undefined; label: string }[] = [
 
 export function FilterSidebar({ filters, onChange, onClearAll, isOpen, onClose }: FilterSidebarProps) {
   const { data: channelsData } = useChannels({ page_size: 100 })
+  const { data: tagsData } = useTags(undefined, false) // Exclude zero-usage tags
+  const [showAllTags, setShowAllTags] = useState(false)
+
+  // Sort tags by usage count, show top 6 initially
+  const sortedTags = tagsData?.items
+    .slice()
+    .sort((a, b) => b.usage_count - a.usage_count) || []
+  const visibleTags = showAllTags ? sortedTags : sortedTags.slice(0, 6)
+  const hiddenTagCount = sortedTags.length - 6
 
   const handleStatusChange = (status: DesignStatus) => {
     onChange({
@@ -76,6 +87,29 @@ export function FilterSidebar({ filters, onChange, onClearAll, isOpen, onClose }
     })
   }
 
+  const handleTagToggle = (tagName: string) => {
+    const currentTags = filters.tags || []
+    const isSelected = currentTags.includes(tagName)
+
+    const newTags = isSelected
+      ? currentTags.filter((t) => t !== tagName)
+      : [...currentTags, tagName]
+
+    onChange({
+      ...filters,
+      tags: newTags.length > 0 ? newTags : undefined,
+      page: 1,
+    })
+  }
+
+  const clearTagFilters = () => {
+    onChange({
+      ...filters,
+      tags: undefined,
+      page: 1,
+    })
+  }
+
   const hasActiveFilters = !!(
     filters.status ||
     filters.channel_id ||
@@ -83,8 +117,20 @@ export function FilterSidebar({ filters, onChange, onClearAll, isOpen, onClose }
     filters.multicolor ||
     filters.has_thangs_link !== undefined ||
     filters.q ||
-    filters.designer
+    filters.designer ||
+    (filters.tags && filters.tags.length > 0)
   )
+
+  const activeFilterCount = [
+    filters.status,
+    filters.channel_id,
+    filters.file_type,
+    filters.multicolor,
+    filters.has_thangs_link !== undefined ? 'thangs' : undefined,
+    filters.q,
+    filters.designer,
+    ...(filters.tags || []),
+  ].filter(Boolean).length
 
   return (
     <>
@@ -109,7 +155,14 @@ export function FilterSidebar({ filters, onChange, onClearAll, isOpen, onClose }
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-bg-tertiary">
-          <h2 className="font-semibold text-text-primary">Filters</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-text-primary">Filters</h2>
+            {activeFilterCount > 0 && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-accent-primary text-white">
+                {activeFilterCount}
+              </span>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="lg:hidden text-text-secondary hover:text-text-primary"
@@ -205,6 +258,60 @@ export function FilterSidebar({ filters, onChange, onClearAll, isOpen, onClose }
               ))}
             </div>
           </FilterSection>
+
+          {/* Tags Filter */}
+          {sortedTags.length > 0 && (
+            <FilterSection title="Tags">
+              <div className="space-y-2">
+                {/* Selected tags clear button */}
+                {filters.tags && filters.tags.length > 0 && (
+                  <button
+                    onClick={clearTagFilters}
+                    className="text-xs text-accent-primary hover:text-accent-primary/80 mb-2"
+                  >
+                    Clear tags ({filters.tags.length})
+                  </button>
+                )}
+
+                {/* Tag chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  {visibleTags.map((tag) => {
+                    const isSelected = filters.tags?.includes(tag.name) || false
+                    return (
+                      <button
+                        key={tag.id}
+                        onClick={() => handleTagToggle(tag.name)}
+                        className={`
+                          px-2 py-1 rounded text-xs transition-colors
+                          ${isSelected
+                            ? 'bg-accent-primary text-white'
+                            : 'bg-bg-tertiary text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/80'
+                          }
+                        `}
+                      >
+                        {tag.name}
+                        {tag.usage_count > 0 && (
+                          <span className={`ml-1 ${isSelected ? 'text-white/70' : 'text-text-muted'}`}>
+                            ({tag.usage_count})
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Show more/less button */}
+                {hiddenTagCount > 0 && (
+                  <button
+                    onClick={() => setShowAllTags(!showAllTags)}
+                    className="text-xs text-text-muted hover:text-text-secondary mt-1"
+                  >
+                    {showAllTags ? 'Show less' : `+ ${hiddenTagCount} more`}
+                  </button>
+                )}
+              </div>
+            </FilterSection>
+          )}
         </div>
 
         {/* Footer with clear button */}

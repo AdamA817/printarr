@@ -47,6 +47,12 @@ function parseNumber(value: string | null, min = 1): number | undefined {
   return isNaN(num) || num < min ? undefined : num
 }
 
+function parseTags(value: string | null): string[] | undefined {
+  if (!value) return undefined
+  const tags = value.split(',').map((t) => t.trim()).filter(Boolean)
+  return tags.length > 0 ? tags : undefined
+}
+
 export function useDesignFilters(defaultPageSize = 24) {
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -63,6 +69,7 @@ export function useDesignFilters(defaultPageSize = 24) {
     q: searchParams.get('q') || undefined,
     sort_by: parseSortField(searchParams.get('sort_by')) || 'created_at',
     sort_order: parseSortOrder(searchParams.get('sort_order')) || 'DESC',
+    tags: parseTags(searchParams.get('tags')),
   }), [searchParams, defaultPageSize])
 
   // Update filters (merges with existing and updates URL)
@@ -77,6 +84,13 @@ export function useDesignFilters(defaultPageSize = 24) {
       Object.entries(merged).forEach(([key, value]) => {
         if (value === undefined || value === null || value === '') {
           params.delete(key)
+        } else if (Array.isArray(value)) {
+          // Handle arrays (like tags) as comma-separated values
+          if (value.length > 0) {
+            params.set(key, value.join(','))
+          } else {
+            params.delete(key)
+          }
         } else if (typeof value === 'boolean') {
           params.set(key, value.toString())
         } else {
@@ -109,6 +123,7 @@ export function useDesignFilters(defaultPageSize = 24) {
       has_thangs_link: undefined,
       designer: undefined,
       q: undefined,
+      tags: undefined,
       page: 1,
     })
   }, [setFilters])

@@ -10,3 +10,6 @@ export { ActiveFilters } from './ActiveFilters'
 export { SearchBox } from './SearchBox'
 export { SortControls } from './SortControls'
 export { ThangsSearchModal } from './ThangsSearchModal'
+// v0.7 additions
+export { PreviewGallery, PreviewGallerySkeleton } from './PreviewGallery'
+export { TagManager, TagList } from './TagManager'

@@ -12,6 +12,8 @@ from app.db.models.enums import (
     MatchMethod,
     MetadataAuthority,
     MulticolorStatus,
+    PreviewSource,
+    TagSource,
 )
 
 
@@ -60,6 +62,29 @@ class ExternalMetadataResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TagSummary(BaseModel):
+    """Summary of tag info for design responses."""
+
+    id: str
+    name: str
+    category: str | None = None
+    source: TagSource
+
+    model_config = {"from_attributes": True}
+
+
+class PreviewSummary(BaseModel):
+    """Summary of preview info for design list responses."""
+
+    id: str
+    source: PreviewSource
+    file_path: str
+    width: int | None = None
+    height: int | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class DesignListItem(BaseModel):
     """Schema for design in list response."""
 
@@ -77,6 +102,12 @@ class DesignListItem(BaseModel):
 
     # Whether design has Thangs link
     has_thangs_link: bool = False
+
+    # Tags assigned to this design
+    tags: list[TagSummary] = []
+
+    # Primary preview image (for catalog display)
+    primary_preview: PreviewSummary | None = None
 
     model_config = {"from_attributes": True}
 

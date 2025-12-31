@@ -15,7 +15,10 @@ from sqlalchemy.orm import selectinload
 from app.core.logging import get_logger
 from app.db import get_db
 from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType
+from app.db.models.design_tag import DesignTag
 from app.db.models.enums import DesignStatus, MatchMethod, MulticolorStatus
+from app.db.models.preview_asset import PreviewAsset
+from app.db.models.tag import Tag
 from app.schemas.design import (
     ChannelSummary,
     DesignDetail,
@@ -23,6 +26,8 @@ from app.schemas.design import (
     DesignListItem,
     DesignSourceResponse,
     ExternalMetadataResponse,
+    PreviewSummary,
+    TagSummary,
 )
 from app.services.thangs import ThangsAdapter
 
@@ -43,6 +48,13 @@ class SortField(str, Enum):
     CANONICAL_TITLE = "canonical_title"
     CANONICAL_DESIGNER = "canonical_designer"
     TOTAL_SIZE_BYTES = "total_size_bytes"
+
+
+class TagMatch(str, Enum):
+    """Tag matching mode for filtering."""
+
+    ANY = "any"  # Match designs with any of the specified tags (OR)
+    ALL = "all"  # Match designs with all specified tags (AND)
 
 
 class RefreshMetadataResponse(BaseModel):
@@ -125,6 +137,8 @@ async def list_designs(
     multicolor: MulticolorStatus | None = Query(None, description="Filter by multicolor status"),
     has_thangs_link: bool | None = Query(None, description="Filter by Thangs link status"),
     designer: str | None = Query(None, description="Filter by designer (partial match)"),
+    tags: list[str] | None = Query(None, description="Filter by tag IDs"),
+    tag_match: TagMatch = Query(TagMatch.ANY, description="Tag matching mode: 'any' (OR) or 'all' (AND)"),
     q: str | None = Query(None, description="Full-text search on title and designer"),
     sort_by: SortField = Query(SortField.CREATED_AT, description="Field to sort by"),
     sort_order: SortOrder = Query(SortOrder.DESC, description="Sort order (ASC or DESC)"),
@@ -135,6 +149,8 @@ async def list_designs(
     query = select(Design).options(
         selectinload(Design.sources).selectinload(DesignSource.channel),
         selectinload(Design.external_metadata_sources),
+        selectinload(Design.design_tags).selectinload(DesignTag.tag),
+        selectinload(Design.preview_assets),
     )
 
     # Apply filters
@@ -169,6 +185,22 @@ async def list_designs(
             query = query.where(Design.id.in_(designs_with_thangs))
         else:
             query = query.where(Design.id.notin_(designs_with_thangs))
+
+    if tags:
+        # Filter by tags - supports both "any" and "all" matching modes
+        if tag_match == TagMatch.ALL:
+            # All tags must match - use intersection of subqueries
+            for tag_id in tags:
+                designs_with_tag = select(DesignTag.design_id).where(
+                    DesignTag.tag_id == tag_id
+                )
+                query = query.where(Design.id.in_(designs_with_tag))
+        else:
+            # Any tag matches - single subquery with OR
+            designs_with_any_tag = select(DesignTag.design_id).where(
+                DesignTag.tag_id.in_(tags)
+            )
+            query = query.where(Design.id.in_(designs_with_any_tag))
 
     if q:
         # Full-text search on title and designer (case-insensitive)
@@ -227,6 +259,34 @@ async def list_designs(
         if design.primary_file_types:
             file_types = [ft.strip() for ft in design.primary_file_types.split(",") if ft.strip()]
 
+        # Build tag summaries
+        design_tags = [
+            TagSummary(
+                id=dt.tag.id,
+                name=dt.tag.name,
+                category=dt.tag.category,
+                source=dt.source,
+            )
+            for dt in design.design_tags
+            if dt.tag is not None
+        ]
+
+        # Get primary preview (first one marked as primary, or first by sort order)
+        primary_preview = None
+        if design.preview_assets:
+            # Find primary preview, or fall back to first by sort order
+            primary = next(
+                (p for p in design.preview_assets if p.is_primary),
+                min(design.preview_assets, key=lambda p: p.sort_order)
+            )
+            primary_preview = PreviewSummary(
+                id=primary.id,
+                source=primary.source,
+                file_path=primary.file_path,
+                width=primary.width,
+                height=primary.height,
+            )
+
         items.append(
             DesignListItem(
                 id=design.id,
@@ -239,6 +299,8 @@ async def list_designs(
                 updated_at=design.updated_at,
                 channel=channel,
                 has_thangs_link=has_thangs,
+                tags=design_tags,
+                primary_preview=primary_preview,
             )
         )
 

@@ -8,11 +8,20 @@ import {
   useUpdateDesign,
   useUnmergeDesign,
 } from '@/hooks/useDesigns'
-import { ThangsSearchModal, DownloadSection } from '@/components/designs'
+import { useDesignPreviews, useSetPrimaryPreview } from '@/hooks/usePreviews'
+import { useDesignTags } from '@/hooks/useTags'
+import {
+  ThangsSearchModal,
+  DownloadSection,
+  PreviewGallery,
+  PreviewGallerySkeleton,
+  TagManager,
+} from '@/components/designs'
 import type {
   DesignStatus,
   ExternalMetadata,
   MetadataAuthority,
+  MulticolorStatus,
 } from '@/types/design'
 
 // Status badge colors matching Radarr style
@@ -371,15 +380,33 @@ function DesignDetailSkeleton() {
   )
 }
 
+// Multicolor display helper
+const multicolorDisplay: Record<MulticolorStatus, { label: string; className: string }> = {
+  UNKNOWN: { label: 'Unknown', className: 'text-text-muted' },
+  SINGLE: { label: 'Single Color', className: 'text-text-secondary' },
+  MULTI: { label: 'Multicolor', className: 'text-purple-400' },
+}
+
 export function DesignDetail() {
   const { id } = useParams<{ id: string }>()
   const { data: design, isLoading, error } = useDesign(id || '')
+  const { data: previewsData, isLoading: previewsLoading } = useDesignPreviews(id || '')
+  const { data: tagsData } = useDesignTags(id || '')
   const updateDesign = useUpdateDesign()
   const unmergeMutation = useUnmergeDesign()
+  const setPrimaryMutation = useSetPrimaryPreview()
   const [showThangsModal, setShowThangsModal] = useState(false)
   const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set())
   const [showUnmergeConfirm, setShowUnmergeConfirm] = useState(false)
   const [unmergeError, setUnmergeError] = useState<string | null>(null)
+
+  const handleSetPrimary = async (previewId: string) => {
+    try {
+      await setPrimaryMutation.mutateAsync(previewId)
+    } catch (err) {
+      console.error('Failed to set primary preview:', err)
+    }
+  }
 
   const handleClearTitleOverride = async () => {
     if (!design) return
@@ -529,6 +556,44 @@ export function DesignDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Details */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Preview Gallery */}
+          <section className="bg-bg-secondary rounded-lg p-6">
+            <h2 className="text-lg font-medium text-text-primary mb-4">
+              Preview Images
+              {previewsData && previewsData.total > 0 && (
+                <span className="text-sm font-normal text-text-muted ml-2">
+                  ({previewsData.total})
+                </span>
+              )}
+            </h2>
+            {previewsLoading ? (
+              <PreviewGallerySkeleton />
+            ) : (
+              <PreviewGallery
+                previews={previewsData?.items || []}
+                onSetPrimary={handleSetPrimary}
+                isSettingPrimary={setPrimaryMutation.isPending}
+              />
+            )}
+          </section>
+
+          {/* Tags */}
+          <section className="bg-bg-secondary rounded-lg p-6">
+            <h2 className="text-lg font-medium text-text-primary mb-4">
+              Tags
+              {tagsData && tagsData.length > 0 && (
+                <span className="text-sm font-normal text-text-muted ml-2">
+                  ({tagsData.length})
+                </span>
+              )}
+            </h2>
+            <TagManager
+              designId={design.id}
+              tags={tagsData || []}
+              maxTags={20}
+            />
+          </section>
+
           {/* Basic Info with Provenance */}
           <section className="bg-bg-secondary rounded-lg p-6">
             <h2 className="text-lg font-medium text-text-primary mb-4">
@@ -562,9 +627,14 @@ export function DesignDetail() {
                 </dd>
               </div>
               <div>
-                <dt className="text-sm text-text-muted">Multicolor</dt>
-                <dd className="text-text-primary mt-1 capitalize">
-                  {design.display_multicolor.toLowerCase()}
+                <dt className="text-sm text-text-muted">Color Type</dt>
+                <dd className={`mt-1 ${multicolorDisplay[design.display_multicolor as MulticolorStatus]?.className || 'text-text-primary'}`}>
+                  {multicolorDisplay[design.display_multicolor as MulticolorStatus]?.label || design.display_multicolor}
+                  {design.display_multicolor === 'MULTI' && (
+                    <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
+                      MMU
+                    </span>
+                  )}
                 </dd>
               </div>
               <div>

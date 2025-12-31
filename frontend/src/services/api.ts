@@ -26,6 +26,16 @@ import type {
   WantDesignResponse,
   DownloadDesignResponse,
   CancelDownloadResponse,
+  // v0.7 Preview & Tag types
+  PreviewListResponse,
+  UpdatePreviewRequest,
+  UpdatePreviewResponse,
+  TagListResponse,
+  TagCategoriesResponse,
+  DesignTag,
+  AddTagsRequest,
+  AddTagsResponse,
+  RemoveTagResponse,
 } from '@/types/design'
 import type {
   AuthStatusResponse,
@@ -269,4 +279,66 @@ export const dashboardApi = {
 
   storage: () =>
     api.get<StorageResponse>('/stats/dashboard/storage').then((r) => r.data),
+}
+
+// =============================================================================
+// Previews API (v0.7)
+// =============================================================================
+
+export const previewsApi = {
+  // Get all previews for a design
+  listForDesign: (designId: string) =>
+    api.get<PreviewListResponse>(`/previews/design/${designId}/`).then((r) => r.data),
+
+  // Update a preview (set as primary, change sort order)
+  update: (previewId: string, data: UpdatePreviewRequest) =>
+    api.patch<UpdatePreviewResponse>(`/previews/${previewId}`, data).then((r) => r.data),
+
+  // Delete a preview
+  delete: (previewId: string) =>
+    api.delete(`/previews/${previewId}`),
+
+  // Auto-select the best preview as primary
+  autoSelectPrimary: (designId: string) =>
+    api.post(`/previews/design/${designId}/auto-select-primary`).then((r) => r.data),
+
+  // Get the URL for a preview file
+  getFileUrl: (filePath: string) => `/api/v1/previews/files/${filePath}`,
+}
+
+// =============================================================================
+// Tags API (v0.7)
+// =============================================================================
+
+export interface TagSearchParams {
+  q: string
+  limit?: number
+}
+
+export const tagsApi = {
+  // List all tags
+  list: (category?: string, includeZeroUsage = true) =>
+    api.get<TagListResponse>('/tags', {
+      params: { category, include_zero_usage: includeZeroUsage },
+    }).then((r) => r.data),
+
+  // Get tags grouped by category
+  categories: () =>
+    api.get<TagCategoriesResponse>('/tags/categories').then((r) => r.data),
+
+  // Search tags for autocomplete
+  search: (params: TagSearchParams) =>
+    api.get<TagListResponse>('/tags/search', { params }).then((r) => r.data),
+
+  // Get tags for a specific design
+  getForDesign: (designId: string) =>
+    api.get<DesignTag[]>(`/tags/design/${designId}/`).then((r) => r.data),
+
+  // Add tags to a design
+  addToDesign: (designId: string, data: AddTagsRequest) =>
+    api.post<AddTagsResponse>(`/tags/design/${designId}/`, data).then((r) => r.data),
+
+  // Remove a tag from a design
+  removeFromDesign: (designId: string, tagId: string) =>
+    api.delete<RemoveTagResponse>(`/tags/design/${designId}/${tagId}`).then((r) => r.data),
 }
