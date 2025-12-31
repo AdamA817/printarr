@@ -47,6 +47,14 @@ import type {
   ActivityListParams,
 } from '@/types/queue'
 import type { SettingsMap, SettingValue } from '@/types/settings'
+import type {
+  DiscoveredChannelList,
+  DiscoveredChannelListParams,
+  DiscoveredChannel,
+  AddDiscoveredChannelRequest,
+  AddDiscoveredChannelResponse,
+  DiscoveredChannelStats,
+} from '@/types/discovered-channel'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -222,4 +230,22 @@ export const settingsApi = {
 
   update: (key: string, value: string | number | boolean) =>
     api.put<SettingValue>(`/settings/${key}`, { value }).then((r) => r.data),
+}
+
+// Discovered Channels API (v0.6)
+export const discoveredChannelsApi = {
+  list: (params?: DiscoveredChannelListParams) =>
+    api.get<DiscoveredChannelList>('/discovered-channels/', { params }).then((r) => r.data),
+
+  get: (id: string) =>
+    api.get<DiscoveredChannel>(`/discovered-channels/${id}`).then((r) => r.data),
+
+  stats: () =>
+    api.get<DiscoveredChannelStats>('/discovered-channels/stats').then((r) => r.data),
+
+  add: (id: string, request?: AddDiscoveredChannelRequest) =>
+    api.post<AddDiscoveredChannelResponse>(`/discovered-channels/${id}/add`, request).then((r) => r.data),
+
+  dismiss: (id: string) =>
+    api.delete(`/discovered-channels/${id}`),
 }
