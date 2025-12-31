@@ -15,6 +15,7 @@ This file contains useful commands, debug tips, and common patterns to help agen
 | [Troubleshooting](#troubleshooting) | All | Common issues and solutions |
 | [QA Testing Tips](#qa-testing-tips) | QA, Web Dev | Browser caching, React gotchas, Vitest config |
 | [MCP_DOCKER Browser Testing](#mcp_docker-browser-testing) | QA | Using Playwright browser tools with host IP |
+| [STL Preview Rendering](#stl-preview-rendering-v07) | DevOps, Backend | stl-thumb setup, testing, and debugging |
 | [Channel Profiling](#channel-profiling) | QA, Architect | Profile test channels for feature coverage |
 
 **Tip**: Use `grep -n "## Section Name" HINTS.md` to find a section quickly.
@@ -732,6 +733,48 @@ docker exec printarr 7z --help | head -5
 
 # Check Python packages
 docker exec printarr python -c "import rarfile, py7zr; print('OK')"
+```
+
+---
+
+### STL Preview Rendering (v0.7)
+
+The Docker image includes `stl-thumb` for generating preview images from STL files.
+
+#### Testing stl-thumb
+```bash
+# Verify stl-thumb is installed
+docker exec printarr stl-thumb --version
+# Expected: stl-thumb 0.5.0
+
+# Test rendering an STL file
+docker exec printarr stl-thumb -s 400 /path/to/model.stl /cache/previews/rendered/output.png
+```
+
+#### stl-thumb Options
+| Option | Description |
+|--------|-------------|
+| `-s SIZE` | Output image size in pixels (default 1024, we use 400) |
+| `-m MATERIAL` | Material type (default metallic) |
+| `-b R,G,B` | Background color (default white) |
+
+#### Common Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Panic about "Failed to initialize any backend" | Normal in headless Docker | Ignore - rendering still works, exit code is 0 |
+| Black/empty image | STL file may be malformed | Try with `--recalc-normals` flag |
+| Missing dependencies | libosmesa6-dev not installed | Rebuild Docker image |
+
+#### Preview Directory Structure (DEC-027)
+Previews are stored in `/cache/previews/` with subdirectories by source:
+```
+/cache/previews/
+├── telegram/    # Images from Telegram posts
+├── archive/     # Images extracted from archives
+├── thangs/      # Cached Thangs preview images
+├── embedded/    # 3MF embedded thumbnails
+└── rendered/    # stl-thumb generated previews
 ```
 
 ---

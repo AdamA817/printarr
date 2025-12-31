@@ -36,7 +36,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Archive extraction tools for v0.5
     unrar-free \
     p7zip-full \
+    # OpenGL dependencies for stl-thumb headless rendering (v0.7)
+    libgl1 \
+    libglx-mesa0 \
+    libegl1 \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
+
+# Install stl-thumb for STL preview rendering (v0.7)
+# Download pre-built .deb from GitHub releases based on architecture
+# Note: stl-thumb requires libosmesa6 for off-screen rendering
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libosmesa6-dev \
+    && rm -rf /var/lib/apt/lists/* && \
+    case ${TARGETARCH} in \
+        "amd64") STL_THUMB_ARCH="amd64" ;; \
+        "arm64") STL_THUMB_ARCH="arm64" ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/unlimitedbacon/stl-thumb/releases/download/v0.5.0/stl-thumb_0.5.0_${STL_THUMB_ARCH}.deb" -o /tmp/stl-thumb.deb && \
+    dpkg -i /tmp/stl-thumb.deb && \
+    rm /tmp/stl-thumb.deb && \
+    stl-thumb --version
 
 # Copy Python wheels and install
 COPY --from=backend-builder /wheels /wheels
