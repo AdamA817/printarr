@@ -972,6 +972,290 @@ Auto-select based on source priority, with manual override:
 
 ---
 
+### DEC-033: Manual Import Source Types
+**Date**: 2026-01-02
+**Status**: Accepted
+
+**Context**
+v0.8 introduces importing designs from sources beyond Telegram. Need to define the supported import source types and their capabilities.
+
+**Options Considered**
+1. **Google Drive only** - Most common for Patreon creators
+2. **File upload only** - Simplest, no API dependencies
+3. **Multiple sources** - Google Drive + Upload + Bulk folders
+
+**Decision**
+Support three import source types:
+
+1. **Google Drive** - For Patreon/creator shared folders
+   - Public links (no auth required)
+   - Authenticated access (OAuth flow for private folders)
+   - Periodic sync to detect new files
+   - Support both folder and file links
+
+2. **Direct Upload** - For one-off files
+   - Single file or archive upload
+   - Drag-and-drop in UI
+   - Extract archives and detect designs
+
+3. **Bulk Folder** - For existing local collections
+   - Monitor configured directories
+   - Multiple paths supported
+   - Import on startup + watch for changes
+
+**Data Model**
+```python
+class ImportSourceType(Enum):
+    GOOGLE_DRIVE = "google_drive"
+    UPLOAD = "upload"
+    BULK_FOLDER = "bulk_folder"
+
+class ImportSource(Base):
+    id: UUID
+    name: str
+    source_type: ImportSourceType
+    google_drive_url: str | None
+    google_credentials_id: UUID | None
+    folder_path: str | None
+    import_profile_id: UUID | None
+    default_designer: str | None
+    default_tags: list[str]
+    sync_enabled: bool
+    sync_interval_hours: int
+    last_synced_at: datetime | None
+```
+
+**Consequences**
+- Covers main use cases (Patreon, manual imports, existing libraries)
+- Google Drive requires API credentials configuration
+- Bulk folder needs file system watcher
+- Each source type has different sync behavior
+
+---
+
+### DEC-034: Google Drive Integration Strategy
+**Date**: 2026-01-02
+**Status**: Accepted
+
+**Context**
+Google Drive is the primary distribution method for Patreon creators. Need to decide authentication approach and folder traversal strategy.
+
+**Options Considered**
+1. **Public links only** - Use web scraping or direct download URLs
+2. **OAuth only** - Full API access, requires user authentication
+3. **Both** - Public links when possible, OAuth for restricted folders
+
+**Decision**
+Support both public and authenticated access:
+
+**Public Links**
+- Parse shared folder links (`drive.google.com/drive/folders/...`)
+- Use Google Drive API with API key (no user auth)
+- Works for "Anyone with link" shares
+
+**Authenticated Access**
+- OAuth 2.0 flow for user's Google account
+- Store refresh tokens securely in database
+- Required for private/restricted folders
+- One-time setup per Google account
+
+**Token Storage**
+```python
+class GoogleCredentials(Base):
+    id: UUID
+    email: str  # Google account email
+    access_token: str  # Encrypted
+    refresh_token: str  # Encrypted
+    token_expiry: datetime
+    created_at: datetime
+```
+
+**Sync Behavior**
+- Configurable interval (default: 1 hour)
+- Full folder traversal on each sync
+- Track last sync time and file modification dates
+- Skip already-imported files (by path + size)
+
+**Consequences**
+- Public links work out of the box
+- OAuth requires app credentials in Google Cloud Console
+- Must handle token refresh and expiration
+- Documentation needed for OAuth setup
+
+---
+
+### DEC-035: Import Profile System
+**Date**: 2026-01-02
+**Status**: Accepted
+
+**Context**
+Different creators organize their files differently. Need a flexible system to detect designs within various folder structures.
+
+**Known Folder Patterns**
+1. **Yosh Studios**: `Tier Folder/Design Name/STLs/*.stl` + `*.3mf` at root
+2. **Generic Supported/Unsupported**: `Design/Supported/*.stl` + `Design/Unsupported/*.stl`
+3. **Flat structure**: All model files directly in folder
+4. **Nested with renders**: `Design/Models/*.stl` + `Design/Renders/*.png`
+
+**Decision**
+Configurable Import Profiles with:
+
+**Profile Scope**
+- Universal default profile (applies to all sources)
+- Override per import source (channel-level)
+- Override per link (specific folder)
+
+**Profile Configuration**
+```yaml
+name: "Yosh Studios"
+design_detection:
+  rules:
+    - has_extension: [".3mf"]
+    - has_subfolder: ["STLs", "stls", "Models"]
+  mode: "any"  # any rule matches = design
+
+title:
+  source: "folder_name"  # Use folder name as design title
+
+model_subfolders:
+  - "STLs"
+  - "stls"
+  - "Models"
+  - "Supported"
+  - "Unsupported"
+
+preview_subfolders:
+  - "Renders"
+  - "*Renders"  # Wildcard: "4K Renders", "Preview Renders"
+  - "Images"
+  - "Photos"
+
+ignore_folders:
+  - "Lychee"
+  - "Chitubox"
+  - "Project Files"
+  - "Source"
+
+ignore_extensions:
+  - ".lys"
+  - ".ctb"
+  - ".gcode"
+  - ".blend"
+
+auto_tags:
+  - level: 1
+    pattern: "^(.+?)\\s*Tier$"
+    # "Dec25 Yosher Tier" → tag "Yosher Tier"
+```
+
+**UI Approach**
+- Simple mode: Pick from presets, override designer/tags
+- Advanced mode: Full YAML/JSON editor for custom profiles
+
+**Consequences**
+- Flexible enough for any folder structure
+- Presets reduce setup friction
+- May need community-contributed profiles
+- Profile validation required (prevent invalid configs)
+
+---
+
+### DEC-036: Design Detection Algorithm
+**Date**: 2026-01-02
+**Status**: Accepted
+
+**Context**
+When traversing a folder structure, need to determine which folders represent individual designs vs organizational hierarchy.
+
+**Decision**
+A folder is considered a **Design** if ANY of these conditions are met:
+
+1. **Model files at root**: Folder contains `.stl`, `.3mf`, `.obj`, `.step` directly
+2. **Model subfolder exists**: Folder has a child matching `model_subfolders` pattern that contains model files
+3. **Archive at root**: Folder contains `.zip`, `.rar`, `.7z` (assumed to contain models)
+
+**Algorithm**
+```python
+def is_design_folder(folder_path: Path, profile: ImportProfile) -> bool:
+    # Check for model files at root
+    model_extensions = {".stl", ".3mf", ".obj", ".step"}
+    root_files = [f for f in folder_path.iterdir() if f.is_file()]
+    if any(f.suffix.lower() in model_extensions for f in root_files):
+        return True
+
+    # Check for model subfolders
+    for subfolder in profile.model_subfolders:
+        subfolder_path = folder_path / subfolder
+        if subfolder_path.exists():
+            if any(f.suffix.lower() in model_extensions
+                   for f in subfolder_path.rglob("*")):
+                return True
+
+    # Check for archives
+    archive_extensions = {".zip", ".rar", ".7z"}
+    if any(f.suffix.lower() in archive_extensions for f in root_files):
+        return True
+
+    return False
+```
+
+**Traversal Strategy**
+1. Start at root folder
+2. For each subfolder, check if it's a design
+3. If yes: import as design, don't recurse deeper
+4. If no: recurse into children
+5. Skip folders matching `ignore_folders` pattern
+
+**Consequences**
+- Handles both flat and nested structures
+- Stops recursion at design level (avoids importing subcomponents)
+- Archives treated as single-design containers
+- May need tuning for edge cases
+
+---
+
+### DEC-037: Import Conflict Handling
+**Date**: 2026-01-02
+**Status**: Accepted
+
+**Context**
+When re-importing or syncing, may encounter designs that already exist in the catalog. Need to decide how to handle conflicts.
+
+**Options Considered**
+1. **Always skip** - Never update existing designs
+2. **Always overwrite** - Replace with new import
+3. **Ask user** - Prompt for each conflict
+4. **Smart merge** - Compare and merge changes
+
+**Decision**
+Configurable per import source with default of "skip existing":
+
+**Conflict Detection**
+Match by:
+1. Same import source + source path (exact match)
+2. Same title + designer (fuzzy match for cross-source dedup in v0.9)
+
+**Resolution Modes**
+```python
+class ConflictResolution(Enum):
+    SKIP = "skip"  # Keep existing, ignore new (default)
+    REPLACE = "replace"  # Delete existing, import new
+    ASK = "ask"  # Prompt user for each conflict
+```
+
+**Re-import Behavior**
+- Skip already-imported files based on source path
+- Don't re-download unchanged files
+- Update metadata if file content changed (by size/date)
+
+**Consequences**
+- Safe default prevents accidental data loss
+- "Ask" mode may be tedious for large imports
+- Need UI for conflict resolution queue
+- Deduplication (v0.9) will add cross-source matching
+
+---
+
 ## Pending Decisions
 
 *No pending decisions at this time.*

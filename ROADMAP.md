@@ -234,7 +234,62 @@ Channels like Wicked STL post designs across multiple messages:
 
 ---
 
-## v0.8 - Deduplication & Reliability
+## v0.8 - Manual Imports
+**Goal**: Import designs from external sources beyond Telegram
+
+### Scope
+- [ ] **Google Drive Integration**:
+  - [ ] Add Google Drive links as import sources
+  - [ ] Support both public and authenticated (OAuth) access
+  - [ ] Periodic sync for new files in linked folders
+  - [ ] Folder traversal to detect designs
+- [ ] **Direct File Upload**:
+  - [ ] Upload files directly via web UI
+  - [ ] Drag-and-drop support
+  - [ ] ZIP/archive upload and extraction
+- [ ] **Bulk Folder Import**:
+  - [ ] Monitor local folders for new designs
+  - [ ] Support multiple bulk import paths
+  - [ ] Detect and import existing library content
+- [ ] **Import Profiles**:
+  - [ ] Configurable rules for different folder structures
+  - [ ] Built-in presets (Yosh Studios, Supported/Unsupported, etc.)
+  - [ ] Design detection algorithm (model files at root OR in subfolders)
+  - [ ] Title extraction from folder names
+  - [ ] Preview folder detection (Renders/, Images/)
+  - [ ] Auto-tagging from folder hierarchy
+  - [ ] Ignore patterns (slicer files, project folders)
+- [ ] **Metadata & Attribution**:
+  - [ ] Default designer per import source
+  - [ ] Default tags per import source
+  - [ ] Optional virtual channel assignment
+  - [ ] Conflict handling (ask user, skip existing)
+- [ ] **Import Source Management UI**:
+  - [ ] Add/edit/remove import sources
+  - [ ] Configure sync intervals
+  - [ ] View import history
+  - [ ] Manual "Sync Now" trigger
+
+### Success Criteria
+- Add a Google Drive folder link (public or authenticated)
+- Designs appear in catalog with correct structure detected
+- Upload a ZIP file, see design extracted and cataloged
+- Configure bulk folder, existing designs imported
+- Different creator folder structures handled via profiles
+
+### Technical Notes
+- Google Drive API for folder listing and file download
+- OAuth token storage for authenticated drives
+- Import Profile system for flexible folder structure parsing
+- Skip slicer-specific files (Lychee, Chitubox, gcode)
+
+### Not Included
+- Printables/Thingiverse direct import (future)
+- Automatic duplicate detection across sources (v0.9)
+
+---
+
+## v0.9 - Deduplication & Reliability
 **Goal**: Handle duplicates, improve reliability
 
 ### Scope
@@ -287,9 +342,9 @@ Channels like Wicked STL post designs across multiple messages:
 
 ## Current Status
 
-**Active Version**: v0.7 (next)
+**Active Version**: v0.7 (in progress)
 
-**Last Updated**: 2025-12-31
+**Last Updated**: 2026-01-02
 
 ---
 
@@ -304,5 +359,6 @@ Channels like Wicked STL post designs across multiple messages:
 | v0.5 | Downloads | ✅ Complete | Job queue + library + session-per-operation pattern |
 | v0.6 | Live Monitoring & Discovery | ✅ Complete | SyncService + DiscoveryService + Dashboard |
 | v0.7 | Previews & Metadata | 🔜 Next | Images + tags + Thangs enrichment |
-| v0.8 | Deduplication | - | Handle duplicates |
+| v0.8 | Manual Imports | - | Google Drive + uploads + bulk folders |
+| v0.9 | Deduplication | - | Handle duplicates |
 | v1.0 | Production | - | Full release |

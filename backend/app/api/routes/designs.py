@@ -15,7 +15,7 @@ from app.core.logging import get_logger
 from app.db import get_db
 from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType
 from app.db.models.design_tag import DesignTag
-from app.db.models.enums import DesignStatus, MatchMethod, MulticolorStatus
+from app.db.models.enums import DesignStatus, MatchMethod, MetadataAuthority, MulticolorStatus
 from app.db.models.preview_asset import PreviewAsset
 from app.db.models.tag import Tag
 from app.schemas.design import (
@@ -497,6 +497,24 @@ async def refresh_metadata(
             )
             sources_refreshed += 1
             successful_metadata.append(metadata)
+
+            # Update design with Thangs metadata (v0.7 - auto-apply on refresh)
+            if metadata.get("title") or metadata.get("designer"):
+                await db.execute(
+                    update(Design)
+                    .where(Design.id == design_id)
+                    .values(
+                        canonical_title=metadata.get("title") or Design.canonical_title,
+                        canonical_designer=metadata.get("designer") or Design.canonical_designer,
+                        metadata_authority=MetadataAuthority.THANGS,
+                    )
+                )
+                logger.info(
+                    "thangs_metadata_applied_on_refresh",
+                    design_id=design_id,
+                    title=metadata.get("title"),
+                    designer=metadata.get("designer"),
+                )
         else:
             sources_failed += 1
 
@@ -647,6 +665,19 @@ async def link_to_thangs(
                 design_id=design_id,
                 model_id=request.model_id,
                 title=source.fetched_title,
+            )
+
+            # Update design with Thangs metadata (v0.7 - auto-apply on link)
+            if source.fetched_title:
+                design.canonical_title = source.fetched_title
+            if source.fetched_designer:
+                design.canonical_designer = source.fetched_designer
+            design.metadata_authority = MetadataAuthority.THANGS
+            logger.info(
+                "thangs_metadata_applied",
+                design_id=design_id,
+                title=design.canonical_title,
+                designer=design.canonical_designer,
             )
 
             # Cache Thangs images (v0.7 - auto-cache on link)
