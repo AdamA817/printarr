@@ -151,10 +151,9 @@ async def create_import_source(
                 detail="google_drive_url is required for GOOGLE_DRIVE sources",
             )
         # Extract folder ID from URL
-        try:
-            folder_id = GoogleDriveService.parse_drive_url(data.google_drive_url)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid Google Drive URL: {e}")
+        folder_id = GoogleDriveService.parse_folder_url(data.google_drive_url)
+        if folder_id is None:
+            raise HTTPException(status_code=400, detail="Invalid Google Drive URL: Could not extract folder ID")
     elif data.source_type == ImportSourceType.BULK_FOLDER:
         if not data.folder_path:
             raise HTTPException(
@@ -265,12 +264,10 @@ async def update_import_source(
 
     if data.google_drive_url is not None and source.source_type == ImportSourceType.GOOGLE_DRIVE:
         source.google_drive_url = data.google_drive_url
-        try:
-            source.google_drive_folder_id = GoogleDriveService.parse_drive_url(
-                data.google_drive_url
-            )
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid Google Drive URL: {e}")
+        folder_id = GoogleDriveService.parse_folder_url(data.google_drive_url)
+        if folder_id is None:
+            raise HTTPException(status_code=400, detail="Invalid Google Drive URL: Could not extract folder ID")
+        source.google_drive_folder_id = folder_id
 
     if data.folder_path is not None and source.source_type == ImportSourceType.BULK_FOLDER:
         source.folder_path = data.folder_path
