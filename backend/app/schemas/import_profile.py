@@ -32,6 +32,10 @@ class ProfileDetectionConfig(BaseModel):
         default=["STLs", "stls", "Models", "Supported", "Unsupported"],
         description="Subfolder names that may contain model files",
     )
+    require_preview_folder: bool = Field(
+        default=False,
+        description="Require a preview/renders folder to be considered a design",
+    )
 
 
 class ProfileTitleConfig(BaseModel):

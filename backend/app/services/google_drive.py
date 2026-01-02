@@ -113,6 +113,64 @@ class SyncResult(BaseModel):
     last_file_id: str | None = None
 
 
+class VirtualFolder:
+    """Represents a folder in the virtual file tree built from Google Drive."""
+
+    def __init__(self, id: str, name: str, parent_id: str | None = None):
+        self.id = id
+        self.name = name
+        self.parent_id = parent_id
+        self.files: list[FileInfo] = []
+        self.subfolders: dict[str, "VirtualFolder"] = {}
+        self.path: str = ""  # Relative path from root
+
+    def add_file(self, file_info: FileInfo) -> None:
+        """Add a file to this folder."""
+        self.files.append(file_info)
+
+    def add_subfolder(self, folder: "VirtualFolder") -> None:
+        """Add a subfolder to this folder."""
+        self.subfolders[folder.id] = folder
+
+    def get_files_at_root(self) -> list[FileInfo]:
+        """Get files directly in this folder (not in subfolders)."""
+        return self.files
+
+    def get_subfolder_by_name(self, name: str) -> "VirtualFolder | None":
+        """Get a subfolder by name (case-insensitive)."""
+        name_lower = name.lower()
+        for subfolder in self.subfolders.values():
+            if subfolder.name.lower() == name_lower:
+                return subfolder
+        return None
+
+    def get_all_files_recursive(self) -> list[tuple[str, FileInfo]]:
+        """Get all files with relative paths."""
+        results: list[tuple[str, FileInfo]] = []
+        for f in self.files:
+            results.append((f.name, f))
+        for subfolder in self.subfolders.values():
+            for rel_path, f in subfolder.get_all_files_recursive():
+                results.append((f"{subfolder.name}/{rel_path}", f))
+        return results
+
+
+class DetectedGoogleDriveDesign(BaseModel):
+    """A design detected in a Google Drive folder."""
+
+    folder_id: str
+    folder_name: str
+    relative_path: str  # Path from root folder
+    title: str
+    model_files: list[str] = Field(default_factory=list)
+    archive_files: list[str] = Field(default_factory=list)
+    preview_files: list[str] = Field(default_factory=list)
+    total_size: int = 0
+
+    class Config:
+        arbitrary_types_allowed = True
+
+
 class GoogleDriveService:
     """Service for interacting with Google Drive API.
 
@@ -734,3 +792,278 @@ class GoogleDriveService:
         key = self._get_encryption_key()
         f = Fernet(key)
         return f.decrypt(encrypted_data.encode()).decode()
+
+    # ========== Design Detection for Google Drive ==========
+
+    async def scan_for_designs(
+        self,
+        folder_id: str,
+        credentials: GoogleCredentials | None = None,
+        config: "ImportProfileConfig | None" = None,
+    ) -> list[DetectedGoogleDriveDesign]:
+        """Scan a Google Drive folder for designs using an import profile.
+
+        Args:
+            folder_id: Root folder ID to scan.
+            credentials: Optional credentials for private folders.
+            config: Import profile config. Uses default detection if not provided.
+
+        Returns:
+            List of detected designs.
+        """
+        from app.schemas.import_profile import ImportProfileConfig, ProfileDetectionConfig
+
+        if config is None:
+            config = ImportProfileConfig()
+
+        # List all files recursively
+        all_files = await self.list_folder_recursive(folder_id, credentials)
+
+        logger.info(
+            "gdrive_scan_started",
+            folder_id=folder_id,
+            total_files=len(all_files),
+        )
+
+        # Build virtual folder tree
+        root_folder = self._build_folder_tree(folder_id, all_files)
+
+        # Detect designs
+        designs = self._detect_designs_in_tree(root_folder, config, "")
+
+        logger.info(
+            "gdrive_scan_complete",
+            folder_id=folder_id,
+            designs_found=len(designs),
+        )
+
+        return designs
+
+    def _build_folder_tree(
+        self, root_id: str, all_files: list[FileInfo]
+    ) -> VirtualFolder:
+        """Build a virtual folder tree from a flat list of files.
+
+        Args:
+            root_id: ID of the root folder.
+            all_files: Flat list of all files/folders.
+
+        Returns:
+            Root VirtualFolder with nested structure.
+        """
+        # Create folder lookup
+        folders: dict[str, VirtualFolder] = {}
+        folders[root_id] = VirtualFolder(root_id, "", None)
+
+        # First pass: create all folder nodes
+        for f in all_files:
+            if f.is_folder:
+                folders[f.id] = VirtualFolder(f.id, f.name, f.parent_id)
+
+        # Second pass: build tree structure and add files
+        for f in all_files:
+            parent_id = f.parent_id or root_id
+            if parent_id not in folders:
+                # Parent not in our tree (might be outside scan scope)
+                continue
+
+            parent = folders[parent_id]
+            if f.is_folder:
+                parent.add_subfolder(folders[f.id])
+            else:
+                parent.add_file(f)
+
+        # Third pass: calculate relative paths
+        def set_paths(folder: VirtualFolder, path_prefix: str) -> None:
+            folder.path = path_prefix
+            for subfolder in folder.subfolders.values():
+                subfolder_path = f"{path_prefix}/{subfolder.name}" if path_prefix else subfolder.name
+                set_paths(subfolder, subfolder_path)
+
+        set_paths(folders[root_id], "")
+
+        return folders[root_id]
+
+    def _detect_designs_in_tree(
+        self,
+        folder: VirtualFolder,
+        config: "ImportProfileConfig",
+        current_path: str,
+    ) -> list[DetectedGoogleDriveDesign]:
+        """Recursively detect designs in a folder tree.
+
+        Implements the same traversal strategy as local folders:
+        - If a folder is a design, add it and don't recurse deeper
+        - If not a design, recurse into children
+
+        Args:
+            folder: Current folder to check.
+            config: Import profile configuration.
+            current_path: Current relative path from root.
+
+        Returns:
+            List of detected designs.
+        """
+        import fnmatch
+
+        results: list[DetectedGoogleDriveDesign] = []
+
+        # Skip ignored folders
+        if folder.name and self._should_ignore_folder(folder.name, config.ignore):
+            return results
+
+        # Check if this folder is a design
+        detection = self._is_design_folder_virtual(folder, config)
+
+        if detection is not None:
+            # Found a design
+            results.append(detection)
+            return results
+
+        # Not a design, recurse into subfolders
+        for subfolder in folder.subfolders.values():
+            subfolder_path = f"{current_path}/{subfolder.name}" if current_path else subfolder.name
+            results.extend(self._detect_designs_in_tree(subfolder, config, subfolder_path))
+
+        return results
+
+    def _is_design_folder_virtual(
+        self,
+        folder: VirtualFolder,
+        config: "ImportProfileConfig",
+    ) -> DetectedGoogleDriveDesign | None:
+        """Check if a virtual folder represents a design.
+
+        Args:
+            folder: Virtual folder to check.
+            config: Import profile configuration.
+
+        Returns:
+            DetectedGoogleDriveDesign if this is a design, None otherwise.
+        """
+        import fnmatch
+
+        detection = config.detection
+        model_extensions = set(ext.lower() for ext in detection.model_extensions)
+        archive_extensions = set(ext.lower() for ext in detection.archive_extensions)
+
+        model_files: list[str] = []
+        archive_files: list[str] = []
+        preview_files: list[str] = []
+        total_size = 0
+
+        # Check for model files at root
+        for f in folder.files:
+            ext = self._get_extension(f.name)
+            total_size += f.size
+            if ext in model_extensions:
+                model_files.append(f.name)
+            elif ext in archive_extensions:
+                archive_files.append(f.name)
+
+        # Check for model files in subfolders (for nested structure)
+        if detection.structure in ("nested", "auto"):
+            for subfolder_name in detection.model_subfolders:
+                subfolder = folder.get_subfolder_by_name(subfolder_name)
+                if subfolder:
+                    for rel_path, f in subfolder.get_all_files_recursive():
+                        ext = self._get_extension(f.name)
+                        total_size += f.size
+                        if ext in model_extensions:
+                            model_files.append(f"{subfolder.name}/{rel_path}")
+
+        # Find preview files
+        preview_extensions = set(ext.lower() for ext in config.preview.extensions)
+        has_preview_folder = False  # Track if we found a dedicated preview folder
+
+        # Check root folder for previews
+        if config.preview.include_root:
+            for f in folder.files:
+                ext = self._get_extension(f.name)
+                if ext in preview_extensions:
+                    preview_files.append(f.name)
+
+        # Check specific preview folders
+        for preview_folder_name in config.preview.folders:
+            preview_folder = folder.get_subfolder_by_name(preview_folder_name)
+            if preview_folder:
+                has_preview_folder = True
+                for rel_path, f in preview_folder.get_all_files_recursive():
+                    ext = self._get_extension(f.name)
+                    if ext in preview_extensions:
+                        preview_files.append(f"{preview_folder.name}/{rel_path}")
+
+        # Check wildcard preview folders
+        for pattern in config.preview.wildcard_folders:
+            for subfolder in folder.subfolders.values():
+                if fnmatch.fnmatch(subfolder.name, pattern):
+                    has_preview_folder = True
+                    for rel_path, f in subfolder.get_all_files_recursive():
+                        ext = self._get_extension(f.name)
+                        if ext in preview_extensions:
+                            preview_files.append(f"{subfolder.name}/{rel_path}")
+
+        # Check if require_preview_folder is set and we don't have one
+        if detection.require_preview_folder and not has_preview_folder:
+            return None
+
+        # Determine if this is a design
+        is_design = False
+        if len(model_files) >= detection.min_model_files:
+            is_design = True
+        elif archive_files:
+            is_design = True
+
+        if not is_design:
+            return None
+
+        # Extract title
+        title = self._extract_title_from_name(folder.name, config.title)
+
+        return DetectedGoogleDriveDesign(
+            folder_id=folder.id,
+            folder_name=folder.name,
+            relative_path=folder.path,
+            title=title,
+            model_files=model_files,
+            archive_files=archive_files,
+            preview_files=preview_files,
+            total_size=total_size,
+        )
+
+    def _should_ignore_folder(self, folder_name: str, ignore: "ProfileIgnoreConfig") -> bool:
+        """Check if a folder should be ignored."""
+        import fnmatch
+
+        if folder_name in ignore.folders:
+            return True
+
+        for pattern in ignore.patterns:
+            if fnmatch.fnmatch(folder_name, pattern):
+                return True
+
+        return False
+
+    def _get_extension(self, filename: str) -> str:
+        """Get lowercase file extension."""
+        if "." in filename:
+            return "." + filename.rsplit(".", 1)[-1].lower()
+        return ""
+
+    def _extract_title_from_name(self, folder_name: str, title_config: "ProfileTitleConfig") -> str:
+        """Extract title from folder name using title config."""
+        title = folder_name
+
+        # Strip patterns
+        for pattern in title_config.strip_patterns:
+            title = title.replace(pattern, "").strip()
+
+        # Apply case transform
+        if title_config.case_transform == "title":
+            title = title.title()
+        elif title_config.case_transform == "lower":
+            title = title.lower()
+        elif title_config.case_transform == "upper":
+            title = title.upper()
+
+        return title.strip() or folder_name

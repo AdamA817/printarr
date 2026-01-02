@@ -237,6 +237,7 @@ export interface ImportHistoryParams {
 
 export interface GoogleOAuthStatus {
   configured: boolean
+  api_key_configured: boolean
   authenticated: boolean
   email: string | null
   expires_at: string | null

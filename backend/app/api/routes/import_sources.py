@@ -37,7 +37,11 @@ from app.services.bulk_import import (
     BulkImportPathError,
     BulkImportService,
 )
-from app.services.google_drive import GoogleDriveService
+from app.services.google_drive import (
+    GoogleDriveError,
+    GoogleDriveService,
+)
+from app.services.import_profile import ImportProfileService
 
 logger = get_logger(__name__)
 
@@ -367,8 +371,50 @@ async def trigger_sync(
             source.last_sync_error = None
 
         elif source.source_type == ImportSourceType.GOOGLE_DRIVE:
-            # Google Drive sync would use GoogleDriveService
-            # For now, just update status
+            if not source.google_drive_folder_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Google Drive source missing folder ID",
+                )
+
+            # Get import profile config
+            profile_service = ImportProfileService(db)
+            config = await profile_service.get_profile_config(source.import_profile_id)
+
+            # Scan Google Drive folder for designs
+            gdrive_service = GoogleDriveService(db)
+            detected_designs = await gdrive_service.scan_for_designs(
+                source.google_drive_folder_id,
+                credentials=None,  # Public folder access via API key
+                config=config,
+            )
+            designs_detected = len(detected_designs)
+
+            # Create import records for detected designs
+            for design in detected_designs:
+                # Check if record already exists
+                existing = await db.execute(
+                    select(ImportRecord).where(
+                        ImportRecord.import_source_id == source.id,
+                        ImportRecord.source_path == design.relative_path,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    continue  # Skip existing records
+
+                record = ImportRecord(
+                    import_source_id=source.id,
+                    source_path=design.relative_path,
+                    file_size=design.total_size,
+                    status=ImportRecordStatus.PENDING,
+                    detected_title=design.title,
+                    detected_designer=source.default_designer,
+                    model_file_count=len(design.model_files),
+                    preview_file_count=len(design.preview_files),
+                    detected_at=datetime.utcnow(),
+                )
+                db.add(record)
+
             source.status = ImportSourceStatus.ACTIVE
             source.last_sync_at = datetime.utcnow()
             source.last_sync_error = None
@@ -400,6 +446,12 @@ async def trigger_sync(
         source.last_sync_error = str(e)
         await db.commit()
         raise HTTPException(status_code=500, detail=str(e))
+
+    except GoogleDriveError as e:
+        source.status = ImportSourceStatus.ERROR
+        source.last_sync_error = str(e)
+        await db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # =============================================================================

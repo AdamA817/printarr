@@ -84,7 +84,9 @@ export function AddImportSourceModal({
     if (formData.source_type === 'BULK_FOLDER' && !formData.folder_path?.trim()) return false
     if (formData.source_type === 'GOOGLE_DRIVE') {
       if (!formData.google_drive_url?.trim()) return false
-      if (!selectedCredentialsId) return false
+      // Only require credentials if OAuth is configured (for private folders)
+      // API key mode (public folders) doesn't need credentials
+      if (oauthStatus?.configured && !selectedCredentialsId) return false
     }
     return true
   }
@@ -142,11 +144,13 @@ export function AddImportSourceModal({
                 type="GOOGLE_DRIVE"
                 icon={<GoogleDriveIcon className="w-8 h-8" />}
                 title="Google Drive"
-                description="Import from a Google Drive folder"
+                description={oauthStatus?.api_key_configured && !oauthStatus?.configured
+                  ? "Import from public Google Drive folders"
+                  : "Import from a Google Drive folder"}
                 selected={formData.source_type === 'GOOGLE_DRIVE'}
                 onClick={() => handleTypeSelect('GOOGLE_DRIVE')}
-                disabled={!oauthStatus?.configured}
-                disabledReason={!oauthStatus?.configured ? 'Not configured' : undefined}
+                disabled={!oauthStatus?.configured && !oauthStatus?.api_key_configured}
+                disabledReason={!oauthStatus?.configured && !oauthStatus?.api_key_configured ? 'Not configured' : undefined}
               />
               <SourceTypeOption
                 type="UPLOAD"
@@ -201,11 +205,24 @@ export function AddImportSourceModal({
               {/* Google Drive specific */}
               {formData.source_type === 'GOOGLE_DRIVE' && (
                 <div className="space-y-4">
-                  {/* Google account connection */}
-                  <GoogleConnectCard
-                    selectedCredentialsId={selectedCredentialsId || undefined}
-                    onSelectCredentials={(id) => setSelectedCredentialsId(id)}
-                  />
+                  {/* Google account connection - only show if OAuth is configured */}
+                  {oauthStatus?.configured && (
+                    <GoogleConnectCard
+                      selectedCredentialsId={selectedCredentialsId || undefined}
+                      onSelectCredentials={(id) => setSelectedCredentialsId(id)}
+                    />
+                  )}
+
+                  {/* API key mode notice */}
+                  {!oauthStatus?.configured && oauthStatus?.api_key_configured && (
+                    <div className="p-3 bg-accent-warning/10 border border-accent-warning/30 rounded-lg">
+                      <p className="text-sm text-accent-warning font-medium">Public Folders Only</p>
+                      <p className="text-xs text-text-secondary mt-1">
+                        Using API key mode. Only publicly shared Google Drive folders are supported.
+                        Set up OAuth credentials to access private folders.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Google Drive URL */}
                   <div>
@@ -218,10 +235,12 @@ export function AddImportSourceModal({
                       onChange={(e) => setFormData({ ...formData, google_drive_url: e.target.value })}
                       placeholder="https://drive.google.com/drive/folders/..."
                       className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
-                      disabled={!selectedCredentialsId}
+                      disabled={oauthStatus?.configured && !selectedCredentialsId}
                     />
                     <p className="text-xs text-text-muted mt-1">
-                      Paste the URL of a Google Drive folder you want to import from
+                      {oauthStatus?.configured
+                        ? 'Paste the URL of a Google Drive folder you want to import from'
+                        : 'Paste the URL of a publicly shared Google Drive folder'}
                     </p>
                   </div>
                 </div>

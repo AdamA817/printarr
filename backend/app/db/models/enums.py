@@ -143,6 +143,7 @@ class JobType(str, enum.Enum):
     GENERATE_RENDER = "GENERATE_RENDER"
     IMPORT_TO_LIBRARY = "IMPORT_TO_LIBRARY"
     DEDUPE_RECONCILE = "DEDUPE_RECONCILE"
+    SYNC_IMPORT_SOURCE = "SYNC_IMPORT_SOURCE"  # v0.8: Async import source sync
 
 
 class JobStatus(str, enum.Enum):

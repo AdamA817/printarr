@@ -43,7 +43,7 @@ services:
       # - PRINTARR_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       # - PRINTARR_GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       # For public folders only, you can use an API key instead:
-      # - PRINTARR_GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - PRINTARR_GOOGLE_API_KEY=${PRINTARR_GOOGLE_API_KEY}
       # Upload settings (v0.8+)
       # - PRINTARR_UPLOAD_MAX_SIZE_MB=500
       # - PRINTARR_UPLOAD_RETENTION_HOURS=24

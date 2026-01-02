@@ -27,7 +27,8 @@ router = APIRouter(prefix="/google", tags=["google"])
 class GoogleOAuthStatus(BaseModel):
     """OAuth status response."""
 
-    configured: bool
+    configured: bool  # OAuth is configured (client ID + secret)
+    api_key_configured: bool  # API key is configured (for public folders)
     authenticated: bool
     email: str | None = None
     expires_at: datetime | None = None
@@ -86,10 +87,13 @@ async def get_oauth_status(
     """
     service = GoogleDriveService(db)
 
+    api_key_configured = settings.google_api_configured
+
     # Check if OAuth is configured
     if not settings.google_oauth_configured:
         return GoogleOAuthStatus(
             configured=False,
+            api_key_configured=api_key_configured,
             authenticated=False,
         )
 
@@ -99,6 +103,7 @@ async def get_oauth_status(
     if not credentials_list:
         return GoogleOAuthStatus(
             configured=True,
+            api_key_configured=api_key_configured,
             authenticated=False,
         )
 
@@ -106,6 +111,7 @@ async def get_oauth_status(
     cred = credentials_list[0]
     return GoogleOAuthStatus(
         configured=True,
+        api_key_configured=api_key_configured,
         authenticated=True,
         email=cred.email,
         expires_at=cred.expires_at,

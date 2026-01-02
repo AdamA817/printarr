@@ -101,7 +101,7 @@ BUILTIN_PROFILES: dict[str, dict] = {
     },
     "yosh-studios": {
         "name": "Yosh Studios",
-        "description": "Profile for Yosh Studios folder structure with tier-based organization.",
+        "description": "Profile for Yosh Studios folder structure with tier-based organization. Requires Renders folder.",
         "config": ImportProfileConfig(
             detection=ProfileDetectionConfig(
                 model_extensions=[".stl", ".3mf"],
@@ -109,6 +109,7 @@ BUILTIN_PROFILES: dict[str, dict] = {
                 min_model_files=1,
                 structure="nested",
                 model_subfolders=["STLs", "stls", "Supported", "Unsupported", "Pre-Supported", "Un-Supported"],
+                require_preview_folder=True,
             ),
             title=ProfileTitleConfig(
                 source="folder_name",
@@ -462,8 +463,12 @@ class ImportProfileService:
                             if ext in model_extensions:
                                 model_files.append(str(f.relative_to(folder_path)))
 
-        # Find preview files
-        preview_files = self._find_preview_files(folder_path, config.preview)
+        # Find preview files and check for preview folder
+        preview_files, has_preview_folder = self._find_preview_files_with_folder_check(folder_path, config.preview)
+
+        # Check if require_preview_folder is set and we don't have one
+        if detection.require_preview_folder and not has_preview_folder:
+            return result
 
         # Determine if this is a design
         if len(model_files) >= detection.min_model_files:
@@ -532,8 +537,24 @@ class ImportProfileService:
         Returns:
             List of relative paths to preview files.
         """
+        files, _ = self._find_preview_files_with_folder_check(folder_path, preview)
+        return files
+
+    def _find_preview_files_with_folder_check(
+        self, folder_path: Path, preview: ProfilePreviewConfig
+    ) -> tuple[list[str], bool]:
+        """Find preview image files in a folder and check for preview folders.
+
+        Args:
+            folder_path: Path to the design folder.
+            preview: Preview configuration.
+
+        Returns:
+            Tuple of (list of relative paths to preview files, has_preview_folder).
+        """
         preview_files: list[str] = []
         preview_extensions = set(ext.lower() for ext in preview.extensions)
+        has_preview_folder = False
 
         # Check root folder
         if preview.include_root:
@@ -548,6 +569,7 @@ class ImportProfileService:
         for folder_name in preview.folders:
             preview_path = folder_path / folder_name
             if preview_path.exists() and preview_path.is_dir():
+                has_preview_folder = True
                 try:
                     for f in preview_path.rglob("*"):
                         if f.is_file() and f.suffix.lower() in preview_extensions:
@@ -560,13 +582,14 @@ class ImportProfileService:
             try:
                 for subfolder in folder_path.iterdir():
                     if subfolder.is_dir() and fnmatch.fnmatch(subfolder.name, pattern):
+                        has_preview_folder = True
                         for f in subfolder.rglob("*"):
                             if f.is_file() and f.suffix.lower() in preview_extensions:
                                 preview_files.append(str(f.relative_to(folder_path)))
             except PermissionError:
                 pass
 
-        return preview_files
+        return preview_files, has_preview_folder
 
     def _extract_title(self, folder_path: Path, title_config: ProfileTitleConfig) -> str:
         """Extract design title from folder.
