@@ -151,6 +151,18 @@ class Settings(BaseSettings):
         description="Hours to retain unprocessed uploads before cleanup",
     )
 
+    # Auto-render settings (v0.8)
+    auto_queue_render_after_import: bool = Field(
+        default=True,
+        description="Automatically queue preview render jobs after design import",
+    )
+    auto_queue_render_priority: int = Field(
+        default=-1,
+        ge=-10,
+        le=10,
+        description="Priority for auto-queued render jobs (-10 to 10, negative = background)",
+    )
+
     @property
     def upload_staging_path(self) -> Path:
         """Get the upload staging directory path."""

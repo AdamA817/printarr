@@ -32,6 +32,7 @@ from app.schemas.upload import (
     UploadStatus,
 )
 from app.services.archive import ArchiveExtractor
+from app.services.auto_render import auto_queue_render_for_design
 from app.services.import_profile import ImportProfileService
 
 if TYPE_CHECKING:
@@ -328,6 +329,11 @@ class UploadService:
             )
             self.db.add(design)
             await self.db.flush()
+
+            # Auto-queue render if no previews detected
+            render_job_id = None
+            if preview_files == 0:
+                render_job_id = await auto_queue_render_for_design(self.db, design.id)
 
             # Update metadata
             meta["status"] = UploadStatus.COMPLETED.value

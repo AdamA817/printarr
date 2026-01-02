@@ -1,6 +1,7 @@
 """Business logic services for Printarr."""
 
 from app.services.archive import ArchiveError, ArchiveExtractor
+from app.services.auto_render import AutoRenderService, auto_queue_render_for_design
 from app.services.backfill import BackfillService
 from app.services.bulk_import import (
     BulkImportError,
@@ -42,6 +43,8 @@ from app.services.upload import (
 __all__ = [
     "ArchiveError",
     "ArchiveExtractor",
+    "AutoRenderService",
+    "auto_queue_render_for_design",
     "BackfillService",
     "BulkImportError",
     "BulkImportPathError",

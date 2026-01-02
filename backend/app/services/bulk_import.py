@@ -38,6 +38,7 @@ from app.db.models import (
     MetadataAuthority,
 )
 from app.schemas.import_profile import DesignDetectionResult, ImportProfileConfig
+from app.services.auto_render import auto_queue_render_for_design
 from app.services.import_profile import ImportProfileService
 
 if TYPE_CHECKING:
@@ -389,6 +390,10 @@ class BulkImportService:
             )
             self.db.add(design)
             await self.db.flush()
+
+            # Auto-queue render if no previews detected in source
+            if record.preview_file_count == 0:
+                await auto_queue_render_for_design(self.db, design.id)
 
             # Update record
             record.status = ImportRecordStatus.IMPORTED
