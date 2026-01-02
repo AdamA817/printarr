@@ -484,11 +484,19 @@ class ThangsAdapter:
             url = f"{self.API_BASE}/models/{model_id}"
             data = await self._make_thangs_request(url)
 
+            # Extract image URLs from attachments
+            images = []
+            for att in data.get("attachments", []):
+                if isinstance(att, dict):
+                    img_url = att.get("imageUrl")
+                    if img_url:
+                        images.append(img_url)
+
             return {
                 "title": data.get("name") or data.get("title"),
                 "designer": self._extract_designer(data),
                 "tags": data.get("tags", []),
-                "images": data.get("images", []),
+                "images": images,
             }
 
         except ThangsRateLimitError:

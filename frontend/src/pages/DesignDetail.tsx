@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useState, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   useDesign,
   useUnlinkFromThangs,
@@ -389,6 +389,7 @@ const multicolorDisplay: Record<MulticolorStatus, { label: string; className: st
 
 export function DesignDetail() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { data: design, isLoading, error } = useDesign(id || '')
   const { data: previewsData, isLoading: previewsLoading } = useDesignPreviews(id || '')
   const { data: tagsData } = useDesignTags(id || '')
@@ -399,6 +400,17 @@ export function DesignDetail() {
   const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set())
   const [showUnmergeConfirm, setShowUnmergeConfirm] = useState(false)
   const [unmergeError, setUnmergeError] = useState<string | null>(null)
+
+  // Navigate back to designs list, preserving filters via browser history
+  const handleBack = useCallback(() => {
+    // Check if we can go back in history (came from designs list)
+    if (window.history.length > 1) {
+      navigate(-1)
+    } else {
+      // Fallback if no history (direct link to this page)
+      navigate('/designs')
+    }
+  }, [navigate])
 
   const handleSetPrimary = async (previewId: string) => {
     try {
@@ -453,13 +465,13 @@ export function DesignDetail() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Link
-          to="/designs"
+        <button
+          onClick={handleBack}
           className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
         >
           <BackIcon className="w-4 h-4" />
           Back to Designs
-        </Link>
+        </button>
         <DesignDetailSkeleton />
       </div>
     )
@@ -468,13 +480,13 @@ export function DesignDetail() {
   if (error) {
     return (
       <div className="space-y-6">
-        <Link
-          to="/designs"
+        <button
+          onClick={handleBack}
           className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
         >
           <BackIcon className="w-4 h-4" />
           Back to Designs
-        </Link>
+        </button>
         <div className="bg-accent-danger/20 border border-accent-danger/50 rounded-lg p-4">
           <p className="text-accent-danger">
             Failed to load design: {(error as Error).message}
@@ -487,13 +499,13 @@ export function DesignDetail() {
   if (!design) {
     return (
       <div className="space-y-6">
-        <Link
-          to="/designs"
+        <button
+          onClick={handleBack}
           className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
         >
           <BackIcon className="w-4 h-4" />
           Back to Designs
-        </Link>
+        </button>
         <div className="bg-bg-secondary rounded-lg p-8 text-center">
           <p className="text-text-secondary">Design not found</p>
         </div>
@@ -514,14 +526,14 @@ export function DesignDetail() {
 
   return (
     <div className="space-y-6">
-      {/* Back Link */}
-      <Link
-        to="/designs"
+      {/* Back Button */}
+      <button
+        onClick={handleBack}
         className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
       >
         <BackIcon className="w-4 h-4" />
         Back to Designs
-      </Link>
+      </button>
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">

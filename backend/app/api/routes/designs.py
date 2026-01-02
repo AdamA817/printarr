@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select, update
@@ -439,7 +438,7 @@ async def refresh_metadata(
             sources_failed=0,
         )
 
-    # Prepare for httpx calls - collect source info before closing DB
+    # Prepare for fetching - collect source info before closing DB
     sources_to_fetch = [
         {"id": s.id, "external_id": s.external_id}
         for s in thangs_sources
@@ -448,15 +447,16 @@ async def refresh_metadata(
     # Commit current transaction to avoid greenlet conflicts
     await db.commit()
 
-    # Fetch metadata using httpx (outside DB context)
+    # Fetch metadata using ThangsAdapter (supports FlareSolverr for Cloudflare bypass)
     fetched_results = []
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    thangs_adapter = ThangsAdapter(db)
+    try:
         for source_info in sources_to_fetch:
             try:
-                metadata = await _fetch_thangs_metadata(client, source_info["external_id"])
+                metadata = await thangs_adapter.fetch_thangs_metadata(source_info["external_id"])
                 fetched_results.append({
                     "source_id": source_info["id"],
-                    "success": True,
+                    "success": metadata is not None,
                     "metadata": metadata,
                 })
             except Exception as e:
@@ -470,6 +470,8 @@ async def refresh_metadata(
                     "success": False,
                     "metadata": None,
                 })
+    finally:
+        await thangs_adapter.close()
 
     # Update database with fetched metadata
     sources_refreshed = 0
@@ -565,57 +567,6 @@ async def refresh_metadata(
     )
 
 
-async def _fetch_thangs_metadata(client: httpx.AsyncClient, model_id: str) -> dict | None:
-    """Fetch metadata from Thangs API."""
-    url = f"https://api.thangs.com/models/{model_id}"
-
-    response = await client.get(
-        url,
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "Printarr/1.0",
-        },
-    )
-
-    if response.status_code == 200:
-        data = response.json()
-        designer = None
-        if "owner" in data and isinstance(data["owner"], dict):
-            designer = data["owner"].get("username") or data["owner"].get("name")
-        elif "creator" in data and isinstance(data["creator"], dict):
-            designer = data["creator"].get("username") or data["creator"].get("name")
-        elif "author" in data:
-            designer = data["author"]
-
-        # Extract image URLs from various possible fields
-        images = []
-        if "images" in data and isinstance(data["images"], list):
-            for img in data["images"]:
-                if isinstance(img, str):
-                    images.append(img)
-                elif isinstance(img, dict) and "url" in img:
-                    images.append(img["url"])
-        elif "thumbnails" in data and isinstance(data["thumbnails"], list):
-            images = [t for t in data["thumbnails"] if isinstance(t, str)]
-
-        return {
-            "title": data.get("name") or data.get("title"),
-            "designer": designer,
-            "tags": data.get("tags", []),
-            "images": images,
-        }
-    elif response.status_code == 404:
-        logger.warning("thangs_model_not_found", model_id=model_id)
-        return None
-    else:
-        logger.warning(
-            "thangs_api_error",
-            model_id=model_id,
-            status=response.status_code,
-        )
-        return None
-
-
 @router.post("/{design_id}/thangs-link", response_model=ThangsLinkResponse)
 async def link_to_thangs(
     design_id: str,
@@ -697,6 +648,23 @@ async def link_to_thangs(
                 model_id=request.model_id,
                 title=source.fetched_title,
             )
+
+            # Cache Thangs images (v0.7 - auto-cache on link)
+            images = metadata.get("images", [])
+            if images:
+                preview_service = PreviewService(db)
+                cached = await adapter.cache_thangs_images(
+                    design_id=design_id,
+                    image_urls=images,
+                    preview_service=preview_service,
+                )
+                if cached > 0:
+                    logger.info(
+                        "thangs_images_cached_on_link",
+                        design_id=design_id,
+                        model_id=request.model_id,
+                        images_cached=cached,
+                    )
     finally:
         await adapter.close()
 
