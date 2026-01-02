@@ -30,7 +30,10 @@ export function ImportSourceCard({
   const handleSync = async () => {
     setSyncResult(null)
     try {
-      const result = await triggerSync.mutateAsync({ id: source.id })
+      const result = await triggerSync.mutateAsync({
+        id: source.id,
+        request: { auto_import: true },
+      })
       setSyncResult({
         type: 'success',
         message: result.message || `Sync complete: ${result.designs_detected} detected, ${result.designs_imported} imported`,
@@ -44,6 +47,8 @@ export function ImportSourceCard({
       })
     }
   }
+
+  const isSyncing = triggerSync.isPending
 
   const getSourceIcon = () => {
     switch (source.source_type) {
@@ -72,6 +77,16 @@ export function ImportSourceCard({
   }
 
   const getStatusBadge = () => {
+    // Show syncing status when sync is in progress
+    if (isSyncing) {
+      return (
+        <span className="px-2 py-1 rounded text-xs font-medium bg-accent-primary/20 text-accent-primary flex items-center gap-1">
+          <SpinnerIcon className="w-3 h-3 animate-spin" />
+          SYNCING
+        </span>
+      )
+    }
+
     const statusStyles = {
       ACTIVE: 'bg-accent-success/20 text-accent-success',
       PAUSED: 'bg-text-muted/20 text-text-muted',
@@ -86,6 +101,7 @@ export function ImportSourceCard({
   }
 
   const getLastSyncText = () => {
+    if (isSyncing) return 'Syncing now...'
     if (!source.last_sync_at) return 'Never synced'
     const date = new Date(source.last_sync_at)
     const now = new Date()

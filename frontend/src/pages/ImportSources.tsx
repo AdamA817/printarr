@@ -8,6 +8,7 @@ import {
   useImportSources,
   useCreateImportSource,
   useDeleteImportSource,
+  useTriggerSync,
 } from '@/hooks/useImportSources'
 import {
   ImportSourceCard,
@@ -28,12 +29,21 @@ export function ImportSources() {
   const { data, isLoading, error } = useImportSources()
   const createSource = useCreateImportSource()
   const deleteSource = useDeleteImportSource()
+  const triggerSync = useTriggerSync()
 
   const handleAddSource = (formData: ImportSourceCreate) => {
     createSource.mutate(formData, {
-      onSuccess: () => {
+      onSuccess: (newSource) => {
         setIsAddModalOpen(false)
         createSource.reset()
+
+        // Auto-trigger sync for bulk folder sources
+        if (newSource.source_type === 'BULK_FOLDER' || newSource.source_type === 'GOOGLE_DRIVE') {
+          triggerSync.mutate({
+            id: newSource.id,
+            request: { auto_import: true },
+          })
+        }
       },
     })
   }
