@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Float, Index, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from app.db.models.design_source import DesignSource
     from app.db.models.design_tag import DesignTag
     from app.db.models.external_metadata_source import ExternalMetadataSource
+    from app.db.models.import_source import ImportSource
     from app.db.models.job import Job
     from app.db.models.preview_asset import PreviewAsset
 
@@ -80,6 +81,11 @@ class Design(Base):
     )
     metadata_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # Import source (v0.8 - for non-Telegram imports)
+    import_source_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("import_sources.id"), nullable=True
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(
@@ -102,6 +108,9 @@ class Design(Base):
     jobs: Mapped[list[Job]] = relationship("Job", back_populates="design")
     external_metadata_sources: Mapped[list[ExternalMetadataSource]] = relationship(
         "ExternalMetadataSource", back_populates="design", cascade="all, delete-orphan"
+    )
+    import_source: Mapped[ImportSource | None] = relationship(
+        "ImportSource", back_populates="designs"
     )
 
     # Indexes

@@ -197,3 +197,20 @@ class DiscoverySourceType(str, enum.Enum):
     MENTION = "MENTION"  # @username mentioned in caption/text
     CAPTION_LINK = "CAPTION_LINK"  # t.me link in caption
     TEXT_LINK = "TEXT_LINK"  # t.me link in message entities
+
+
+class ImportSourceType(str, enum.Enum):
+    """Type of manual import source (v0.8)."""
+
+    GOOGLE_DRIVE = "GOOGLE_DRIVE"  # Google Drive folder link
+    UPLOAD = "UPLOAD"  # Direct file upload via UI
+    BULK_FOLDER = "BULK_FOLDER"  # Local folder monitoring
+
+
+class ImportSourceStatus(str, enum.Enum):
+    """Sync status for import sources."""
+
+    ACTIVE = "ACTIVE"  # Enabled and syncing
+    PAUSED = "PAUSED"  # Temporarily disabled
+    ERROR = "ERROR"  # Last sync failed
+    PENDING = "PENDING"  # Waiting for initial sync

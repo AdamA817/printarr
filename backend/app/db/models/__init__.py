@@ -18,6 +18,8 @@ from app.db.models.enums import (
     DownloadMode,
     ExternalSourceType,
     FileKind,
+    ImportSourceStatus,
+    ImportSourceType,
     JobStatus,
     JobType,
     MatchMethod,
@@ -32,6 +34,9 @@ from app.db.models.enums import (
     TitleSource,
 )
 from app.db.models.external_metadata_source import ExternalMetadataSource
+from app.db.models.google_credentials import GoogleCredentials
+from app.db.models.import_profile import ImportProfile
+from app.db.models.import_source import ImportSource
 from app.db.models.job import Job
 from app.db.models.preview_asset import PreviewAsset
 from app.db.models.tag import Tag
@@ -48,6 +53,9 @@ __all__ = [
     "DesignTag",
     "DiscoveredChannel",
     "ExternalMetadataSource",
+    "GoogleCredentials",
+    "ImportProfile",
+    "ImportSource",
     "Job",
     "PreviewAsset",
     "Tag",
@@ -62,6 +70,8 @@ __all__ = [
     "DownloadMode",
     "ExternalSourceType",
     "FileKind",
+    "ImportSourceStatus",
+    "ImportSourceType",
     "JobStatus",
     "JobType",
     "MatchMethod",
