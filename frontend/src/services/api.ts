@@ -88,6 +88,12 @@ import type {
   ImportProfileUpdate,
   ImportProfileList,
   ImportProfileUsage,
+  GoogleOAuthStatus,
+  GoogleCredentials,
+  GoogleCredentialsList,
+  GoogleOAuthInitResponse,
+  GoogleOAuthCallbackParams,
+  GoogleOAuthCallbackResponse,
 } from '@/types/import-source'
 
 export const api = axios.create({
@@ -433,4 +439,34 @@ export const importProfilesApi = {
   // Get usage info for a profile
   getUsage: (id: string) =>
     api.get<ImportProfileUsage>(`/import-profiles/${id}/usage`).then((r) => r.data),
+}
+
+// =============================================================================
+// Google OAuth API (v0.8)
+// =============================================================================
+
+export const googleOAuthApi = {
+  // Get OAuth configuration and authentication status
+  getStatus: () =>
+    api.get<GoogleOAuthStatus>('/google/oauth/status').then((r) => r.data),
+
+  // Start OAuth flow - returns URL to redirect user to
+  initiate: () =>
+    api.post<GoogleOAuthInitResponse>('/google/oauth/authorize').then((r) => r.data),
+
+  // Handle OAuth callback (called after user returns from Google)
+  callback: (params: GoogleOAuthCallbackParams) =>
+    api.post<GoogleOAuthCallbackResponse>('/google/oauth/callback', params).then((r) => r.data),
+
+  // List all connected Google accounts
+  listCredentials: () =>
+    api.get<GoogleCredentialsList>('/google/credentials/').then((r) => r.data),
+
+  // Get specific credentials
+  getCredentials: (id: string) =>
+    api.get<GoogleCredentials>(`/google/credentials/${id}`).then((r) => r.data),
+
+  // Revoke and delete credentials
+  revokeCredentials: (id: string) =>
+    api.delete(`/google/credentials/${id}`),
 }

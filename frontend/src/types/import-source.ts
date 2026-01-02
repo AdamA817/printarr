@@ -241,3 +241,33 @@ export interface GoogleOAuthStatus {
   email: string | null
   expires_at: string | null
 }
+
+export interface GoogleCredentials {
+  id: string
+  email: string
+  expires_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface GoogleCredentialsList {
+  items: GoogleCredentials[]
+  total: number
+}
+
+export interface GoogleOAuthInitResponse {
+  authorization_url: string
+  state: string
+}
+
+export interface GoogleOAuthCallbackParams {
+  code: string
+  state: string
+}
+
+export interface GoogleOAuthCallbackResponse {
+  success: boolean
+  credentials_id: string
+  email: string
+  message: string
+}

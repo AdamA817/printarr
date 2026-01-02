@@ -8,10 +8,14 @@ import { Activity } from '@/pages/Activity'
 import { Settings } from '@/pages/Settings'
 import { ImportSources } from '@/pages/ImportSources'
 import { ImportProfiles } from '@/pages/ImportProfiles'
+import { GoogleOAuthCallback } from '@/pages/GoogleOAuthCallback'
 
 function App() {
   return (
     <Routes>
+      {/* OAuth callback - outside layout */}
+      <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
+
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="designs" element={<Designs />} />

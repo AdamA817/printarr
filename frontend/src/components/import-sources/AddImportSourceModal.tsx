@@ -3,6 +3,8 @@
  */
 import { useState, useEffect } from 'react'
 import { useImportProfiles } from '@/hooks/useImportProfiles'
+import { useGoogleOAuthStatus } from '@/hooks/useGoogleOAuth'
+import { GoogleConnectCard } from './GoogleConnectCard'
 import type { ImportSourceCreate, ImportSourceType, ImportProfile } from '@/types/import-source'
 
 interface AddImportSourceModalProps {
@@ -30,8 +32,10 @@ export function AddImportSourceModal({
     sync_enabled: true,
     sync_interval_hours: 1,
   })
+  const [selectedCredentialsId, setSelectedCredentialsId] = useState<string | null>(null)
 
   const { data: profilesData } = useImportProfiles()
+  const { data: oauthStatus } = useGoogleOAuthStatus()
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -44,6 +48,7 @@ export function AddImportSourceModal({
         sync_enabled: true,
         sync_interval_hours: 1,
       })
+      setSelectedCredentialsId(null)
     }
   }, [isOpen])
 
@@ -77,7 +82,10 @@ export function AddImportSourceModal({
   const canProceedFromConfigure = () => {
     if (!formData.name.trim()) return false
     if (formData.source_type === 'BULK_FOLDER' && !formData.folder_path?.trim()) return false
-    if (formData.source_type === 'GOOGLE_DRIVE' && !formData.google_drive_url?.trim()) return false
+    if (formData.source_type === 'GOOGLE_DRIVE') {
+      if (!formData.google_drive_url?.trim()) return false
+      if (!selectedCredentialsId) return false
+    }
     return true
   }
 
@@ -137,8 +145,8 @@ export function AddImportSourceModal({
                 description="Import from a Google Drive folder"
                 selected={formData.source_type === 'GOOGLE_DRIVE'}
                 onClick={() => handleTypeSelect('GOOGLE_DRIVE')}
-                disabled
-                disabledReason="Coming soon"
+                disabled={!oauthStatus?.configured}
+                disabledReason={!oauthStatus?.configured ? 'Not configured' : undefined}
               />
               <SourceTypeOption
                 type="UPLOAD"
@@ -192,20 +200,30 @@ export function AddImportSourceModal({
 
               {/* Google Drive specific */}
               {formData.source_type === 'GOOGLE_DRIVE' && (
-                <div>
-                  <label className="block text-sm font-medium text-text-primary mb-1">
-                    Google Drive URL <span className="text-accent-danger">*</span>
-                  </label>
-                  <input
-                    type="url"
-                    value={formData.google_drive_url || ''}
-                    onChange={(e) => setFormData({ ...formData, google_drive_url: e.target.value })}
-                    placeholder="https://drive.google.com/drive/folders/..."
-                    className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+                <div className="space-y-4">
+                  {/* Google account connection */}
+                  <GoogleConnectCard
+                    selectedCredentialsId={selectedCredentialsId || undefined}
+                    onSelectCredentials={(id) => setSelectedCredentialsId(id)}
                   />
-                  <p className="text-xs text-text-muted mt-1">
-                    Share link to a Google Drive folder
-                  </p>
+
+                  {/* Google Drive URL */}
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary mb-1">
+                      Google Drive Folder URL <span className="text-accent-danger">*</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={formData.google_drive_url || ''}
+                      onChange={(e) => setFormData({ ...formData, google_drive_url: e.target.value })}
+                      placeholder="https://drive.google.com/drive/folders/..."
+                      className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+                      disabled={!selectedCredentialsId}
+                    />
+                    <p className="text-xs text-text-muted mt-1">
+                      Paste the URL of a Google Drive folder you want to import from
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
