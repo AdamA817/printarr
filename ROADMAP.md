@@ -269,6 +269,10 @@ Channels like Wicked STL post designs across multiple messages:
   - [ ] Configure sync intervals
   - [ ] View import history
   - [ ] Manual "Sync Now" trigger
+- [ ] **Auto-Queue Preview Renders**:
+  - [ ] Queue GENERATE_RENDER job after IMPORT_TO_LIBRARY completes
+  - [ ] Skip if design already has preview images
+  - [ ] Works for both Telegram downloads and manual imports
 
 ### Success Criteria
 - Add a Google Drive folder link (public or authenticated)
@@ -276,6 +280,7 @@ Channels like Wicked STL post designs across multiple messages:
 - Upload a ZIP file, see design extracted and cataloged
 - Configure bulk folder, existing designs imported
 - Different creator folder structures handled via profiles
+- Downloaded designs auto-queue for preview rendering if no previews exist
 
 ### Technical Notes
 - Google Drive API for folder listing and file download
