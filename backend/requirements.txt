@@ -33,8 +33,9 @@ aiofiles>=24.1.0
 Pillow>=10.0.0
 
 # Google Drive Integration (v0.8)
+# Note: google-auth-oauthlib 1.2.x requires google-auth<2.42.0
 google-api-python-client>=2.100.0
-google-auth>=2.22.0
+google-auth>=2.22.0,<2.42.0
 google-auth-oauthlib>=1.1.0
 google-auth-httplib2>=0.2.0
 
