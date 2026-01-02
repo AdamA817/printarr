@@ -15,6 +15,7 @@ import {
   AddImportSourceModal,
   DeleteSourceModal,
   UploadModal,
+  ImportHistoryModal,
 } from '@/components/import-sources'
 import type { ImportSource, ImportSourceCreate } from '@/types/import-source'
 
@@ -22,6 +23,7 @@ export function ImportSources() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<ImportSource | null>(null)
+  const [historyTarget, setHistoryTarget] = useState<ImportSource | null>(null)
 
   const { data, isLoading, error } = useImportSources()
   const createSource = useCreateImportSource()
@@ -61,9 +63,11 @@ export function ImportSources() {
     // For now, edit functionality will be part of a separate issue
   }
 
-  const handleViewHistory = (_id: string) => {
-    // TODO: Navigate to history page or open history modal
-    // This will be implemented as part of issue #149
+  const handleViewHistory = (id: string) => {
+    const source = data?.items.find((s) => s.id === id)
+    if (source) {
+      setHistoryTarget(source)
+    }
   }
 
   return (
@@ -185,6 +189,13 @@ export function ImportSources() {
       <UploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
+      />
+
+      {/* History modal */}
+      <ImportHistoryModal
+        isOpen={!!historyTarget}
+        source={historyTarget}
+        onClose={() => setHistoryTarget(null)}
       />
     </div>
   )
