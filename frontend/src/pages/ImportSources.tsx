@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import {
   useImportSources,
   useCreateImportSource,
+  useUpdateImportSource,
   useDeleteImportSource,
   useTriggerSync,
 } from '@/hooks/useImportSources'
@@ -14,20 +15,23 @@ import {
   ImportSourceCard,
   ImportSourceCardSkeleton,
   AddImportSourceModal,
+  EditImportSourceModal,
   DeleteSourceModal,
   UploadModal,
   ImportHistoryModal,
 } from '@/components/import-sources'
-import type { ImportSource, ImportSourceCreate } from '@/types/import-source'
+import type { ImportSource, ImportSourceCreate, ImportSourceUpdate } from '@/types/import-source'
 
 export function ImportSources() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
+  const [editTarget, setEditTarget] = useState<ImportSource | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ImportSource | null>(null)
   const [historyTarget, setHistoryTarget] = useState<ImportSource | null>(null)
 
   const { data, isLoading, error } = useImportSources()
   const createSource = useCreateImportSource()
+  const updateSource = useUpdateImportSource()
   const deleteSource = useDeleteImportSource()
   const triggerSync = useTriggerSync()
 
@@ -68,9 +72,22 @@ export function ImportSources() {
     )
   }
 
-  const handleEdit = (_source: ImportSource) => {
-    // TODO: Implement edit modal (future enhancement)
-    // For now, edit functionality will be part of a separate issue
+  const handleEdit = (source: ImportSource) => {
+    setEditTarget(source)
+  }
+
+  const handleEditSubmit = (formData: ImportSourceUpdate) => {
+    if (!editTarget) return
+
+    updateSource.mutate(
+      { id: editTarget.id, data: formData },
+      {
+        onSuccess: () => {
+          setEditTarget(null)
+          updateSource.reset()
+        },
+      }
+    )
   }
 
   const handleViewHistory = (id: string) => {
@@ -182,6 +199,23 @@ export function ImportSources() {
         error={
           createSource.error
             ? (createSource.error as Error).message || 'Failed to create import source'
+            : null
+        }
+      />
+
+      {/* Edit source modal */}
+      <EditImportSourceModal
+        isOpen={!!editTarget}
+        source={editTarget}
+        onClose={() => {
+          setEditTarget(null)
+          updateSource.reset()
+        }}
+        onSubmit={handleEditSubmit}
+        isSubmitting={updateSource.isPending}
+        error={
+          updateSource.error
+            ? (updateSource.error as Error).message || 'Failed to update import source'
             : null
         }
       />

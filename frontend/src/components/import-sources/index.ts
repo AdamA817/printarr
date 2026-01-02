@@ -1,6 +1,7 @@
 export { ImportSourceCard } from './ImportSourceCard'
 export { ImportSourceCardSkeleton } from './ImportSourceCardSkeleton'
 export { AddImportSourceModal } from './AddImportSourceModal'
+export { EditImportSourceModal } from './EditImportSourceModal'
 export { DeleteSourceModal } from './DeleteSourceModal'
 export { ImportProfileCard, ImportProfileCardSkeleton } from './ImportProfileCard'
 export { ProfileEditorModal } from './ProfileEditorModal'
