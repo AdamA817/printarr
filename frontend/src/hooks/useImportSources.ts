@@ -7,6 +7,8 @@ import type {
   ImportSourceCreate,
   ImportSourceUpdate,
   ImportSourceListParams,
+  ImportSourceFolderCreate,
+  ImportSourceFolderUpdate,
   SyncTriggerRequest,
   ImportHistoryParams,
 } from '@/types/import-source'
@@ -104,5 +106,104 @@ export function useImportHistory(sourceId: string, params?: ImportHistoryParams)
     queryKey: ['importHistory', sourceId, params],
     queryFn: () => importSourcesApi.getHistory(sourceId, params),
     enabled: !!sourceId,
+  })
+}
+
+// =============================================================================
+// Folder Hooks (DEC-038)
+// =============================================================================
+
+/**
+ * Fetch folders for a source
+ */
+export function useSourceFolders(sourceId: string) {
+  return useQuery({
+    queryKey: ['sourceFolders', sourceId],
+    queryFn: () => importSourcesApi.listFolders(sourceId),
+    enabled: !!sourceId,
+  })
+}
+
+/**
+ * Add a folder to a source
+ */
+export function useAddFolder() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ sourceId, data }: { sourceId: string; data: ImportSourceFolderCreate }) =>
+      importSourcesApi.addFolder(sourceId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['importSources'] })
+      queryClient.invalidateQueries({ queryKey: ['importSource', variables.sourceId] })
+      queryClient.invalidateQueries({ queryKey: ['sourceFolders', variables.sourceId] })
+    },
+  })
+}
+
+/**
+ * Update a folder
+ */
+export function useUpdateFolder() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      sourceId,
+      folderId,
+      data,
+    }: {
+      sourceId: string
+      folderId: string
+      data: ImportSourceFolderUpdate
+    }) => importSourcesApi.updateFolder(sourceId, folderId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['importSources'] })
+      queryClient.invalidateQueries({ queryKey: ['importSource', variables.sourceId] })
+      queryClient.invalidateQueries({ queryKey: ['sourceFolders', variables.sourceId] })
+    },
+  })
+}
+
+/**
+ * Delete a folder
+ */
+export function useDeleteFolder() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ sourceId, folderId }: { sourceId: string; folderId: string }) =>
+      importSourcesApi.deleteFolder(sourceId, folderId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['importSources'] })
+      queryClient.invalidateQueries({ queryKey: ['importSource', variables.sourceId] })
+      queryClient.invalidateQueries({ queryKey: ['sourceFolders', variables.sourceId] })
+    },
+  })
+}
+
+/**
+ * Sync a specific folder
+ */
+export function useSyncFolder() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({
+      sourceId,
+      folderId,
+      request,
+    }: {
+      sourceId: string
+      folderId: string
+      request?: SyncTriggerRequest
+    }) => importSourcesApi.syncFolder(sourceId, folderId, request),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['importSources'] })
+      queryClient.invalidateQueries({ queryKey: ['importSource', variables.sourceId] })
+      queryClient.invalidateQueries({ queryKey: ['sourceFolders', variables.sourceId] })
+      queryClient.invalidateQueries({ queryKey: ['importHistory', variables.sourceId] })
+      queryClient.invalidateQueries({ queryKey: ['designs'] })
+    },
   })
 }

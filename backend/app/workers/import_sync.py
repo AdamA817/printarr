@@ -2,9 +2,13 @@
 
 Handles async syncing of import sources (BULK_FOLDER and GOOGLE_DRIVE).
 This worker processes SYNC_IMPORT_SOURCE jobs to:
-1. Scan the source for designs
+1. Scan the source folders for designs
 2. Create import records for detected designs
 3. Optionally import pending designs (auto_import)
+
+Per DEC-038, syncing now operates at the folder level. If folder_id is
+provided in the payload, only that folder is synced. Otherwise, all
+enabled folders in the source are synced.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from app.db.models import (
     ImportRecord,
     ImportRecordStatus,
     ImportSource,
+    ImportSourceFolder,
     ImportSourceStatus,
     ImportSourceType,
     Job,
@@ -84,12 +89,13 @@ class SyncImportSourceWorker(BaseWorker):
     ) -> dict[str, Any] | None:
         """Process a sync job.
 
-        Scans the import source and creates/updates import records.
+        Scans import source folders and creates/updates import records.
 
         Args:
             job: The Job instance to process.
             payload: Parsed payload dict with:
                 - source_id: Import source ID (required)
+                - folder_id: Optional folder ID to sync just one folder
                 - auto_import: Whether to auto-import detected designs
                 - conflict_resolution: How to handle conflicts
 
@@ -107,6 +113,7 @@ class SyncImportSourceWorker(BaseWorker):
         if not source_id:
             raise NonRetryableError("Payload missing source_id")
 
+        folder_id = payload.get("folder_id")  # Optional: sync single folder
         auto_import = payload.get("auto_import", False)
         conflict_resolution_str = payload.get("conflict_resolution", "SKIP")
         try:
@@ -118,6 +125,7 @@ class SyncImportSourceWorker(BaseWorker):
             "sync_job_starting",
             job_id=job.id,
             source_id=source_id,
+            folder_id=folder_id,
             auto_import=auto_import,
         )
 
@@ -135,17 +143,30 @@ class SyncImportSourceWorker(BaseWorker):
             source.status = ImportSourceStatus.ACTIVE
 
             try:
-                if source.source_type == ImportSourceType.BULK_FOLDER:
-                    result = await self._sync_bulk_folder(
-                        db, source, auto_import, conflict_resolution
-                    )
-                elif source.source_type == ImportSourceType.GOOGLE_DRIVE:
-                    result = await self._sync_google_drive(
+                # Determine which folders to sync
+                if folder_id:
+                    # Sync single folder
+                    folder = await db.get(ImportSourceFolder, folder_id)
+                    if not folder:
+                        raise NonRetryableError(f"Folder {folder_id} not found")
+                    if folder.import_source_id != source_id:
+                        raise NonRetryableError(
+                            f"Folder {folder_id} does not belong to source {source_id}"
+                        )
+                    folders_to_sync = [folder]
+                else:
+                    # Sync all enabled folders
+                    folders_to_sync = [f for f in source.folders if f.enabled]
+
+                if not folders_to_sync:
+                    # Backward compatibility: use deprecated source fields
+                    result = await self._sync_legacy_source(
                         db, source, auto_import, conflict_resolution
                     )
                 else:
-                    raise NonRetryableError(
-                        f"Unsupported source type: {source.source_type}"
+                    # Sync each folder
+                    result = await self._sync_folders(
+                        db, source, folders_to_sync, auto_import, conflict_resolution
                     )
 
                 designs_detected = result["detected"]
@@ -161,6 +182,7 @@ class SyncImportSourceWorker(BaseWorker):
                     "sync_job_complete",
                     job_id=job.id,
                     source_id=source_id,
+                    folder_id=folder_id,
                     designs_detected=designs_detected,
                     designs_imported=designs_imported,
                     errors=len(errors),
@@ -188,6 +210,7 @@ class SyncImportSourceWorker(BaseWorker):
 
         return {
             "source_id": source_id,
+            "folder_id": folder_id,
             "designs_detected": designs_detected,
             "designs_imported": designs_imported,
             "errors": errors,
@@ -571,3 +594,360 @@ class SyncImportSourceWorker(BaseWorker):
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _hash_file)
+
+    # ============================================================
+    # DEC-038: Folder-based sync methods
+    # ============================================================
+
+    async def _sync_folders(
+        self,
+        db,
+        source: ImportSource,
+        folders: list[ImportSourceFolder],
+        auto_import: bool,
+        conflict_resolution: ConflictResolution,
+    ) -> dict[str, Any]:
+        """Sync multiple folders.
+
+        Args:
+            db: Database session.
+            source: The import source.
+            folders: List of folders to sync.
+            auto_import: Whether to auto-import detected designs.
+            conflict_resolution: How to handle conflicts.
+
+        Returns:
+            Dict with total detected and imported counts.
+        """
+        total_detected = 0
+        total_imported = 0
+        all_errors: list[str] = []
+
+        for i, folder in enumerate(folders):
+            logger.info(
+                "sync_folder_starting",
+                source_id=source.id,
+                folder_id=folder.id,
+                folder_name=folder.display_name,
+                index=i + 1,
+                total=len(folders),
+            )
+
+            try:
+                if source.source_type == ImportSourceType.BULK_FOLDER:
+                    result = await self._sync_folder_bulk(
+                        db, source, folder, auto_import, conflict_resolution
+                    )
+                elif source.source_type == ImportSourceType.GOOGLE_DRIVE:
+                    result = await self._sync_folder_google_drive(
+                        db, source, folder, auto_import, conflict_resolution
+                    )
+                else:
+                    logger.warning(
+                        "unsupported_source_type_for_folder",
+                        source_type=source.source_type,
+                        folder_id=folder.id,
+                    )
+                    continue
+
+                total_detected += result["detected"]
+                total_imported += result["imported"]
+                all_errors.extend(result.get("errors", []))
+
+                # Update folder stats
+                folder.items_detected = (folder.items_detected or 0) + result["detected"]
+                folder.items_imported = (folder.items_imported or 0) + result["imported"]
+                folder.last_synced_at = datetime.utcnow()
+                folder.last_sync_error = None
+
+            except Exception as e:
+                error_msg = f"Failed to sync folder {folder.display_name}: {e}"
+                all_errors.append(error_msg)
+                folder.last_sync_error = str(e)
+                logger.error(
+                    "sync_folder_failed",
+                    folder_id=folder.id,
+                    error=str(e),
+                )
+
+        # Update aggregate source stats
+        source.items_imported = sum(f.items_imported or 0 for f in source.folders)
+
+        return {
+            "detected": total_detected,
+            "imported": total_imported,
+            "errors": all_errors,
+        }
+
+    async def _sync_legacy_source(
+        self,
+        db,
+        source: ImportSource,
+        auto_import: bool,
+        conflict_resolution: ConflictResolution,
+    ) -> dict[str, Any]:
+        """Sync using deprecated source-level fields (backward compatibility).
+
+        Args:
+            db: Database session.
+            source: The import source.
+            auto_import: Whether to auto-import detected designs.
+            conflict_resolution: How to handle conflicts.
+
+        Returns:
+            Dict with detected and imported counts.
+        """
+        logger.info(
+            "sync_legacy_source",
+            source_id=source.id,
+            source_type=source.source_type,
+        )
+
+        if source.source_type == ImportSourceType.BULK_FOLDER:
+            return await self._sync_bulk_folder(
+                db, source, auto_import, conflict_resolution
+            )
+        elif source.source_type == ImportSourceType.GOOGLE_DRIVE:
+            return await self._sync_google_drive(
+                db, source, auto_import, conflict_resolution
+            )
+        else:
+            raise NonRetryableError(f"Unsupported source type: {source.source_type}")
+
+    async def _sync_folder_bulk(
+        self,
+        db,
+        source: ImportSource,
+        folder: ImportSourceFolder,
+        auto_import: bool,
+        conflict_resolution: ConflictResolution,
+    ) -> dict[str, Any]:
+        """Sync a single bulk folder.
+
+        Args:
+            db: Database session.
+            source: The import source.
+            folder: The folder to sync.
+            auto_import: Whether to auto-import detected designs.
+            conflict_resolution: How to handle conflicts.
+
+        Returns:
+            Dict with detected and imported counts.
+        """
+        if not folder.folder_path:
+            raise NonRetryableError(f"Folder {folder.id} missing folder_path")
+
+        service = BulkImportService(db)
+
+        # Scan folder using folder's path
+        designs = await service.scan_folder_path(folder.folder_path)
+        detected = len(designs)
+
+        # Get effective settings (folder override or source default)
+        effective_designer = folder.default_designer or source.default_designer
+        effective_profile_id = folder.import_profile_id or source.import_profile_id
+
+        # Create import records
+        for design_info in designs:
+            # Check if record already exists
+            existing = await db.execute(
+                select(ImportRecord).where(
+                    ImportRecord.import_source_folder_id == folder.id,
+                    ImportRecord.source_path == design_info.relative_path,
+                )
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            record = ImportRecord(
+                import_source_folder_id=folder.id,
+                import_source_id=source.id,  # Keep for backward compatibility
+                source_path=design_info.relative_path,
+                file_size=design_info.total_size,
+                status=ImportRecordStatus.PENDING,
+                detected_title=design_info.title,
+                detected_designer=effective_designer,
+                model_file_count=len(design_info.model_files),
+                preview_file_count=len(design_info.preview_files),
+                detected_at=datetime.utcnow(),
+            )
+            db.add(record)
+
+        await db.flush()
+
+        imported = 0
+        errors: list[str] = []
+
+        if auto_import:
+            imported, errors = await self._import_folder_pending(
+                db, source, folder, conflict_resolution
+            )
+
+        return {
+            "detected": detected,
+            "imported": imported,
+            "errors": errors,
+        }
+
+    async def _sync_folder_google_drive(
+        self,
+        db,
+        source: ImportSource,
+        folder: ImportSourceFolder,
+        auto_import: bool,
+        conflict_resolution: ConflictResolution,
+    ) -> dict[str, Any]:
+        """Sync a single Google Drive folder.
+
+        Args:
+            db: Database session.
+            source: The import source.
+            folder: The folder to sync.
+            auto_import: Whether to auto-import detected designs.
+            conflict_resolution: How to handle conflicts.
+
+        Returns:
+            Dict with detected and imported counts.
+        """
+        if not folder.google_folder_id:
+            raise NonRetryableError(f"Folder {folder.id} missing google_folder_id")
+
+        # Get effective settings (folder override or source default)
+        effective_profile_id = folder.import_profile_id or source.import_profile_id
+        effective_designer = folder.default_designer or source.default_designer
+
+        # Get import profile config
+        profile_service = ImportProfileService(db)
+        config = await profile_service.get_profile_config(effective_profile_id)
+
+        # Scan Google Drive folder
+        gdrive_service = GoogleDriveService(db)
+        detected_designs = await gdrive_service.scan_for_designs(
+            folder.google_folder_id,
+            credentials=None,  # Public folder access via API key
+            config=config,
+        )
+        detected = len(detected_designs)
+
+        # Create import records
+        for design in detected_designs:
+            # Check if record already exists
+            existing = await db.execute(
+                select(ImportRecord).where(
+                    ImportRecord.import_source_folder_id == folder.id,
+                    ImportRecord.source_path == design.relative_path,
+                )
+            )
+            if existing.scalar_one_or_none():
+                continue
+
+            record = ImportRecord(
+                import_source_folder_id=folder.id,
+                import_source_id=source.id,  # Keep for backward compatibility
+                source_path=design.relative_path,
+                file_size=design.total_size,
+                status=ImportRecordStatus.PENDING,
+                detected_title=design.title,
+                detected_designer=effective_designer,
+                model_file_count=len(design.model_files),
+                preview_file_count=len(design.preview_files),
+                detected_at=datetime.utcnow(),
+                google_folder_id=design.folder_id,  # Store for download
+            )
+            db.add(record)
+
+        await db.flush()
+
+        imported = 0
+        errors: list[str] = []
+
+        if auto_import:
+            imported, errors = await self._import_folder_pending(
+                db, source, folder, conflict_resolution
+            )
+
+        return {
+            "detected": detected,
+            "imported": imported,
+            "errors": errors,
+        }
+
+    async def _import_folder_pending(
+        self,
+        db,
+        source: ImportSource,
+        folder: ImportSourceFolder,
+        conflict_resolution: ConflictResolution,
+    ) -> tuple[int, list[str]]:
+        """Import all pending records for a folder.
+
+        Args:
+            db: Database session.
+            source: The import source.
+            folder: The folder to import from.
+            conflict_resolution: How to handle conflicts.
+
+        Returns:
+            Tuple of (imported_count, errors).
+        """
+        # Get pending records for this folder
+        result = await db.execute(
+            select(ImportRecord).where(
+                ImportRecord.import_source_folder_id == folder.id,
+                ImportRecord.status == ImportRecordStatus.PENDING,
+            )
+        )
+        records = list(result.scalars().all())
+
+        logger.info(
+            "folder_auto_import_starting",
+            folder_id=folder.id,
+            pending_count=len(records),
+        )
+
+        imported = 0
+        errors: list[str] = []
+
+        # Get effective designer
+        effective_designer = folder.default_designer or source.default_designer
+
+        for record in records:
+            try:
+                if source.source_type == ImportSourceType.GOOGLE_DRIVE:
+                    design = await self._import_google_drive_record(
+                        db, source, record, conflict_resolution
+                    )
+                else:
+                    # For bulk folder, use existing bulk import service
+                    continue  # TODO: Implement folder-based bulk import
+
+                if design:
+                    imported += 1
+                    # Update folder stats
+                    folder.items_imported = (folder.items_imported or 0) + 1
+                    logger.info(
+                        "folder_design_imported",
+                        folder_id=folder.id,
+                        record_id=record.id,
+                        design_id=design.id,
+                    )
+            except Exception as e:
+                error_msg = f"Failed to import {record.source_path}: {e}"
+                errors.append(error_msg)
+                record.status = ImportRecordStatus.ERROR
+                record.error_message = str(e)
+                logger.error(
+                    "folder_import_failed",
+                    folder_id=folder.id,
+                    record_id=record.id,
+                    error=str(e),
+                )
+
+        logger.info(
+            "folder_auto_import_complete",
+            folder_id=folder.id,
+            imported=imported,
+            errors=len(errors),
+        )
+
+        return imported, errors

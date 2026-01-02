@@ -1,15 +1,16 @@
 /**
- * Card component for displaying an import source
+ * Card component for displaying an import source with expandable folder list
  */
 import { useState } from 'react'
-import type { ImportSource } from '@/types/import-source'
-import { useTriggerSync } from '@/hooks/useImportSources'
+import type { ImportSource, ImportSourceFolderSummary } from '@/types/import-source'
+import { useTriggerSync, useSyncFolder, useUpdateFolder } from '@/hooks/useImportSources'
 
 interface ImportSourceCardProps {
   source: ImportSource
   onEdit: (source: ImportSource) => void
   onDelete: (id: string) => void
   onViewHistory: (id: string) => void
+  onAddFolder?: (sourceId: string) => void
   isDeleting: boolean
 }
 
@@ -18,14 +19,18 @@ export function ImportSourceCard({
   onEdit,
   onDelete,
   onViewHistory,
+  onAddFolder,
   isDeleting,
 }: ImportSourceCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
   const [syncResult, setSyncResult] = useState<{
     type: 'success' | 'error'
     message: string
   } | null>(null)
 
   const triggerSync = useTriggerSync()
+  const syncFolder = useSyncFolder()
+  const updateFolder = useUpdateFolder()
 
   const handleSync = async () => {
     setSyncResult(null)
@@ -38,7 +43,6 @@ export function ImportSourceCard({
         type: 'success',
         message: result.message || `Sync complete: ${result.designs_detected} detected, ${result.designs_imported} imported`,
       })
-      // Clear success message after 5 seconds
       setTimeout(() => setSyncResult(null), 5000)
     } catch (err) {
       setSyncResult({
@@ -48,7 +52,32 @@ export function ImportSourceCard({
     }
   }
 
+  const handleFolderSync = async (folderId: string) => {
+    try {
+      await syncFolder.mutateAsync({
+        sourceId: source.id,
+        folderId,
+        request: { auto_import: true },
+      })
+    } catch (err) {
+      console.error('Folder sync failed:', err)
+    }
+  }
+
+  const handleToggleFolderEnabled = async (folder: ImportSourceFolderSummary) => {
+    try {
+      await updateFolder.mutateAsync({
+        sourceId: source.id,
+        folderId: folder.id,
+        data: { enabled: !folder.enabled },
+      })
+    } catch (err) {
+      console.error('Toggle folder failed:', err)
+    }
+  }
+
   const isSyncing = triggerSync.isPending
+  const hasFolders = source.folders && source.folders.length > 0
 
   const getSourceIcon = () => {
     switch (source.source_type) {
@@ -77,7 +106,6 @@ export function ImportSourceCard({
   }
 
   const getStatusBadge = () => {
-    // Show syncing status when sync is in progress
     if (isSyncing) {
       return (
         <span className="px-2 py-1 rounded text-xs font-medium bg-accent-primary/20 text-accent-primary flex items-center gap-1">
@@ -103,25 +131,25 @@ export function ImportSourceCard({
   const getLastSyncText = () => {
     if (isSyncing) return 'Syncing now...'
     if (!source.last_sync_at) return 'Never synced'
-    const date = new Date(source.last_sync_at)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins} min ago`
-    const diffHours = Math.floor(diffMins / 60)
-    if (diffHours < 24) return `${diffHours}h ago`
-    const diffDays = Math.floor(diffHours / 24)
-    return `${diffDays}d ago`
+    return formatRelativeTime(source.last_sync_at)
   }
 
   const getLocationText = () => {
+    // If we have multiple folders, show folder count
+    if (hasFolders && source.folders.length > 1) {
+      return `${source.folders.length} folders`
+    }
+    // Single folder - show path/URL
     if (source.source_type === 'GOOGLE_DRIVE' && source.google_drive_url) {
       return source.google_drive_url
     }
     if (source.source_type === 'BULK_FOLDER' && source.folder_path) {
       return source.folder_path
+    }
+    // Check first folder
+    if (hasFolders) {
+      const folder = source.folders[0]
+      return folder.google_drive_url || folder.folder_path || '-'
     }
     return '-'
   }
@@ -133,6 +161,16 @@ export function ImportSourceCard({
         <div className="flex items-start justify-between gap-4">
           {/* Left side - icon and info */}
           <div className="flex items-start gap-4 flex-1 min-w-0">
+            {/* Expand button (if has folders) */}
+            {hasFolders && source.folders.length > 0 && (
+              <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="p-1 text-text-muted hover:text-text-primary transition-colors flex-shrink-0 mt-2"
+                aria-label={isExpanded ? 'Collapse folders' : 'Expand folders'}
+              >
+                <ChevronIcon className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+              </button>
+            )}
             <div className="w-10 h-10 rounded-lg bg-bg-tertiary flex items-center justify-center text-text-secondary flex-shrink-0">
               {getSourceIcon()}
             </div>
@@ -142,6 +180,11 @@ export function ImportSourceCard({
                 <span className="text-xs text-text-muted bg-bg-tertiary px-2 py-0.5 rounded">
                   {getSourceTypeLabel()}
                 </span>
+                {source.default_designer && (
+                  <span className="text-xs text-text-secondary">
+                    Designer: {source.default_designer}
+                  </span>
+                )}
               </div>
               <p className="text-sm text-text-secondary truncate mt-0.5" title={getLocationText()}>
                 {getLocationText()}
@@ -172,7 +215,7 @@ export function ImportSourceCard({
               disabled={triggerSync.isPending || source.source_type === 'UPLOAD'}
               className="p-2 text-text-secondary hover:text-accent-primary hover:bg-bg-tertiary rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Sync now"
-              title={source.source_type === 'UPLOAD' ? 'Upload sources cannot be synced' : 'Sync now'}
+              title={source.source_type === 'UPLOAD' ? 'Upload sources cannot be synced' : 'Sync all folders'}
             >
               {triggerSync.isPending ? (
                 <SpinnerIcon className="w-5 h-5 animate-spin" />
@@ -222,6 +265,40 @@ export function ImportSourceCard({
         )}
       </div>
 
+      {/* Expanded folder list */}
+      {isExpanded && hasFolders && (
+        <div className="border-t border-bg-tertiary">
+          <div className="px-4 py-2 bg-bg-tertiary/50">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-text-muted uppercase tracking-wide">
+                Folders ({source.folders.length})
+              </span>
+              {onAddFolder && source.source_type !== 'UPLOAD' && (
+                <button
+                  onClick={() => onAddFolder(source.id)}
+                  className="text-xs text-accent-primary hover:text-accent-primary/80 flex items-center gap-1"
+                >
+                  <PlusIcon className="w-3 h-3" />
+                  Add Folder
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="divide-y divide-bg-tertiary/50">
+            {source.folders.map((folder) => (
+              <FolderRow
+                key={folder.id}
+                folder={folder}
+                sourceType={source.source_type}
+                onSync={() => handleFolderSync(folder.id)}
+                onToggleEnabled={() => handleToggleFolderEnabled(folder)}
+                isSyncing={syncFolder.isPending}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Sync result notification */}
       {syncResult && (
         <div
@@ -239,8 +316,128 @@ export function ImportSourceCard({
 }
 
 // =============================================================================
+// Sub-components
+// =============================================================================
+
+interface FolderRowProps {
+  folder: ImportSourceFolderSummary
+  sourceType: string
+  onSync: () => void
+  onToggleEnabled: () => void
+  isSyncing: boolean
+}
+
+function FolderRow({ folder, sourceType, onSync, onToggleEnabled, isSyncing }: FolderRowProps) {
+  const displayName = folder.name || getFolderDisplayName(folder)
+  const locationText = folder.google_drive_url || folder.folder_path || '-'
+
+  return (
+    <div className={`px-4 py-3 flex items-center gap-4 ${!folder.enabled ? 'opacity-50' : ''}`}>
+      {/* Enable/disable toggle */}
+      <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
+        <input
+          type="checkbox"
+          checked={folder.enabled}
+          onChange={onToggleEnabled}
+          className="sr-only peer"
+        />
+        <div className="w-8 h-4 bg-bg-tertiary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-accent-primary"></div>
+      </label>
+
+      {/* Folder info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm text-text-primary truncate">{displayName}</span>
+          {folder.has_overrides && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-accent-warning/20 text-accent-warning rounded">
+              custom
+            </span>
+          )}
+        </div>
+        <p className="text-xs text-text-muted truncate" title={locationText}>
+          {locationText}
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div className="flex items-center gap-4 text-xs text-text-muted flex-shrink-0">
+        <span>{folder.items_imported} imported</span>
+        {folder.last_synced_at && (
+          <span>Synced {formatRelativeTime(folder.last_synced_at)}</span>
+        )}
+      </div>
+
+      {/* Sync button */}
+      {sourceType !== 'UPLOAD' && (
+        <button
+          onClick={onSync}
+          disabled={isSyncing || !folder.enabled}
+          className="p-1.5 text-text-muted hover:text-accent-primary hover:bg-bg-tertiary rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Sync this folder"
+        >
+          {isSyncing ? (
+            <SpinnerIcon className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshIcon className="w-4 h-4" />
+          )}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// =============================================================================
+// Utilities
+// =============================================================================
+
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  const diffHours = Math.floor(diffMins / 60)
+  if (diffHours < 24) return `${diffHours}h ago`
+  const diffDays = Math.floor(diffHours / 24)
+  return `${diffDays}d ago`
+}
+
+function getFolderDisplayName(folder: ImportSourceFolderSummary): string {
+  // Try to extract name from URL or path
+  if (folder.google_drive_url) {
+    // Try to get folder ID from URL as fallback name
+    const match = folder.google_drive_url.match(/folders\/([a-zA-Z0-9_-]+)/)
+    if (match) return `Folder ${match[1].substring(0, 8)}...`
+  }
+  if (folder.folder_path) {
+    // Get last part of path
+    const parts = folder.folder_path.split(/[/\\]/)
+    return parts[parts.length - 1] || folder.folder_path
+  }
+  return 'Unnamed folder'
+}
+
+// =============================================================================
 // Icons
 // =============================================================================
+
+function ChevronIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  )
+}
+
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+    </svg>
+  )
+}
 
 function GoogleDriveIcon({ className }: { className?: string }) {
   return (

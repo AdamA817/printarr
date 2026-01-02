@@ -79,6 +79,10 @@ import type {
   ImportSourceUpdate,
   ImportSourceList,
   ImportSourceListParams,
+  ImportSourceFolder,
+  ImportSourceFolderSummary,
+  ImportSourceFolderCreate,
+  ImportSourceFolderUpdate,
   SyncTriggerRequest,
   SyncTriggerResponse,
   ImportHistoryResponse,
@@ -409,6 +413,34 @@ export const importSourcesApi = {
   // Get import history for a source
   getHistory: (id: string, params?: ImportHistoryParams) =>
     api.get<ImportHistoryResponse>(`/import-sources/${id}/history`, { params }).then((r) => r.data),
+
+  // ==========================================================================
+  // Folder Management (DEC-038)
+  // ==========================================================================
+
+  // List folders for a source
+  listFolders: (sourceId: string) =>
+    api.get<ImportSourceFolderSummary[]>(`/import-sources/${sourceId}/folders`).then((r) => r.data),
+
+  // Add a folder to a source
+  addFolder: (sourceId: string, data: ImportSourceFolderCreate) =>
+    api.post<ImportSourceFolder>(`/import-sources/${sourceId}/folders`, data).then((r) => r.data),
+
+  // Get folder details
+  getFolder: (sourceId: string, folderId: string) =>
+    api.get<ImportSourceFolder>(`/import-sources/${sourceId}/folders/${folderId}`).then((r) => r.data),
+
+  // Update a folder
+  updateFolder: (sourceId: string, folderId: string, data: ImportSourceFolderUpdate) =>
+    api.put<ImportSourceFolder>(`/import-sources/${sourceId}/folders/${folderId}`, data).then((r) => r.data),
+
+  // Delete a folder
+  deleteFolder: (sourceId: string, folderId: string) =>
+    api.delete(`/import-sources/${sourceId}/folders/${folderId}`),
+
+  // Trigger sync for a specific folder
+  syncFolder: (sourceId: string, folderId: string, request?: SyncTriggerRequest) =>
+    api.post<SyncTriggerResponse>(`/import-sources/${sourceId}/folders/${folderId}/sync`, request).then((r) => r.data),
 }
 
 // =============================================================================

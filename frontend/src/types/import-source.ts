@@ -104,6 +104,55 @@ export interface ImportProfileUsage {
 }
 
 // =============================================================================
+// Import Source Folder Types (DEC-038)
+// =============================================================================
+
+export interface ImportSourceFolderSummary {
+  id: string
+  name: string | null
+  google_drive_url: string | null
+  google_folder_id: string | null
+  folder_path: string | null
+  enabled: boolean
+  items_detected: number
+  items_imported: number
+  last_synced_at: string | null
+  has_overrides: boolean
+}
+
+export interface ImportSourceFolder extends ImportSourceFolderSummary {
+  import_source_id: string
+  import_profile_id: string | null
+  default_designer: string | null
+  default_tags: string[] | null
+  effective_profile_id: string | null
+  effective_designer: string | null
+  effective_tags: string[]
+  sync_cursor: string | null
+  last_sync_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ImportSourceFolderCreate {
+  name?: string | null
+  google_drive_url?: string | null
+  folder_path?: string | null
+  import_profile_id?: string | null
+  default_designer?: string | null
+  default_tags?: string[] | null
+  enabled?: boolean
+}
+
+export interface ImportSourceFolderUpdate {
+  name?: string | null
+  import_profile_id?: string | null
+  default_designer?: string | null
+  default_tags?: string[] | null
+  enabled?: boolean | null
+}
+
+// =============================================================================
 // Import Source Types
 // =============================================================================
 
@@ -113,7 +162,10 @@ export interface ImportSource {
   source_type: ImportSourceType
   status: ImportSourceStatus
 
-  // Type-specific fields
+  // Google OAuth status (shared across all folders)
+  google_connected?: boolean
+
+  // Type-specific fields (DEPRECATED - use folders instead)
   google_drive_url: string | null
   google_drive_folder_id: string | null
   folder_path: string | null
@@ -136,6 +188,10 @@ export interface ImportSource {
 
   // Embedded profile (optional)
   profile: ImportProfileSummary | null
+
+  // Multi-folder support (DEC-038)
+  folder_count: number
+  folders: ImportSourceFolderSummary[]
 }
 
 export interface ImportSourceDetail extends ImportSource {

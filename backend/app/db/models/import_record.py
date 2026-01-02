@@ -2,6 +2,8 @@
 
 Tracks individual files/folders imported from sources to avoid duplicates
 and enable re-import detection.
+
+Per DEC-038, records now reference ImportSourceFolder instead of ImportSource.
 """
 
 from __future__ import annotations
@@ -19,10 +21,11 @@ from app.db.models.enums import ImportRecordStatus
 if TYPE_CHECKING:
     from app.db.models.design import Design
     from app.db.models.import_source import ImportSource
+    from app.db.models.import_source_folder import ImportSourceFolder
 
 
 class ImportRecord(Base):
-    """Tracks individual files/folders imported from a source.
+    """Tracks individual files/folders imported from a folder.
 
     Used for:
     - Duplicate detection (don't re-import same file)
@@ -30,6 +33,7 @@ class ImportRecord(Base):
     - Import history and audit trail
 
     See DEC-037 for conflict handling decisions.
+    See DEC-038 for multi-folder support.
     """
 
     __tablename__ = "import_records"
@@ -39,9 +43,14 @@ class ImportRecord(Base):
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
 
-    # Source reference
-    import_source_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("import_sources.id", ondelete="CASCADE"), nullable=False
+    # Folder reference (new - per DEC-038)
+    import_source_folder_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("import_source_folders.id", ondelete="CASCADE"), nullable=True
+    )
+
+    # Source reference (DEPRECATED - kept for backward compatibility during migration)
+    import_source_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("import_sources.id", ondelete="CASCADE"), nullable=True
     )
 
     # File identification
@@ -95,8 +104,11 @@ class ImportRecord(Base):
     imported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Relationships
-    import_source: Mapped[ImportSource] = relationship(
-        "ImportSource", back_populates="import_records"
+    import_source_folder: Mapped[ImportSourceFolder | None] = relationship(
+        "ImportSourceFolder", back_populates="import_records"
+    )
+    import_source: Mapped[ImportSource | None] = relationship(
+        "ImportSource"
     )
     design: Mapped[Design | None] = relationship(
         "Design", back_populates="import_records"
@@ -104,10 +116,12 @@ class ImportRecord(Base):
 
     # Indexes
     __table_args__ = (
-        # For finding records by source
+        # For finding records by folder (new - DEC-038)
+        Index("ix_import_records_folder", "import_source_folder_id"),
+        # For duplicate detection (folder + path must be unique)
+        Index("ix_import_records_folder_path", "import_source_folder_id", "source_path", unique=True),
+        # For finding records by source (deprecated but kept for migration)
         Index("ix_import_records_source", "import_source_id"),
-        # For duplicate detection (source + path must be unique)
-        Index("ix_import_records_source_path", "import_source_id", "source_path", unique=True),
         # For finding records by hash
         Index("ix_import_records_hash", "file_hash"),
         # For finding pending records

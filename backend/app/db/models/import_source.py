@@ -1,4 +1,8 @@
-"""ImportSource model for manual import sources (v0.8)."""
+"""ImportSource model for manual import sources (v0.8).
+
+Per DEC-038, ImportSource is now a parent container for multiple folders.
+Individual folder locations are stored in ImportSourceFolder.
+"""
 
 from __future__ import annotations
 
@@ -16,18 +20,18 @@ if TYPE_CHECKING:
     from app.db.models.design import Design
     from app.db.models.google_credentials import GoogleCredentials
     from app.db.models.import_profile import ImportProfile
-    from app.db.models.import_record import ImportRecord
+    from app.db.models.import_source_folder import ImportSourceFolder
 
 
 class ImportSource(Base):
-    """Represents a source for importing designs beyond Telegram.
+    """Parent container for import folders.
 
     Supports three source types:
     - GOOGLE_DRIVE: Patreon/creator shared folders (public or OAuth authenticated)
-    - UPLOAD: Direct file/archive upload via web UI
+    - UPLOAD: Direct file/archive upload via web UI (system singleton)
     - BULK_FOLDER: Local folder monitoring for existing collections
 
-    See DEC-033 for design decisions.
+    See DEC-033 for original design, DEC-038 for multi-folder support.
     """
 
     __tablename__ = "import_sources"
@@ -46,28 +50,28 @@ class ImportSource(Base):
         Enum(ImportSourceStatus), default=ImportSourceStatus.PENDING
     )
 
-    # Google Drive specific fields
-    google_drive_url: Mapped[str | None] = mapped_column(
-        String(1024), nullable=True, doc="Google Drive folder/file URL"
-    )
-    google_drive_folder_id: Mapped[str | None] = mapped_column(
-        String(128), nullable=True, doc="Extracted folder ID from URL"
-    )
+    # Google OAuth (shared across all folders in this source)
     google_credentials_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("google_credentials.id"), nullable=True
     )
 
-    # Bulk folder specific fields
-    folder_path: Mapped[str | None] = mapped_column(
-        String(1024), nullable=True, doc="Local filesystem path for bulk import"
+    # ======== DEPRECATED: Single-folder fields (for backward compatibility) ========
+    # These will be migrated to ImportSourceFolder and eventually removed
+    google_drive_url: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True, doc="DEPRECATED: Use folders instead"
     )
+    google_drive_folder_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, doc="DEPRECATED: Use folders instead"
+    )
+    folder_path: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True, doc="DEPRECATED: Use folders instead"
+    )
+    # ======== END DEPRECATED ========
 
-    # Import profile (optional - uses default if not set)
+    # Shared settings (inherited by folders unless overridden)
     import_profile_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("import_profiles.id"), nullable=True
     )
-
-    # Default metadata for imported designs
     default_designer: Mapped[str | None] = mapped_column(
         String(255), nullable=True, doc="Designer name applied to all imports"
     )
@@ -75,19 +79,21 @@ class ImportSource(Base):
         Text, nullable=True, doc="JSON array of default tags"
     )
 
-    # Sync settings
+    # Sync settings (apply to all folders)
     sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sync_interval_hours: Mapped[int] = mapped_column(
         Integer, default=1, doc="Hours between sync checks"
     )
 
-    # Sync state
-    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Aggregate sync state (computed from folders)
+    last_sync_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, doc="Most recent folder sync"
+    )
     last_sync_error: Mapped[str | None] = mapped_column(
         Text, nullable=True, doc="Last sync error message if status=ERROR"
     )
     items_imported: Mapped[int] = mapped_column(
-        Integer, default=0, doc="Total items imported from this source"
+        Integer, default=0, doc="Total items imported from all folders"
     )
 
     # Timestamps
@@ -106,8 +112,8 @@ class ImportSource(Base):
     designs: Mapped[list[Design]] = relationship(
         "Design", back_populates="import_source"
     )
-    import_records: Mapped[list[ImportRecord]] = relationship(
-        "ImportRecord", back_populates="import_source", cascade="all, delete-orphan"
+    folders: Mapped[list[ImportSourceFolder]] = relationship(
+        "ImportSourceFolder", back_populates="import_source", cascade="all, delete-orphan"
     )
 
     # Indexes
@@ -116,3 +122,13 @@ class ImportSource(Base):
         Index("ix_import_sources_status", "status"),
         Index("ix_import_sources_sync", "sync_enabled", "last_sync_at"),
     )
+
+    @property
+    def folder_count(self) -> int:
+        """Get the number of folders in this source."""
+        return len(self.folders) if self.folders else 0
+
+    @property
+    def enabled_folder_count(self) -> int:
+        """Get the number of enabled folders."""
+        return sum(1 for f in self.folders if f.enabled) if self.folders else 0

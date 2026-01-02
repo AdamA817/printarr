@@ -40,6 +40,7 @@ from app.db.models.google_credentials import GoogleCredentials
 from app.db.models.import_profile import ImportProfile
 from app.db.models.import_record import ImportRecord
 from app.db.models.import_source import ImportSource
+from app.db.models.import_source_folder import ImportSourceFolder
 from app.db.models.job import Job
 from app.db.models.preview_asset import PreviewAsset
 from app.db.models.tag import Tag
@@ -60,6 +61,7 @@ __all__ = [
     "ImportProfile",
     "ImportRecord",
     "ImportSource",
+    "ImportSourceFolder",
     "Job",
     "PreviewAsset",
     "Tag",

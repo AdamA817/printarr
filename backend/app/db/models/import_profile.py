@@ -13,6 +13,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.db.models.import_source import ImportSource
+    from app.db.models.import_source_folder import ImportSourceFolder
 
 
 class ImportProfile(Base):
@@ -52,4 +53,7 @@ class ImportProfile(Base):
     # Relationships
     import_sources: Mapped[list[ImportSource]] = relationship(
         "ImportSource", back_populates="import_profile"
+    )
+    import_source_folders: Mapped[list[ImportSourceFolder]] = relationship(
+        "ImportSourceFolder", back_populates="import_profile"
     )

@@ -1,4 +1,7 @@
-"""Pydantic schemas for Import Source API (v0.8)."""
+"""Pydantic schemas for Import Source API (v0.8).
+
+Updated for DEC-038 multi-folder support.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +10,125 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.db.models.enums import ConflictResolution, ImportSourceStatus, ImportSourceType
+
+
+# ============================================================
+# Folder Schemas (DEC-038)
+# ============================================================
+
+
+class ImportSourceFolderCreate(BaseModel):
+    """Schema for adding a folder to an import source."""
+
+    name: str | None = Field(
+        None, max_length=255, description="Optional display name for the folder"
+    )
+
+    # Location (one required based on source type)
+    google_drive_url: str | None = Field(
+        None, max_length=1024, description="Google Drive folder URL"
+    )
+    folder_path: str | None = Field(
+        None, max_length=1024, description="Local folder path"
+    )
+
+    # Per-folder overrides (optional - inherit from source if not set)
+    import_profile_id: str | None = Field(
+        None, description="Override source's import profile"
+    )
+    default_designer: str | None = Field(
+        None, max_length=255, description="Override source's default designer"
+    )
+    default_tags: list[str] | None = Field(
+        None, description="Override source's default tags"
+    )
+
+    enabled: bool = Field(True, description="Whether folder is enabled for sync")
+
+
+class ImportSourceFolderUpdate(BaseModel):
+    """Schema for updating a folder (all fields optional)."""
+
+    name: str | None = Field(None, max_length=255)
+
+    # Location cannot be changed - delete and recreate instead
+
+    # Per-folder overrides
+    import_profile_id: str | None = None
+    default_designer: str | None = Field(None, max_length=255)
+    default_tags: list[str] | None = None
+
+    enabled: bool | None = None
+
+
+class ImportSourceFolderSummary(BaseModel):
+    """Summary of a folder for embedding in source responses."""
+
+    model_config = {"from_attributes": True}
+
+    id: str
+    name: str | None = None
+    google_drive_url: str | None = None
+    google_folder_id: str | None = None
+    folder_path: str | None = None
+    enabled: bool = True
+    items_detected: int = 0
+    items_imported: int = 0
+    last_synced_at: datetime | None = None
+    has_overrides: bool = False  # True if any override is set
+
+
+class ImportSourceFolderResponse(BaseModel):
+    """Full folder response with all details."""
+
+    model_config = {"from_attributes": True}
+
+    id: str
+    import_source_id: str
+    name: str | None = None
+
+    # Location
+    google_drive_url: str | None = None
+    google_folder_id: str | None = None
+    folder_path: str | None = None
+
+    # Overrides (null = inherit from source)
+    import_profile_id: str | None = None
+    default_designer: str | None = None
+    default_tags: list[str] | None = None
+
+    # Effective values (computed from source + overrides)
+    effective_profile_id: str | None = None
+    effective_designer: str | None = None
+    effective_tags: list[str] = []
+
+    # State
+    enabled: bool = True
+    last_synced_at: datetime | None = None
+    sync_cursor: str | None = None
+    last_sync_error: str | None = None
+
+    # Stats
+    items_detected: int = 0
+    items_imported: int = 0
+
+    # Timestamps
+    created_at: datetime
+
+
+class FolderSyncTriggerResponse(BaseModel):
+    """Response after triggering sync for a single folder."""
+
+    folder_id: str
+    job_id: str | None = None
+    message: str
+    designs_detected: int = 0
+    designs_imported: int = 0
+
+
+# ============================================================
+# Source Schemas (original, with folder support)
+# ============================================================
 
 
 class ImportSourceCreate(BaseModel):
@@ -78,12 +200,15 @@ class ImportSourceResponse(BaseModel):
     source_type: ImportSourceType
     status: ImportSourceStatus
 
-    # Type-specific fields
+    # Google OAuth status (shared across all folders)
+    google_connected: bool = False
+
+    # Type-specific fields (DEPRECATED - use folders instead)
     google_drive_url: str | None = None
     google_drive_folder_id: str | None = None
     folder_path: str | None = None
 
-    # Settings
+    # Shared settings
     import_profile_id: str | None = None
     default_designer: str | None = None
     default_tags: list[str] | None = None
@@ -94,6 +219,11 @@ class ImportSourceResponse(BaseModel):
     last_sync_at: datetime | None = None
     last_sync_error: str | None = None
     items_imported: int = 0
+
+    # Folder info (DEC-038)
+    folder_count: int = 0
+    enabled_folder_count: int = 0
+    folders: list[ImportSourceFolderSummary] = []
 
     # Timestamps
     created_at: datetime

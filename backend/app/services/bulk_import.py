@@ -208,6 +208,56 @@ class BulkImportService:
 
         return designs
 
+    async def scan_folder_path(
+        self,
+        folder_path_str: str,
+        profile_id: str | None = None,
+    ) -> list[DetectedDesign]:
+        """Scan a folder path directly (DEC-038 multi-folder support).
+
+        Args:
+            folder_path_str: The folder path to scan.
+            profile_id: Optional import profile ID.
+
+        Returns:
+            List of DetectedDesign objects.
+
+        Raises:
+            BulkImportPathError: If path is invalid or inaccessible.
+        """
+        folder_path = Path(folder_path_str)
+        if not folder_path.exists():
+            raise BulkImportPathError(f"Folder does not exist: {folder_path}")
+        if not folder_path.is_dir():
+            raise BulkImportPathError(f"Path is not a directory: {folder_path}")
+
+        # Get import profile config
+        config = await self._profile_service.get_profile_config(profile_id)
+
+        # Traverse and detect designs
+        detected = self._profile_service.traverse_for_designs(folder_path, config)
+
+        # Convert to DetectedDesign objects
+        designs = []
+        for path, detection in detected:
+            relative_path = str(path.relative_to(folder_path))
+            detected_design = DetectedDesign(path, detection, relative_path)
+
+            # Calculate additional metadata
+            detected_design.total_size = self._calculate_folder_size(path)
+            detected_design.mtime = self._get_folder_mtime(path)
+            detected_design.file_hash = self._calculate_folder_hash(path)
+
+            designs.append(detected_design)
+
+        logger.info(
+            "folder_path_scanned",
+            folder_path=str(folder_path),
+            designs_found=len(designs),
+        )
+
+        return designs
+
     def _calculate_folder_size(self, folder_path: Path) -> int:
         """Calculate total size of files in a folder."""
         total = 0
