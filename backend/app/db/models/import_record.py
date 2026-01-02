@@ -85,6 +85,11 @@ class ImportRecord(Base):
         Integer, default=0, doc="Number of preview files detected"
     )
 
+    # Google Drive specific metadata
+    google_folder_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, doc="Google Drive folder ID for this design"
+    )
+
     # Timestamps
     detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     imported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

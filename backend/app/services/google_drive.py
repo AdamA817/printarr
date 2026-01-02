@@ -1067,3 +1067,116 @@ class GoogleDriveService:
             title = title.upper()
 
         return title.strip() or folder_name
+
+    # ========== Folder Download for Import ==========
+
+    async def download_folder(
+        self,
+        folder_id: str,
+        dest_dir: Path,
+        credentials: GoogleCredentials | None = None,
+        progress_callback: "Callable[[int, int], None] | None" = None,
+    ) -> list[tuple[Path, int]]:
+        """Download all files from a Google Drive folder to a local directory.
+
+        Args:
+            folder_id: Google Drive folder ID.
+            dest_dir: Local directory to download files to.
+            credentials: Optional credentials for private folders.
+            progress_callback: Optional callback for progress updates (files_done, total_files).
+
+        Returns:
+            List of tuples (local_path, file_size) for each downloaded file.
+
+        Raises:
+            GoogleDriveError: If download fails.
+        """
+        from typing import Callable
+
+        # List all files in folder recursively
+        all_files = await self.list_folder_recursive(folder_id, credentials)
+
+        # Filter to only files (not folders)
+        files_to_download = [f for f in all_files if not f.is_folder]
+
+        if not files_to_download:
+            logger.warning("gdrive_folder_empty", folder_id=folder_id)
+            return []
+
+        logger.info(
+            "gdrive_download_starting",
+            folder_id=folder_id,
+            file_count=len(files_to_download),
+            dest_dir=str(dest_dir),
+        )
+
+        # Build folder lookup for path reconstruction
+        folders: dict[str, FileInfo] = {f.id: f for f in all_files if f.is_folder}
+
+        # Download each file
+        downloaded: list[tuple[Path, int]] = []
+        for i, file_info in enumerate(files_to_download):
+            # Build relative path from parent chain
+            relative_path = self._build_relative_path(file_info, folders, folder_id)
+            dest_path = dest_dir / relative_path
+
+            try:
+                await self.download_file(file_info.id, dest_path, credentials)
+                downloaded.append((dest_path, file_info.size))
+
+                logger.debug(
+                    "gdrive_file_downloaded",
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    relative_path=relative_path,
+                )
+
+            except GoogleDriveError as e:
+                logger.error(
+                    "gdrive_file_download_failed",
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    error=str(e),
+                )
+                # Continue with other files
+
+            if progress_callback:
+                progress_callback(i + 1, len(files_to_download))
+
+        logger.info(
+            "gdrive_download_complete",
+            folder_id=folder_id,
+            files_downloaded=len(downloaded),
+            total_size=sum(size for _, size in downloaded),
+        )
+
+        return downloaded
+
+    def _build_relative_path(
+        self,
+        file_info: FileInfo,
+        folders: dict[str, FileInfo],
+        root_folder_id: str,
+    ) -> str:
+        """Build the relative path for a file from its parent chain.
+
+        Args:
+            file_info: The file to build path for.
+            folders: Lookup dict of folder_id -> FileInfo.
+            root_folder_id: ID of the root folder to stop at.
+
+        Returns:
+            Relative path string.
+        """
+        path_parts = [file_info.name]
+
+        # Walk up parent chain
+        parent_id = file_info.parent_id
+        while parent_id and parent_id != root_folder_id:
+            parent = folders.get(parent_id)
+            if not parent:
+                break
+            path_parts.insert(0, parent.name)
+            parent_id = parent.parent_id
+
+        return "/".join(path_parts)
