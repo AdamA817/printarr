@@ -5,6 +5,7 @@
 export interface SyncActivity {
   channels_syncing: number
   backfills_running: number
+  imports_syncing: number
 }
 
 export interface DownloadActivity {

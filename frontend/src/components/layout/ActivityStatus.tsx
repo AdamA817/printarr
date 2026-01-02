@@ -60,7 +60,7 @@ function SummaryView({ data }: { data: SystemActivityResponse }) {
   const { sync, downloads, images, analysis, summary } = data
 
   // Calculate what's active for summary display
-  const syncCount = sync.channels_syncing + sync.backfills_running
+  const syncCount = sync.channels_syncing + sync.backfills_running + sync.imports_syncing
   const imageCount = images.telegram_downloading + images.previews_generating
   const analysisCount =
     analysis.archives_extracting + analysis.importing_to_library + analysis.analyzing_3mf
@@ -132,10 +132,11 @@ function DetailedView({ data }: { data: SystemActivityResponse }) {
       <ActivityCategory
         icon={<SyncIcon className="w-4 h-4" />}
         label="Sync"
-        isActive={sync.channels_syncing > 0 || sync.backfills_running > 0}
+        isActive={sync.channels_syncing > 0 || sync.backfills_running > 0 || sync.imports_syncing > 0}
         items={[
           { label: 'Channels', count: sync.channels_syncing },
           { label: 'Backfill', count: sync.backfills_running },
+          { label: 'Imports', count: sync.imports_syncing },
         ]}
       />
 
