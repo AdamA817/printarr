@@ -201,24 +201,24 @@ Channels like Wicked STL post designs across multiple messages:
 
 ---
 
-## v0.7 - Previews & Metadata
+## v0.7 - Previews & Metadata ✅
 **Goal**: Visual browsing, organization, and full Thangs enrichment
 
 ### Scope
-- [ ] Capture Telegram images from posts
-- [ ] Display preview images on cards
-- [ ] Extract 3MF embedded thumbnails
-- [ ] Preview generation for downloaded models
-- [ ] Image gallery in design detail
-- [ ] Auto-tagging from captions and filenames
-- [ ] Manual tag editing
-- [ ] Designer detection/override
-- [ ] Multicolor classification
-- [ ] Tag filtering in UI
-- [ ] **Thangs image caching** (download and cache preview images locally)
-- [ ] **Thangs tag import** (import tags from Thangs to local design)
-- [ ] **Metadata refresh** for linked designs (re-fetch from Thangs)
-- [ ] ExternalImage table for cached Thangs images
+- [x] Capture Telegram images from posts
+- [x] Display preview images on cards
+- [x] Extract 3MF embedded thumbnails
+- [x] Preview generation for downloaded models
+- [x] Image gallery in design detail
+- [x] Auto-tagging from captions and filenames
+- [x] Manual tag editing
+- [x] Designer detection/override
+- [x] Multicolor classification
+- [x] Tag filtering in UI
+- [x] **Thangs image caching** (download and cache preview images locally)
+- [x] **Thangs tag import** (import tags from Thangs to local design)
+- [x] **Metadata refresh** for linked designs (re-fetch from Thangs)
+- [x] ExternalImage table for cached Thangs images
 
 ### Success Criteria
 - Design cards show preview images (Telegram + Thangs)
@@ -231,6 +231,16 @@ Channels like Wicked STL post designs across multiple messages:
 - On-demand render for undownloaded
 - Deduplication
 - Geometry-based Thangs matching (future)
+
+### Technical Notes
+- PreviewAsset model with 5 sources: TELEGRAM, ARCHIVE, EMBEDDED_3MF, THANGS, RENDERED
+- ImageWorker downloads Telegram photos via Telethon
+- RenderWorker uses stl-thumb for STL preview generation
+- AutotagService extracts hashtags and keywords from captions
+- MulticolorService uses heuristics + 3MF XML analysis
+- ThangsService methods: cache_thangs_images(), import_thangs_tags()
+- PreviewGallery component with lightbox and source badges
+- TagManager component with autocomplete and source indicators
 
 ---
 
@@ -347,7 +357,7 @@ Channels like Wicked STL post designs across multiple messages:
 
 ## Current Status
 
-**Active Version**: v0.7 (in progress)
+**Active Version**: v0.8 (planning complete, ready for implementation)
 
 **Last Updated**: 2026-01-02
 
@@ -363,7 +373,7 @@ Channels like Wicked STL post designs across multiple messages:
 | v0.4 | Catalog UI | ✅ Complete | Radarr-style browsing + Thangs + FlareSolverr |
 | v0.5 | Downloads | ✅ Complete | Job queue + library + session-per-operation pattern |
 | v0.6 | Live Monitoring & Discovery | ✅ Complete | SyncService + DiscoveryService + Dashboard |
-| v0.7 | Previews & Metadata | 🔜 Next | Images + tags + Thangs enrichment |
-| v0.8 | Manual Imports | - | Google Drive + uploads + bulk folders |
+| v0.7 | Previews & Metadata | ✅ Complete | Images + tags + Thangs enrichment |
+| v0.8 | Manual Imports | 🔜 Next | Google Drive + uploads + bulk folders |
 | v0.9 | Deduplication | - | Handle duplicates |
 | v1.0 | Production | - | Full release |
