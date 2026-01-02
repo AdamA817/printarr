@@ -6,6 +6,7 @@ import { DesignDetail } from '@/pages/DesignDetail'
 import { Channels } from '@/pages/Channels'
 import { Activity } from '@/pages/Activity'
 import { Settings } from '@/pages/Settings'
+import { ImportSources } from '@/pages/ImportSources'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="channels" element={<Channels />} />
         <Route path="activity" element={<Activity />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="import-sources" element={<ImportSources />} />
       </Route>
     </Routes>
   )

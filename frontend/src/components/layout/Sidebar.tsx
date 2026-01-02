@@ -11,6 +11,7 @@ const navItems = [
   { to: '/', label: 'Dashboard', icon: '📊' },
   { to: '/designs', label: 'Designs', icon: '🎨' },
   { to: '/channels', label: 'Channels', icon: '📡' },
+  { to: '/import-sources', label: 'Import Sources', icon: '📁' },
   { to: '/activity', label: 'Activity', icon: '📥' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ]

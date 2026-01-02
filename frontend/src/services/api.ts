@@ -72,6 +72,23 @@ import type {
   StorageResponse,
 } from '@/types/dashboard'
 import type { SystemActivityResponse } from '@/types/system'
+import type {
+  ImportSource,
+  ImportSourceDetail,
+  ImportSourceCreate,
+  ImportSourceUpdate,
+  ImportSourceList,
+  ImportSourceListParams,
+  SyncTriggerRequest,
+  SyncTriggerResponse,
+  ImportHistoryResponse,
+  ImportHistoryParams,
+  ImportProfile,
+  ImportProfileCreate,
+  ImportProfileUpdate,
+  ImportProfileList,
+  ImportProfileUsage,
+} from '@/types/import-source'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -352,4 +369,68 @@ export const systemApi = {
   // Get current system activity status
   activity: () =>
     api.get<SystemActivityResponse>('/system/activity').then((r) => r.data),
+}
+
+// =============================================================================
+// Import Sources API (v0.8)
+// =============================================================================
+
+export const importSourcesApi = {
+  // List all import sources
+  list: (params?: ImportSourceListParams) =>
+    api.get<ImportSourceList>('/import-sources/', { params }).then((r) => r.data),
+
+  // Get single import source with details
+  get: (id: string) =>
+    api.get<ImportSourceDetail>(`/import-sources/${id}`).then((r) => r.data),
+
+  // Create new import source
+  create: (data: ImportSourceCreate) =>
+    api.post<ImportSource>('/import-sources/', data).then((r) => r.data),
+
+  // Update import source
+  update: (id: string, data: ImportSourceUpdate) =>
+    api.put<ImportSource>(`/import-sources/${id}`, data).then((r) => r.data),
+
+  // Delete import source
+  delete: (id: string, keepDesigns = true) =>
+    api.delete(`/import-sources/${id}`, { params: { keep_designs: keepDesigns } }),
+
+  // Trigger sync for an import source
+  triggerSync: (id: string, request?: SyncTriggerRequest) =>
+    api.post<SyncTriggerResponse>(`/import-sources/${id}/sync`, request).then((r) => r.data),
+
+  // Get import history for a source
+  getHistory: (id: string, params?: ImportHistoryParams) =>
+    api.get<ImportHistoryResponse>(`/import-sources/${id}/history`, { params }).then((r) => r.data),
+}
+
+// =============================================================================
+// Import Profiles API (v0.8)
+// =============================================================================
+
+export const importProfilesApi = {
+  // List all import profiles
+  list: () =>
+    api.get<ImportProfileList>('/import-profiles/').then((r) => r.data),
+
+  // Get single import profile
+  get: (id: string) =>
+    api.get<ImportProfile>(`/import-profiles/${id}`).then((r) => r.data),
+
+  // Create new import profile
+  create: (data: ImportProfileCreate) =>
+    api.post<ImportProfile>('/import-profiles/', data).then((r) => r.data),
+
+  // Update import profile
+  update: (id: string, data: ImportProfileUpdate) =>
+    api.put<ImportProfile>(`/import-profiles/${id}`, data).then((r) => r.data),
+
+  // Delete import profile
+  delete: (id: string) =>
+    api.delete(`/import-profiles/${id}`),
+
+  // Get usage info for a profile
+  getUsage: (id: string) =>
+    api.get<ImportProfileUsage>(`/import-profiles/${id}/usage`).then((r) => r.data),
 }
