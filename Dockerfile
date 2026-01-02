@@ -76,7 +76,9 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/printarr.conf
 RUN chmod +x /entrypoint.sh
 
 # Create directories for volume mounts
-RUN mkdir -p /config /data /staging /library /cache
+# /data/uploads is for file uploads (v0.8+)
+# /watch is for bulk folder imports (v0.8+)
+RUN mkdir -p /config /data /data/uploads /staging /library /cache /watch
 
 # Environment defaults
 ENV PRINTARR_HOST=0.0.0.0

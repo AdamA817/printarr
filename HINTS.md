@@ -17,6 +17,7 @@ This file contains useful commands, debug tips, and common patterns to help agen
 | [MCP_DOCKER Browser Testing](#mcp_docker-browser-testing) | QA | Using Playwright browser tools with host IP |
 | [STL Preview Rendering](#stl-preview-rendering-v07) | DevOps, Backend | stl-thumb setup, testing, and debugging |
 | [Channel Profiling](#channel-profiling) | QA, Architect | Profile test channels for feature coverage |
+| [Bulk Folder Import](#bulk-folder-import-v08) | DevOps, QA | Watch folder configuration and troubleshooting |
 
 **Tip**: Use `grep -n "## Section Name" HINTS.md` to find a section quickly.
 
@@ -828,3 +829,108 @@ Each profile includes suitability flags for testing:
 - `v0.6_discovery` - Has channel references (forwards, mentions)
 - `v0.7_previews` - Has images in posts
 - `v0.7_3mf` - Has 3MF files (for embedded thumbnails)
+
+---
+
+### Bulk Folder Import (v0.8+)
+
+Printarr can monitor local folders for 3D designs to import into the library.
+
+#### Configuring Watch Folders
+
+In docker-compose.yml:
+```yaml
+volumes:
+  # Standard volumes
+  - ./data/config:/config
+  - ./data/library:/library
+
+  # Bulk import watch folders (v0.8+)
+  - /mnt/user/downloads/3d-models:/watch/downloads:ro
+  - /mnt/user/patreon:/watch/patreon:ro
+```
+
+In Unraid template:
+- "Watch Folder 1" → First monitored path
+- "Watch Folder 2" → Second monitored path (optional)
+- "Watch Folder 3" → Third monitored path (optional)
+
+#### Read-Only vs Read-Write Mounts
+
+| Mode | Use Case | Pros | Cons |
+|------|----------|------|------|
+| Read-only (`:ro`) | When copying files to library | Safer, source unchanged | Uses more disk space |
+| Read-write (`:rw`) | When moving files to library | Saves disk space | Source files deleted |
+
+**Recommendation**: Use read-only mounts unless disk space is critical.
+
+#### Permission Requirements
+
+The container runs as root by default. For mounted folders:
+```bash
+# On Unraid, ensure the folder is accessible
+# Usually no changes needed for shares
+
+# On Linux with PUID/PGID set
+chown -R $PUID:$PGID /path/to/watch/folder
+chmod 755 /path/to/watch/folder
+```
+
+#### Common Watch Folder Issues
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| "Permission denied" | Container can't read host folder | Check folder permissions |
+| Folder not detected | Path not mounted in container | Verify volume mapping in docker-compose.yml |
+| Files not importing | Path inside container wrong | Check target path (e.g., `/watch/downloads`) |
+| "Folder not accessible" in UI | Mount is broken or path doesn't exist | Verify host path exists and is mounted |
+
+#### Verifying Watch Folder Access
+
+```bash
+# Check if folder is mounted correctly
+docker exec printarr ls -la /watch/
+
+# Check specific watch folder contents
+docker exec printarr ls -la /watch/downloads/
+
+# Test read access
+docker exec printarr head -c 100 /watch/downloads/some-file.stl
+```
+
+#### Supported Folder Structures
+
+Printarr detects designs using Import Profiles. Common patterns:
+
+1. **Flat structure** - STL files at root:
+   ```
+   /watch/downloads/
+   ├── dragon.stl
+   ├── sword.stl
+   └── shield.stl
+   ```
+
+2. **One folder per design**:
+   ```
+   /watch/downloads/
+   ├── Dragon Model/
+   │   ├── dragon.stl
+   │   └── dragon_base.stl
+   └── Medieval Weapons/
+       ├── sword.stl
+       └── shield.stl
+   ```
+
+3. **Creator/Design hierarchy** (Yosh Studios style):
+   ```
+   /watch/patreon/
+   └── YoshStudios/
+       └── 2024-01/
+           └── Dragon/
+               ├── Supported/
+               │   └── dragon_supported.stl
+               └── Unsupported/
+                   └── dragon.stl
+   ```
+
+See Import Profiles in Settings to configure detection rules.

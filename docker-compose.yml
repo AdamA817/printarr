@@ -7,16 +7,23 @@ services:
     ports:
       - "3333:3333"
     volumes:
-      # Application config and database
+      # Application config and database (~10MB)
       - ./data/config:/config
-      # Internal state and staging
+      # Internal state and file uploads (v0.8+)
+      # Uploads stored in /data/uploads - allow 500MB+ for large archives
       - ./data/data:/data
       # Temporary download/extraction workspace
+      # Allow 2-5GB for in-progress downloads and extractions
       - ./data/staging:/staging
-      # Organized 3D model library
+      # Organized 3D model library (size depends on your collection)
       - ./data/library:/library
-      # Thumbnails and preview cache
+      # Thumbnails and preview cache (~1GB for large libraries)
       - ./data/cache:/cache
+      # ========== BULK IMPORT WATCH FOLDERS (v0.8+) ==========
+      # Uncomment and configure paths to monitor for new designs
+      # Use read-only (:ro) for safety unless you want to move files
+      # - /path/to/downloads:/watch/downloads:ro
+      # - /path/to/patreon:/watch/patreon:ro
     environment:
       - PRINTARR_PORT=3333
       - PRINTARR_LOG_LEVEL=INFO
@@ -31,6 +38,17 @@ services:
       # - PRINTARR_SYNC_ENABLED=true
       # - PRINTARR_SYNC_POLL_INTERVAL=300
       # - PRINTARR_SYNC_BATCH_SIZE=100
+      # Google Drive Integration (v0.8+) - for private folder access
+      # Get credentials from https://console.cloud.google.com/apis/credentials
+      # - PRINTARR_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      # - PRINTARR_GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      # For public folders only, you can use an API key instead:
+      # - PRINTARR_GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      # Upload settings (v0.8+)
+      # - PRINTARR_UPLOAD_MAX_SIZE_MB=500
+      # - PRINTARR_UPLOAD_RETENTION_HOURS=24
+      # Auto-render settings (v0.8+)
+      # - PRINTARR_AUTO_QUEUE_RENDER_AFTER_IMPORT=true
     depends_on:
       - flaresolverr
     restart: unless-stopped

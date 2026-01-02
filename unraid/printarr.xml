@@ -1,18 +1,25 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>Printarr</Name>
-  <Repository>printarr:latest</Repository>
-  <Registry/>
+  <Repository>ghcr.io/adama817/printarr:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
-  <Support>https://github.com/AdamA817/printarr</Support>
+  <Support>https://github.com/AdamA817/printarr/issues</Support>
   <Project>https://github.com/AdamA817/printarr</Project>
   <Overview>
-    Printarr monitors Telegram channels for 3D-printable designs and organizes
-    them into a structured library. Features include: Radarr-style catalog UI,
-    Thangs metadata integration, archive extraction (ZIP/RAR/7z), configurable
-    library folder templates, and a download queue with activity tracking.
-    Inspired by Radarr/Sonarr for 3D printing workflows.
+    Printarr is a self-hosted web application that monitors Telegram channels
+    for 3D-printable designs, catalogs them, and manages downloads into a
+    structured local library. Inspired by Radarr/Sonarr.
+
+    Features:
+    - Monitor Telegram channels for 3D designs
+    - Auto-detect STL, 3MF, OBJ files and archives
+    - Organize downloads into structured library
+    - Preview generation with stl-thumb
+    - Thangs integration for metadata enrichment
+    - Google Drive import (v0.8+)
+    - Bulk folder monitoring (v0.8+)
   </Overview>
   <Category>MediaApp:Other Productivity:</Category>
   <WebUI>http://[IP]:[PORT:3333]</WebUI>
@@ -20,26 +27,27 @@
   <Icon>https://raw.githubusercontent.com/AdamA817/printarr/main/docs/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
-  <CPUset/>
-  <DateInstalled/>
   <DonateText/>
   <DonateLink/>
+  <DonateImg/>
   <Requires/>
 
+  <!-- ========== PORTS ========== -->
   <Config Name="Web UI Port" Target="3333" Default="3333" Mode="tcp"
           Description="Web interface port" Type="Port" Display="always"
           Required="true" Mask="false">3333</Config>
 
+  <!-- ========== CORE VOLUMES ========== -->
   <Config Name="Config Path" Target="/config" Default="/mnt/user/appdata/printarr/config"
-          Mode="rw" Description="Application config and Telegram session"
+          Mode="rw" Description="Application config, database, and Telegram session"
           Type="Path" Display="always" Required="true" Mask="false"/>
 
   <Config Name="Data Path" Target="/data" Default="/mnt/user/appdata/printarr/data"
-          Mode="rw" Description="Database and internal state"
+          Mode="rw" Description="Internal state, uploads, and temporary files"
           Type="Path" Display="always" Required="true" Mask="false"/>
 
   <Config Name="Staging Path" Target="/staging" Default="/mnt/user/downloads/printarr-staging"
-          Mode="rw" Description="Temporary workspace for downloads and archive extraction. Files are downloaded here, extracted, then moved to Library. Auto-cleaned after successful import."
+          Mode="rw" Description="Temporary downloads and extraction workspace"
           Type="Path" Display="always" Required="true" Mask="false"/>
 
   <Config Name="Library Path" Target="/library" Default="/mnt/user/3d-library"
@@ -47,43 +55,92 @@
           Type="Path" Display="always" Required="true" Mask="false"/>
 
   <Config Name="Cache Path" Target="/cache" Default="/mnt/user/appdata/printarr/cache"
-          Mode="rw" Description="Thumbnails and rendered previews"
+          Mode="rw" Description="Thumbnails, rendered previews, and cached images"
           Type="Path" Display="always" Required="true" Mask="false"/>
 
+  <!-- ========== BULK IMPORT WATCH FOLDERS (v0.8+) ========== -->
+  <Config Name="Watch Folder 1" Target="/watch/folder1" Default=""
+          Mode="ro" Description="First bulk import folder to monitor (e.g., /mnt/user/downloads/3d-models). Read-only recommended."
+          Type="Path" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Watch Folder 2" Target="/watch/folder2" Default=""
+          Mode="ro" Description="Second bulk import folder (optional). For multi-source imports."
+          Type="Path" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Watch Folder 3" Target="/watch/folder3" Default=""
+          Mode="ro" Description="Third bulk import folder (optional). For Patreon sync or similar."
+          Type="Path" Display="advanced" Required="false" Mask="false"/>
+
+  <!-- ========== TELEGRAM CREDENTIALS ========== -->
+  <Config Name="Telegram API ID" Target="PRINTARR_TELEGRAM_API_ID" Default=""
+          Mode="" Description="Telegram API ID from https://my.telegram.org (required for Telegram features)"
+          Type="Variable" Display="always" Required="false" Mask="false"/>
+
+  <Config Name="Telegram API Hash" Target="PRINTARR_TELEGRAM_API_HASH" Default=""
+          Mode="" Description="Telegram API Hash from https://my.telegram.org (required for Telegram features)"
+          Type="Variable" Display="always" Required="false" Mask="true"/>
+
+  <!-- ========== GOOGLE DRIVE INTEGRATION (v0.8+) ========== -->
+  <Config Name="Google Client ID" Target="PRINTARR_GOOGLE_CLIENT_ID" Default=""
+          Mode="" Description="Google OAuth Client ID for Drive integration (from https://console.cloud.google.com)"
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Google Client Secret" Target="PRINTARR_GOOGLE_CLIENT_SECRET" Default=""
+          Mode="" Description="Google OAuth Client Secret for Drive integration"
+          Type="Variable" Display="advanced" Required="false" Mask="true"/>
+
+  <Config Name="Google API Key" Target="PRINTARR_GOOGLE_API_KEY" Default=""
+          Mode="" Description="Google API Key for public folder access only (alternative to OAuth)"
+          Type="Variable" Display="advanced" Required="false" Mask="true"/>
+
+  <!-- ========== FLARESOLVERR ========== -->
+  <Config Name="FlareSolverr URL" Target="PRINTARR_FLARESOLVERR_URL" Default=""
+          Mode="" Description="FlareSolverr URL for Thangs Cloudflare bypass (e.g., http://192.168.1.100:8191/v1)"
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <!-- ========== UPLOAD SETTINGS (v0.8+) ========== -->
+  <Config Name="Max Upload Size (MB)" Target="PRINTARR_UPLOAD_MAX_SIZE_MB" Default="500"
+          Mode="" Description="Maximum file upload size in megabytes"
+          Type="Variable" Display="advanced" Required="false" Mask="false">500</Config>
+
+  <Config Name="Upload Retention (Hours)" Target="PRINTARR_UPLOAD_RETENTION_HOURS" Default="24"
+          Mode="" Description="Hours to retain unprocessed uploads before cleanup"
+          Type="Variable" Display="advanced" Required="false" Mask="false">24</Config>
+
+  <!-- ========== WORKER SETTINGS ========== -->
+  <Config Name="Max Concurrent Downloads" Target="PRINTARR_MAX_CONCURRENT_DOWNLOADS" Default="2"
+          Mode="" Description="Maximum simultaneous downloads"
+          Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
+
+  <!-- ========== SYNC SETTINGS (v0.6+) ========== -->
+  <Config Name="Enable Live Monitoring" Target="PRINTARR_SYNC_ENABLED" Default="true"
+          Mode="" Description="Enable live Telegram channel monitoring"
+          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="Sync Poll Interval" Target="PRINTARR_SYNC_POLL_INTERVAL" Default="300"
+          Mode="" Description="Seconds between sync polls (60-3600)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">300</Config>
+
+  <!-- ========== AUTO-RENDER SETTINGS (v0.8+) ========== -->
+  <Config Name="Auto-Queue Preview Renders" Target="PRINTARR_AUTO_QUEUE_RENDER_AFTER_IMPORT" Default="true"
+          Mode="" Description="Automatically queue STL preview renders after import"
+          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <!-- ========== LOGGING ========== -->
   <Config Name="Log Level" Target="PRINTARR_LOG_LEVEL" Default="INFO"
           Mode="" Description="Logging level (DEBUG, INFO, WARNING, ERROR)"
           Type="Variable" Display="advanced" Required="false" Mask="false">INFO</Config>
 
-  <Config Name="Max Concurrent Downloads" Target="PRINTARR_MAX_CONCURRENT_DOWNLOADS"
-          Default="3" Mode="" Description="Maximum simultaneous Telegram downloads (1-10)"
-          Type="Variable" Display="advanced" Required="false" Mask="false">3</Config>
+  <Config Name="Debug Mode" Target="PRINTARR_DEBUG" Default="false"
+          Mode="" Description="Enable debug mode for troubleshooting"
+          Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
 
-  <Config Name="Library Template" Target="PRINTARR_LIBRARY_TEMPLATE"
-          Default="{designer}/{channel}/{title}" Mode=""
-          Description="Folder structure template for organizing downloads. Variables: {designer}, {channel}, {title}, {date}, {year}, {month}. Must include {title}."
-          Type="Variable" Display="advanced" Required="false" Mask="false">{designer}/{channel}/{title}</Config>
+  <!-- ========== USER/GROUP ========== -->
+  <Config Name="PUID" Target="PUID" Default="99"
+          Mode="" Description="User ID for file permissions (default: nobody=99)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
 
-  <Config Name="Telegram API ID" Target="TELEGRAM_API_ID" Default=""
-          Mode="" Description="Telegram API ID from https://my.telegram.org (required)"
-          Type="Variable" Display="always" Required="true" Mask="false"/>
-
-  <Config Name="Telegram API Hash" Target="TELEGRAM_API_HASH" Default=""
-          Mode="" Description="Telegram API Hash from https://my.telegram.org (required)"
-          Type="Variable" Display="always" Required="true" Mask="true"/>
-
-  <Config Name="FlareSolverr URL" Target="PRINTARR_FLARESOLVERR_URL" Default=""
-          Mode="" Description="Optional: URL to FlareSolverr instance for Thangs integration. Example: http://192.168.1.x:8191/v1. Leave blank if not using FlareSolverr."
-          Type="Variable" Display="advanced" Required="false" Mask="false"/>
-
-  <Config Name="Live Sync Enabled" Target="PRINTARR_SYNC_ENABLED" Default="true"
-          Mode="" Description="Enable live monitoring to automatically ingest new posts from channels"
-          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
-
-  <Config Name="Sync Poll Interval" Target="PRINTARR_SYNC_POLL_INTERVAL" Default="300"
-          Mode="" Description="Catch-up sync interval in seconds (60-3600). Default: 300 (5 minutes)"
-          Type="Variable" Display="advanced" Required="false" Mask="false">300</Config>
-
-  <Config Name="Sync Batch Size" Target="PRINTARR_SYNC_BATCH_SIZE" Default="100"
-          Mode="" Description="Maximum messages to process per sync batch (10-500)"
+  <Config Name="PGID" Target="PGID" Default="100"
+          Mode="" Description="Group ID for file permissions (default: users=100)"
           Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
 </Container>
