@@ -133,6 +133,29 @@ class Settings(BaseSettings):
         description="Fernet encryption key for storing sensitive data",
     )
 
+    # File upload settings (v0.8)
+    upload_max_size_mb: int = Field(
+        default=500,
+        ge=1,
+        le=10000,
+        description="Maximum upload size in MB",
+    )
+    upload_allowed_extensions: list[str] = Field(
+        default=[".stl", ".3mf", ".obj", ".step", ".zip", ".rar", ".7z"],
+        description="Allowed file extensions for upload",
+    )
+    upload_retention_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Hours to retain unprocessed uploads before cleanup",
+    )
+
+    @property
+    def upload_staging_path(self) -> Path:
+        """Get the upload staging directory path."""
+        return self.data_path / "uploads"
+
     @property
     def telegram_session_path(self) -> Path:
         """Get the Telegram session file path."""

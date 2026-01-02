@@ -25,6 +25,13 @@ from app.services.preview import PreviewError, PreviewService
 from app.services.settings import SettingsError, SettingsService, SettingsValidationError
 from app.services.tag import TagError, TagService
 from app.services.thangs import ThangsAdapter
+from app.services.upload import (
+    UploadError,
+    UploadNotFoundError,
+    UploadProcessingError,
+    UploadService,
+    UploadValidationError,
+)
 
 __all__ = [
     "ArchiveError",
@@ -55,4 +62,9 @@ __all__ = [
     "TagError",
     "TagService",
     "ThangsAdapter",
+    "UploadError",
+    "UploadNotFoundError",
+    "UploadProcessingError",
+    "UploadService",
+    "UploadValidationError",
 ]
