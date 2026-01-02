@@ -71,6 +71,7 @@ import type {
   QueueResponse as DashboardQueueResponse,
   StorageResponse,
 } from '@/types/dashboard'
+import type { SystemActivityResponse } from '@/types/system'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -341,4 +342,14 @@ export const tagsApi = {
   // Remove a tag from a design
   removeFromDesign: (designId: string, tagId: string) =>
     api.delete<RemoveTagResponse>(`/tags/design/${designId}/${tagId}`).then((r) => r.data),
+}
+
+// =============================================================================
+// System API (v0.7)
+// =============================================================================
+
+export const systemApi = {
+  // Get current system activity status
+  activity: () =>
+    api.get<SystemActivityResponse>('/system/activity').then((r) => r.data),
 }

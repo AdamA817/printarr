@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import logoFull from '@/assets/logo-full.png'
+import { ActivityStatus } from './ActivityStatus'
 
 interface SidebarProps {
   isOpen: boolean
@@ -58,6 +59,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ))}
         </ul>
       </nav>
+      {/* Activity Status Indicator */}
+      <ActivityStatus />
     </aside>
   )
 }
