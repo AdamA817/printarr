@@ -3,6 +3,13 @@
 from app.services.archive import ArchiveError, ArchiveExtractor
 from app.services.backfill import BackfillService
 from app.services.download import DownloadError, DownloadService
+from app.services.import_profile import (
+    BuiltinProfileModificationError,
+    ImportProfileError,
+    ImportProfileService,
+    ProfileNotFoundError,
+    ProfileValidationError,
+)
 from app.services.ingest import IngestService
 from app.services.job_queue import JobQueueService
 from app.services.library import LibraryError, LibraryImportService
@@ -15,14 +22,19 @@ __all__ = [
     "ArchiveError",
     "ArchiveExtractor",
     "BackfillService",
+    "BuiltinProfileModificationError",
     "DownloadError",
     "DownloadService",
+    "ImportProfileError",
+    "ImportProfileService",
     "IngestService",
     "JobQueueService",
     "LibraryError",
     "LibraryImportService",
     "PreviewError",
     "PreviewService",
+    "ProfileNotFoundError",
+    "ProfileValidationError",
     "SettingsError",
     "SettingsService",
     "SettingsValidationError",
