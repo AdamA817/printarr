@@ -10,17 +10,19 @@ import {
   useUpdateImportSource,
   useDeleteImportSource,
   useTriggerSync,
+  useAddFolder,
 } from '@/hooks/useImportSources'
 import {
   ImportSourceCard,
   ImportSourceCardSkeleton,
   AddImportSourceModal,
   EditImportSourceModal,
+  AddFolderModal,
   DeleteSourceModal,
   UploadModal,
   ImportHistoryModal,
 } from '@/components/import-sources'
-import type { ImportSource, ImportSourceCreate, ImportSourceUpdate } from '@/types/import-source'
+import type { ImportSource, ImportSourceCreate, ImportSourceUpdate, ImportSourceFolderCreate } from '@/types/import-source'
 
 export function ImportSources() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
@@ -28,12 +30,14 @@ export function ImportSources() {
   const [editTarget, setEditTarget] = useState<ImportSource | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ImportSource | null>(null)
   const [historyTarget, setHistoryTarget] = useState<ImportSource | null>(null)
+  const [addFolderTarget, setAddFolderTarget] = useState<ImportSource | null>(null)
 
   const { data, isLoading, error } = useImportSources()
   const createSource = useCreateImportSource()
   const updateSource = useUpdateImportSource()
   const deleteSource = useDeleteImportSource()
   const triggerSync = useTriggerSync()
+  const addFolder = useAddFolder()
 
   const handleAddSource = (formData: ImportSourceCreate) => {
     createSource.mutate(formData, {
@@ -95,6 +99,27 @@ export function ImportSources() {
     if (source) {
       setHistoryTarget(source)
     }
+  }
+
+  const handleAddFolderClick = (sourceId: string) => {
+    const source = data?.items.find((s) => s.id === sourceId)
+    if (source) {
+      setAddFolderTarget(source)
+    }
+  }
+
+  const handleAddFolderSubmit = (formData: ImportSourceFolderCreate) => {
+    if (!addFolderTarget) return
+
+    addFolder.mutate(
+      { sourceId: addFolderTarget.id, data: formData },
+      {
+        onSuccess: () => {
+          setAddFolderTarget(null)
+          addFolder.reset()
+        },
+      }
+    )
   }
 
   return (
@@ -181,6 +206,7 @@ export function ImportSources() {
               onEdit={handleEdit}
               onDelete={handleDeleteClick}
               onViewHistory={handleViewHistory}
+              onAddFolder={handleAddFolderClick}
               isDeleting={deleteSource.isPending && deleteTarget?.id === source.id}
             />
           ))}
@@ -216,6 +242,25 @@ export function ImportSources() {
         error={
           updateSource.error
             ? (updateSource.error as Error).message || 'Failed to update import source'
+            : null
+        }
+      />
+
+      {/* Add folder modal */}
+      <AddFolderModal
+        isOpen={!!addFolderTarget}
+        sourceId={addFolderTarget?.id || ''}
+        sourceType={addFolderTarget?.source_type || 'BULK_FOLDER'}
+        sourceName={addFolderTarget?.name || ''}
+        onClose={() => {
+          setAddFolderTarget(null)
+          addFolder.reset()
+        }}
+        onSubmit={handleAddFolderSubmit}
+        isSubmitting={addFolder.isPending}
+        error={
+          addFolder.error
+            ? (addFolder.error as Error).message || 'Failed to add folder'
             : null
         }
       />
