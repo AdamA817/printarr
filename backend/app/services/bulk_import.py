@@ -459,7 +459,16 @@ class BulkImportService:
         Returns:
             Tuple of (imported_count, skipped_count).
         """
+        # Ensure any pending changes are flushed before querying
+        # (autoflush is disabled in session config)
+        await self.db.flush()
+
         records = await self.get_pending_records(source.id)
+        logger.debug(
+            "import_all_pending_records_found",
+            source_id=source.id,
+            pending_count=len(records),
+        )
         imported = 0
         skipped = 0
 

@@ -26,6 +26,7 @@ class SyncActivity(BaseModel):
 
     channels_syncing: int = 0
     backfills_running: int = 0
+    imports_syncing: int = 0
 
 
 class DownloadActivity(BaseModel):
@@ -78,6 +79,7 @@ JOB_CATEGORY_MAP: dict[JobType, tuple[str, str]] = {
     # Sync
     JobType.SYNC_CHANNEL_LIVE: ("sync", "channels_syncing"),
     JobType.BACKFILL_CHANNEL: ("sync", "backfills_running"),
+    JobType.SYNC_IMPORT_SOURCE: ("sync", "imports_syncing"),
     # Downloads
     JobType.DOWNLOAD_DESIGN: ("downloads", "active"),
     # Images

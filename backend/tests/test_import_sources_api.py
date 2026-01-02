@@ -513,13 +513,17 @@ class TestDeleteImportSource:
 
 
 class TestTriggerSync:
-    """Tests for POST /api/v1/import-sources/{id}/sync endpoint."""
+    """Tests for POST /api/v1/import-sources/{id}/sync endpoint.
+
+    Note: Sync now queues an async job instead of running synchronously.
+    Tests verify job creation rather than immediate results.
+    """
 
     @pytest.mark.asyncio
     async def test_trigger_sync_bulk_folder(
         self, client: AsyncClient, seeded_db, db_session, temp_folder
     ):
-        """Test triggering sync for bulk folder source."""
+        """Test triggering sync queues a job for bulk folder source."""
         source = ImportSource(
             name="Sync Test",
             source_type=ImportSourceType.BULK_FOLDER,
@@ -533,14 +537,16 @@ class TestTriggerSync:
         assert response.status_code == 200
         data = response.json()
         assert data["source_id"] == source.id
-        assert data["designs_detected"] >= 1  # Should find TestDesign
-        assert "message" in data
+        assert data["job_id"] is not None  # Async job was queued
+        assert data["message"] == "Sync job queued"
+        assert data["designs_detected"] == 0  # Job hasn't run yet
+        assert data["designs_imported"] == 0
 
     @pytest.mark.asyncio
     async def test_trigger_sync_with_auto_import(
         self, client: AsyncClient, seeded_db, db_session, temp_folder
     ):
-        """Test triggering sync with auto_import enabled."""
+        """Test triggering sync with auto_import passes option to job."""
         source = ImportSource(
             name="Auto Import Test",
             source_type=ImportSourceType.BULK_FOLDER,
@@ -556,23 +562,23 @@ class TestTriggerSync:
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["designs_detected"] >= 1
-        assert data["designs_imported"] >= 0  # May or may not import based on auto_render mocking
+        assert data["job_id"] is not None  # Job queued with auto_import option
 
     @pytest.mark.asyncio
-    async def test_trigger_sync_invalid_path(self, client: AsyncClient, seeded_db, db_session):
-        """Test sync with invalid folder path returns error."""
+    async def test_trigger_sync_missing_folder_path(self, client: AsyncClient, seeded_db, db_session):
+        """Test sync with missing folder path returns error (validation before job queue)."""
         source = ImportSource(
-            name="Invalid Path",
+            name="Missing Path",
             source_type=ImportSourceType.BULK_FOLDER,
             status=ImportSourceStatus.PENDING,
-            folder_path="/nonexistent/path/that/does/not/exist",
+            folder_path=None,  # Missing required path
         )
         db_session.add(source)
         await db_session.commit()
 
         response = await client.post(f"/api/v1/import-sources/{source.id}/sync")
         assert response.status_code == 400
+        assert "folder path" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_trigger_sync_nonexistent_source(self, client: AsyncClient, seeded_db):
@@ -725,13 +731,17 @@ class TestImportHistory:
 
 
 class TestFullImportFlow:
-    """End-to-end test for complete import workflow."""
+    """End-to-end test for complete import workflow.
+
+    Note: Sync operations now queue async jobs, so this test verifies
+    the API flow without waiting for job completion.
+    """
 
     @pytest.mark.asyncio
     async def test_complete_import_flow(
         self, client: AsyncClient, seeded_db, db_session, temp_folder
     ):
-        """Test the complete flow: create source -> sync -> view history."""
+        """Test the complete flow: create source -> queue sync -> CRUD operations."""
         # Step 1: Create import source
         create_response = await client.post(
             "/api/v1/import-sources/",
@@ -750,26 +760,20 @@ class TestFullImportFlow:
         assert get_response.status_code == 200
         assert get_response.json()["status"] == "PENDING"
 
-        # Step 3: Trigger sync
+        # Step 3: Trigger sync (queues async job)
         sync_response = await client.post(f"/api/v1/import-sources/{source_id}/sync")
         assert sync_response.status_code == 200
         sync_data = sync_response.json()
-        assert sync_data["designs_detected"] >= 1
+        assert sync_data["job_id"] is not None  # Job was queued
+        assert sync_data["message"] == "Sync job queued"
 
-        # Step 4: Check source status updated
-        get_response = await client.get(f"/api/v1/import-sources/{source_id}")
-        assert get_response.status_code == 200
-        updated_data = get_response.json()
-        assert updated_data["status"] == "ACTIVE"
-        assert updated_data["pending_count"] >= 1
-
-        # Step 5: View import history
+        # Step 4: View import history (empty until job completes)
         history_response = await client.get(f"/api/v1/import-sources/{source_id}/history")
         assert history_response.status_code == 200
         history_data = history_response.json()
-        assert history_data["total"] >= 1
+        assert isinstance(history_data["items"], list)
 
-        # Step 6: Update source
+        # Step 5: Update source
         update_response = await client.put(
             f"/api/v1/import-sources/{source_id}",
             json={"name": "Updated E2E Source"},
@@ -777,6 +781,6 @@ class TestFullImportFlow:
         assert update_response.status_code == 200
         assert update_response.json()["name"] == "Updated E2E Source"
 
-        # Step 7: Delete source
+        # Step 6: Delete source
         delete_response = await client.delete(f"/api/v1/import-sources/{source_id}")
         assert delete_response.status_code == 204

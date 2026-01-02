@@ -264,6 +264,7 @@ async def start_workers() -> None:
     from app.workers.download import DownloadWorker
     from app.workers.extract import ExtractArchiveWorker
     from app.workers.image import ImageWorker
+    from app.workers.import_sync import SyncImportSourceWorker
     from app.workers.library_import import ImportToLibraryWorker
     from app.workers.render import RenderWorker
 
@@ -284,6 +285,9 @@ async def start_workers() -> None:
 
     # Register render workers (CPU-bound, single worker is sufficient)
     manager.register_worker(RenderWorker, count=1)
+
+    # Register import sync workers (v0.8: async import source syncing)
+    manager.register_worker(SyncImportSourceWorker, count=1)
 
     logger.info("starting_workers", worker_count=manager.worker_count)
     await manager.start()

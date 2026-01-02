@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -12,13 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.db import get_db
 from app.db.models import (
-    ConflictResolution,
     ImportProfile,
     ImportRecord,
     ImportRecordStatus,
     ImportSource,
     ImportSourceStatus,
     ImportSourceType,
+    JobType,
 )
 from app.schemas.import_source import (
     ImportHistoryItem,
@@ -32,16 +31,8 @@ from app.schemas.import_source import (
     SyncTriggerRequest,
     SyncTriggerResponse,
 )
-from app.services.bulk_import import (
-    BulkImportError,
-    BulkImportPathError,
-    BulkImportService,
-)
-from app.services.google_drive import (
-    GoogleDriveError,
-    GoogleDriveService,
-)
-from app.services.import_profile import ImportProfileService
+from app.services.google_drive import GoogleDriveService
+from app.services.job_queue import JobQueueService
 
 logger = get_logger(__name__)
 
@@ -340,118 +331,59 @@ async def trigger_sync(
     request: SyncTriggerRequest | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> SyncTriggerResponse:
-    """Trigger a manual sync for an import source.
+    """Trigger an async sync job for an import source.
 
-    For BULK_FOLDER sources, scans the folder and creates import records.
-    For GOOGLE_DRIVE sources, lists files and creates import records.
+    Queues a SYNC_IMPORT_SOURCE job that will:
+    - For BULK_FOLDER sources: scan the folder and create import records
+    - For GOOGLE_DRIVE sources: list files and create import records
+
+    Returns immediately with the job_id for tracking progress.
     """
     if request is None:
         request = SyncTriggerRequest()
 
     source = await _get_source_or_404(db, source_id)
 
-    designs_detected = 0
-    designs_imported = 0
-
-    try:
-        if source.source_type == ImportSourceType.BULK_FOLDER:
-            service = BulkImportService(db)
-            designs = await service.scan_folder(source)
-            await service.create_import_records(source, designs)
-            designs_detected = len(designs)
-
-            if request.auto_import:
-                imported, _ = await service.import_all_pending(
-                    source, request.conflict_resolution
-                )
-                designs_imported = imported
-
-            source.status = ImportSourceStatus.ACTIVE
-            source.last_sync_at = datetime.utcnow()
-            source.last_sync_error = None
-
-        elif source.source_type == ImportSourceType.GOOGLE_DRIVE:
-            if not source.google_drive_folder_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Google Drive source missing folder ID",
-                )
-
-            # Get import profile config
-            profile_service = ImportProfileService(db)
-            config = await profile_service.get_profile_config(source.import_profile_id)
-
-            # Scan Google Drive folder for designs
-            gdrive_service = GoogleDriveService(db)
-            detected_designs = await gdrive_service.scan_for_designs(
-                source.google_drive_folder_id,
-                credentials=None,  # Public folder access via API key
-                config=config,
+    # Validate source configuration before queuing
+    if source.source_type == ImportSourceType.GOOGLE_DRIVE:
+        if not source.google_drive_folder_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Google Drive source missing folder ID",
             )
-            designs_detected = len(detected_designs)
+    elif source.source_type == ImportSourceType.BULK_FOLDER:
+        if not source.folder_path:
+            raise HTTPException(
+                status_code=400,
+                detail="Bulk folder source missing folder path",
+            )
 
-            # Create import records for detected designs
-            for design in detected_designs:
-                # Check if record already exists
-                existing = await db.execute(
-                    select(ImportRecord).where(
-                        ImportRecord.import_source_id == source.id,
-                        ImportRecord.source_path == design.relative_path,
-                    )
-                )
-                if existing.scalar_one_or_none():
-                    continue  # Skip existing records
+    # Queue the async sync job
+    queue = JobQueueService(db)
+    job = await queue.enqueue(
+        job_type=JobType.SYNC_IMPORT_SOURCE,
+        payload={
+            "source_id": source_id,
+            "auto_import": request.auto_import,
+            "conflict_resolution": request.conflict_resolution.value,
+        },
+    )
+    await db.commit()
 
-                record = ImportRecord(
-                    import_source_id=source.id,
-                    source_path=design.relative_path,
-                    file_size=design.total_size,
-                    status=ImportRecordStatus.PENDING,
-                    detected_title=design.title,
-                    detected_designer=source.default_designer,
-                    model_file_count=len(design.model_files),
-                    preview_file_count=len(design.preview_files),
-                    detected_at=datetime.utcnow(),
-                )
-                db.add(record)
+    logger.info(
+        "sync_job_queued",
+        source_id=source_id,
+        job_id=job.id,
+        auto_import=request.auto_import,
+    )
 
-            source.status = ImportSourceStatus.ACTIVE
-            source.last_sync_at = datetime.utcnow()
-            source.last_sync_error = None
-
-        await db.commit()
-
-        logger.info(
-            "sync_triggered",
-            source_id=source_id,
-            designs_detected=designs_detected,
-            designs_imported=designs_imported,
-        )
-
-        return SyncTriggerResponse(
-            source_id=source_id,
-            message="Sync completed successfully",
-            designs_detected=designs_detected,
-            designs_imported=designs_imported,
-        )
-
-    except BulkImportPathError as e:
-        source.status = ImportSourceStatus.ERROR
-        source.last_sync_error = str(e)
-        await db.commit()
-        raise HTTPException(status_code=400, detail=str(e))
-
-    except BulkImportError as e:
-        source.status = ImportSourceStatus.ERROR
-        source.last_sync_error = str(e)
-        await db.commit()
-        raise HTTPException(status_code=500, detail=str(e))
-
-    except GoogleDriveError as e:
-        source.status = ImportSourceStatus.ERROR
-        source.last_sync_error = str(e)
-        await db.commit()
-        raise HTTPException(status_code=400, detail=str(e))
+    return SyncTriggerResponse(
+        source_id=source_id,
+        job_id=job.id,
+        message="Sync job queued",
+        designs_detected=0,
+        designs_imported=0,
+    )
 
 
 # =============================================================================
