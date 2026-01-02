@@ -31,3 +31,12 @@ py7zr>=0.20.0
 # Preview Image Handling (v0.7)
 aiofiles>=24.1.0
 Pillow>=10.0.0
+
+# Google Drive Integration (v0.8)
+google-api-python-client>=2.100.0
+google-auth>=2.22.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.2.0
+
+# Encryption (for storing OAuth tokens)
+cryptography>=41.0.0

@@ -109,6 +109,30 @@ class Settings(BaseSettings):
         description="FlareSolverr URL (e.g., http://flaresolverr:8191/v1)",
     )
 
+    # Google Drive OAuth (v0.8 - for private folder access)
+    google_client_id: str | None = Field(
+        default=None,
+        description="Google OAuth Client ID from Google Cloud Console",
+    )
+    google_client_secret: str | None = Field(
+        default=None,
+        description="Google OAuth Client Secret from Google Cloud Console",
+    )
+    google_api_key: str | None = Field(
+        default=None,
+        description="Google API Key for public folder access (no OAuth)",
+    )
+    google_redirect_uri: str = Field(
+        default="http://localhost:3333/api/v1/google/oauth/callback",
+        description="OAuth redirect URI",
+    )
+
+    # Encryption key for storing OAuth tokens (auto-generated if not set)
+    encryption_key: str | None = Field(
+        default=None,
+        description="Fernet encryption key for storing sensitive data",
+    )
+
     @property
     def telegram_session_path(self) -> Path:
         """Get the Telegram session file path."""
@@ -123,6 +147,16 @@ class Settings(BaseSettings):
     def db_path(self) -> Path:
         """Get the SQLite database file path."""
         return self.config_path / "printarr.db"
+
+    @property
+    def google_oauth_configured(self) -> bool:
+        """Check if Google OAuth credentials are configured."""
+        return self.google_client_id is not None and self.google_client_secret is not None
+
+    @property
+    def google_api_configured(self) -> bool:
+        """Check if Google API key is configured (for public folders)."""
+        return self.google_api_key is not None
 
 
 # Global settings instance

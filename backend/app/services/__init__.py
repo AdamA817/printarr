@@ -3,6 +3,14 @@
 from app.services.archive import ArchiveError, ArchiveExtractor
 from app.services.backfill import BackfillService
 from app.services.download import DownloadError, DownloadService
+from app.services.google_drive import (
+    GoogleAccessDeniedError,
+    GoogleAuthError,
+    GoogleDriveError,
+    GoogleDriveService,
+    GoogleNotFoundError,
+    GoogleRateLimitError,
+)
 from app.services.import_profile import (
     BuiltinProfileModificationError,
     ImportProfileError,
@@ -25,6 +33,12 @@ __all__ = [
     "BuiltinProfileModificationError",
     "DownloadError",
     "DownloadService",
+    "GoogleAccessDeniedError",
+    "GoogleAuthError",
+    "GoogleDriveError",
+    "GoogleDriveService",
+    "GoogleNotFoundError",
+    "GoogleRateLimitError",
     "ImportProfileError",
     "ImportProfileService",
     "IngestService",
