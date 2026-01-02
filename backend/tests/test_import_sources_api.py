@@ -112,12 +112,12 @@ def temp_folder():
 
 
 class TestListImportSources:
-    """Tests for GET /api/v1/import-sources endpoint."""
+    """Tests for GET /api/v1/import-sources/ endpoint."""
 
     @pytest.mark.asyncio
     async def test_list_empty_sources(self, client: AsyncClient, seeded_db):
         """Test listing import sources when none exist."""
-        response = await client.get("/api/v1/import-sources")
+        response = await client.get("/api/v1/import-sources/")
         assert response.status_code == 200
         data = response.json()
         assert data["items"] == []
@@ -136,7 +136,7 @@ class TestListImportSources:
         db_session.add(source)
         await db_session.commit()
 
-        response = await client.get("/api/v1/import-sources")
+        response = await client.get("/api/v1/import-sources/")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
@@ -163,7 +163,7 @@ class TestListImportSources:
         await db_session.commit()
 
         # Filter by BULK_FOLDER
-        response = await client.get("/api/v1/import-sources?source_type=BULK_FOLDER")
+        response = await client.get("/api/v1/import-sources/?source_type=BULK_FOLDER")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
@@ -188,7 +188,7 @@ class TestListImportSources:
         ])
         await db_session.commit()
 
-        response = await client.get("/api/v1/import-sources?status=ACTIVE")
+        response = await client.get("/api/v1/import-sources/?status=ACTIVE")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
@@ -201,13 +201,13 @@ class TestListImportSources:
 
 
 class TestCreateImportSource:
-    """Tests for POST /api/v1/import-sources endpoint."""
+    """Tests for POST /api/v1/import-sources/ endpoint."""
 
     @pytest.mark.asyncio
     async def test_create_bulk_folder_source(self, client: AsyncClient, seeded_db):
         """Test creating a bulk folder import source."""
         response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "My Downloads",
                 "source_type": "BULK_FOLDER",
@@ -228,7 +228,7 @@ class TestCreateImportSource:
     async def test_create_bulk_folder_without_path_fails(self, client: AsyncClient, seeded_db):
         """Test creating bulk folder source without path fails."""
         response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "Invalid Source",
                 "source_type": "BULK_FOLDER",
@@ -241,7 +241,7 @@ class TestCreateImportSource:
     async def test_create_google_drive_source(self, client: AsyncClient, seeded_db):
         """Test creating a Google Drive import source."""
         response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "My Google Drive",
                 "source_type": "GOOGLE_DRIVE",
@@ -258,7 +258,7 @@ class TestCreateImportSource:
     async def test_create_google_drive_invalid_url_fails(self, client: AsyncClient, seeded_db):
         """Test creating Google Drive source with invalid URL fails."""
         response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "Invalid Drive",
                 "source_type": "GOOGLE_DRIVE",
@@ -271,7 +271,7 @@ class TestCreateImportSource:
     async def test_create_upload_source(self, client: AsyncClient, seeded_db):
         """Test creating an upload import source."""
         response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "Manual Uploads",
                 "source_type": "UPLOAD",
@@ -293,7 +293,7 @@ class TestCreateImportSource:
         profile_id = profile.scalar()
 
         response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "Profiled Source",
                 "source_type": "BULK_FOLDER",
@@ -310,7 +310,7 @@ class TestCreateImportSource:
     async def test_create_source_with_invalid_profile_fails(self, client: AsyncClient, seeded_db):
         """Test creating source with non-existent profile fails."""
         response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "Bad Profile Source",
                 "source_type": "BULK_FOLDER",
@@ -325,7 +325,7 @@ class TestCreateImportSource:
     async def test_create_source_with_default_tags(self, client: AsyncClient, seeded_db):
         """Test creating source with default tags."""
         response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "Tagged Source",
                 "source_type": "UPLOAD",
@@ -734,7 +734,7 @@ class TestFullImportFlow:
         """Test the complete flow: create source -> sync -> view history."""
         # Step 1: Create import source
         create_response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "E2E Test Source",
                 "source_type": "BULK_FOLDER",

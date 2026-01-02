@@ -106,7 +106,7 @@ async def _build_source_response(
 # =============================================================================
 
 
-@router.get("", response_model=ImportSourceList)
+@router.get("/", response_model=ImportSourceList)
 async def list_import_sources(
     source_type: ImportSourceType | None = Query(None, description="Filter by type"),
     sync_enabled: bool | None = Query(None, description="Filter by sync enabled"),
@@ -131,7 +131,7 @@ async def list_import_sources(
     return ImportSourceList(items=items, total=len(items))
 
 
-@router.post("", response_model=ImportSourceResponse, status_code=201)
+@router.post("/", response_model=ImportSourceResponse, status_code=201)
 async def create_import_source(
     data: ImportSourceCreate,
     db: AsyncSession = Depends(get_db),

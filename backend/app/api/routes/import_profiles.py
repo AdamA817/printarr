@@ -56,7 +56,7 @@ def _build_profile_response(profile: ImportProfile) -> ImportProfileResponse:
 # =============================================================================
 
 
-@router.get("", response_model=ImportProfileList)
+@router.get("/", response_model=ImportProfileList)
 async def list_import_profiles(
     include_builtin: bool = Query(True, description="Include built-in profiles"),
     db: AsyncSession = Depends(get_db),
@@ -78,7 +78,7 @@ async def list_import_profiles(
     return ImportProfileList(items=items, total=len(items))
 
 
-@router.post("", response_model=ImportProfileResponse, status_code=201)
+@router.post("/", response_model=ImportProfileResponse, status_code=201)
 async def create_import_profile(
     data: ImportProfileCreate,
     db: AsyncSession = Depends(get_db),

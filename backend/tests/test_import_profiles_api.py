@@ -87,12 +87,12 @@ async def seeded_db(db_session):
 
 
 class TestListImportProfiles:
-    """Tests for GET /api/v1/import-profiles endpoint."""
+    """Tests for GET /api/v1/import-profiles/ endpoint."""
 
     @pytest.mark.asyncio
     async def test_list_profiles_includes_builtin(self, client: AsyncClient, seeded_db):
         """Test that listing profiles includes built-in profiles."""
-        response = await client.get("/api/v1/import-profiles")
+        response = await client.get("/api/v1/import-profiles/")
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == len(BUILTIN_PROFILES)
@@ -116,7 +116,7 @@ class TestListImportProfiles:
         db_session.add(profile)
         await db_session.commit()
 
-        response = await client.get("/api/v1/import-profiles")
+        response = await client.get("/api/v1/import-profiles/")
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) == len(BUILTIN_PROFILES) + 1
@@ -131,13 +131,13 @@ class TestListImportProfiles:
 
 
 class TestCreateImportProfile:
-    """Tests for POST /api/v1/import-profiles endpoint."""
+    """Tests for POST /api/v1/import-profiles/ endpoint."""
 
     @pytest.mark.asyncio
     async def test_create_profile_success(self, client: AsyncClient, seeded_db):
         """Test creating a custom profile."""
         response = await client.post(
-            "/api/v1/import-profiles",
+            "/api/v1/import-profiles/",
             json={
                 "name": "My Creator Profile",
                 "description": "Profile for my favorite creator",
@@ -165,7 +165,7 @@ class TestCreateImportProfile:
         """Test creating profile with duplicate name fails."""
         # First create
         await client.post(
-            "/api/v1/import-profiles",
+            "/api/v1/import-profiles/",
             json={
                 "name": "Unique Name",
                 "config": {},
@@ -174,7 +174,7 @@ class TestCreateImportProfile:
 
         # Try to create with same name
         response = await client.post(
-            "/api/v1/import-profiles",
+            "/api/v1/import-profiles/",
             json={
                 "name": "Unique Name",
                 "config": {},
@@ -187,7 +187,7 @@ class TestCreateImportProfile:
     async def test_create_profile_minimal_config(self, client: AsyncClient, seeded_db):
         """Test creating profile with minimal configuration."""
         response = await client.post(
-            "/api/v1/import-profiles",
+            "/api/v1/import-profiles/",
             json={
                 "name": "Minimal Profile",
                 "config": {},
@@ -420,13 +420,13 @@ class TestFullProfileFlow:
     async def test_complete_profile_flow(self, client: AsyncClient, seeded_db, db_session):
         """Test the complete flow: list -> create -> use -> update -> delete."""
         # Step 1: List existing profiles
-        list_response = await client.get("/api/v1/import-profiles")
+        list_response = await client.get("/api/v1/import-profiles/")
         assert list_response.status_code == 200
         initial_count = len(list_response.json()["items"])
 
         # Step 2: Create new profile
         create_response = await client.post(
-            "/api/v1/import-profiles",
+            "/api/v1/import-profiles/",
             json={
                 "name": "E2E Test Profile",
                 "description": "Created for E2E testing",
@@ -442,7 +442,7 @@ class TestFullProfileFlow:
         profile_id = create_response.json()["id"]
 
         # Step 3: Verify profile appears in list
-        list_response = await client.get("/api/v1/import-profiles")
+        list_response = await client.get("/api/v1/import-profiles/")
         assert len(list_response.json()["items"]) == initial_count + 1
 
         # Step 4: Get profile details
@@ -452,7 +452,7 @@ class TestFullProfileFlow:
 
         # Step 5: Create import source using profile
         source_response = await client.post(
-            "/api/v1/import-sources",
+            "/api/v1/import-sources/",
             json={
                 "name": "Test Source",
                 "source_type": "UPLOAD",
