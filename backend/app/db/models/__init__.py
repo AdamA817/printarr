@@ -11,6 +11,7 @@ from app.db.models.discovered_channel import DiscoveredChannel
 from app.db.models.enums import (
     AttachmentDownloadStatus,
     BackfillMode,
+    ConflictResolution,
     DedupeEvidenceType,
     DesignerSource,
     DesignStatus,
@@ -18,6 +19,7 @@ from app.db.models.enums import (
     DownloadMode,
     ExternalSourceType,
     FileKind,
+    ImportRecordStatus,
     ImportSourceStatus,
     ImportSourceType,
     JobStatus,
@@ -36,6 +38,7 @@ from app.db.models.enums import (
 from app.db.models.external_metadata_source import ExternalMetadataSource
 from app.db.models.google_credentials import GoogleCredentials
 from app.db.models.import_profile import ImportProfile
+from app.db.models.import_record import ImportRecord
 from app.db.models.import_source import ImportSource
 from app.db.models.job import Job
 from app.db.models.preview_asset import PreviewAsset
@@ -55,6 +58,7 @@ __all__ = [
     "ExternalMetadataSource",
     "GoogleCredentials",
     "ImportProfile",
+    "ImportRecord",
     "ImportSource",
     "Job",
     "PreviewAsset",
@@ -63,6 +67,7 @@ __all__ = [
     # Enums
     "AttachmentDownloadStatus",
     "BackfillMode",
+    "ConflictResolution",
     "DedupeEvidenceType",
     "DesignerSource",
     "DesignStatus",
@@ -70,6 +75,7 @@ __all__ = [
     "DownloadMode",
     "ExternalSourceType",
     "FileKind",
+    "ImportRecordStatus",
     "ImportSourceStatus",
     "ImportSourceType",
     "JobStatus",

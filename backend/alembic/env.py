@@ -23,6 +23,7 @@ from app.db.models import (  # noqa: F401
     DesignTag,
     GoogleCredentials,
     ImportProfile,
+    ImportRecord,
     ImportSource,
     Job,
     PreviewAsset,

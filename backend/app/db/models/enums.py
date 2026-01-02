@@ -214,3 +214,21 @@ class ImportSourceStatus(str, enum.Enum):
     PAUSED = "PAUSED"  # Temporarily disabled
     ERROR = "ERROR"  # Last sync failed
     PENDING = "PENDING"  # Waiting for initial sync
+
+
+class ImportRecordStatus(str, enum.Enum):
+    """Status of an import record tracking a file/folder."""
+
+    PENDING = "PENDING"  # Detected, awaiting import
+    IMPORTING = "IMPORTING"  # Currently being imported
+    IMPORTED = "IMPORTED"  # Successfully imported
+    SKIPPED = "SKIPPED"  # Skipped (duplicate or user choice)
+    ERROR = "ERROR"  # Import failed
+
+
+class ConflictResolution(str, enum.Enum):
+    """How to handle import conflicts (DEC-037)."""
+
+    SKIP = "SKIP"  # Keep existing, ignore new (default)
+    REPLACE = "REPLACE"  # Delete existing, import new
+    ASK = "ASK"  # Prompt user for each conflict

@@ -2,6 +2,12 @@
 
 from app.services.archive import ArchiveError, ArchiveExtractor
 from app.services.backfill import BackfillService
+from app.services.bulk_import import (
+    BulkImportError,
+    BulkImportPathError,
+    BulkImportService,
+    BulkImportSourceNotFoundError,
+)
 from app.services.download import DownloadError, DownloadService
 from app.services.google_drive import (
     GoogleAccessDeniedError,
@@ -37,6 +43,10 @@ __all__ = [
     "ArchiveError",
     "ArchiveExtractor",
     "BackfillService",
+    "BulkImportError",
+    "BulkImportPathError",
+    "BulkImportService",
+    "BulkImportSourceNotFoundError",
     "BuiltinProfileModificationError",
     "DownloadError",
     "DownloadService",

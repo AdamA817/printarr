@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from app.db.models.design_source import DesignSource
     from app.db.models.design_tag import DesignTag
     from app.db.models.external_metadata_source import ExternalMetadataSource
+    from app.db.models.import_record import ImportRecord
     from app.db.models.import_source import ImportSource
     from app.db.models.job import Job
     from app.db.models.preview_asset import PreviewAsset
@@ -111,6 +112,9 @@ class Design(Base):
     )
     import_source: Mapped[ImportSource | None] = relationship(
         "ImportSource", back_populates="designs"
+    )
+    import_records: Mapped[list[ImportRecord]] = relationship(
+        "ImportRecord", back_populates="design"
     )
 
     # Indexes

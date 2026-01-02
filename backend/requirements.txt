@@ -40,3 +40,6 @@ google-auth-httplib2>=0.2.0
 
 # Encryption (for storing OAuth tokens)
 cryptography>=41.0.0
+
+# File System Monitoring (v0.8 Bulk Import)
+watchdog>=3.0.0

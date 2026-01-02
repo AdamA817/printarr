@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.db.models.design import Design
     from app.db.models.google_credentials import GoogleCredentials
     from app.db.models.import_profile import ImportProfile
+    from app.db.models.import_record import ImportRecord
 
 
 class ImportSource(Base):
@@ -104,6 +105,9 @@ class ImportSource(Base):
     )
     designs: Mapped[list[Design]] = relationship(
         "Design", back_populates="import_source"
+    )
+    import_records: Mapped[list[ImportRecord]] = relationship(
+        "ImportRecord", back_populates="import_source", cascade="all, delete-orphan"
     )
 
     # Indexes
