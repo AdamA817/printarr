@@ -1256,6 +1256,89 @@ class ConflictResolution(Enum):
 
 ---
 
+### DEC-038: Multi-Folder Import Sources
+**Date**: 2026-01-02
+**Status**: Accepted (updates DEC-033)
+
+**Context**
+Patreon creators often have multiple Google Drive folders (e.g., one per month, one per release tier). The original DEC-033 design had a 1:1 relationship between ImportSource and folder. Users requested the ability to group multiple folders under a single source for better organization.
+
+**Example Use Case**
+```
+"Wicked STL Patreon" (Import Source)
+  ├── Dec 2025 Release (folder)
+  ├── Nov 2025 Release (folder)
+  ├── Oct 2025 Release (folder)
+  └── Bonus Pack (folder)
+```
+
+**Decision**
+Split into two tables:
+- **ImportSource**: Parent container with shared settings (designer, tags, profile)
+- **ImportSourceFolder**: Individual folders/paths belonging to a source
+
+**Updated Data Model**
+```python
+class ImportSource(Base):
+    """Parent container for import folders."""
+    id: UUID
+    name: str  # "Wicked STL Patreon"
+    source_type: ImportSourceType  # GOOGLE_DRIVE, BULK_FOLDER
+
+    # Shared settings
+    import_profile_id: UUID | None
+    default_designer: str | None
+    default_tags: list[str]
+    sync_enabled: bool
+    sync_interval_hours: int
+
+    # Google OAuth (shared across folders)
+    google_credentials_id: UUID | None
+
+    # Relationships
+    folders: list[ImportSourceFolder]
+
+
+class ImportSourceFolder(Base):
+    """Individual folder within an import source."""
+    id: UUID
+    import_source_id: UUID  # FK to ImportSource
+    name: str | None  # Optional display name ("Dec 2025 Release")
+
+    # Location (one of these set based on parent source_type)
+    google_drive_url: str | None
+    folder_path: str | None  # For BULK_FOLDER type
+
+    # Per-folder overrides (optional)
+    import_profile_id: UUID | None  # Override source's profile
+    default_designer: str | None  # Override source's designer
+    default_tags: list[str] | None  # Override source's tags
+
+    # Sync state
+    enabled: bool = True
+    last_synced_at: datetime | None
+    sync_cursor: str | None  # For incremental sync
+
+    created_at: datetime
+```
+
+**Direct Upload Handling**
+For `UPLOAD` type sources, we don't need folders - uploads create designs directly. The ImportSource with `source_type=UPLOAD` is a system singleton representing "Direct Uploads".
+
+**UI Changes**
+- Add folder management within source settings
+- "Add Folder" button to add new folders to existing source
+- Per-folder enable/disable toggle
+- Optional per-folder setting overrides
+
+**Consequences**
+- Better organization for multi-folder Patreons
+- Shared OAuth credentials across folders from same account
+- More complex data model but cleaner UX
+- Migration needed from original single-folder design
+
+---
+
 ## Pending Decisions
 
 *No pending decisions at this time.*
