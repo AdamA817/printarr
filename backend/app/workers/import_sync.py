@@ -147,6 +147,7 @@ class SyncImportSourceWorker(BaseWorker):
 
             # Update status to show sync is in progress
             source.status = ImportSourceStatus.ACTIVE
+            await db.commit()  # Commit early to release lock before long operations
 
             try:
                 # Determine which folders to sync
@@ -368,8 +369,8 @@ class SyncImportSourceWorker(BaseWorker):
             )
             db.add(record)
 
-        # Flush to ensure records are visible
-        await db.flush()
+        # Commit records to release locks before potentially long import operations
+        await db.commit()
 
         imported = 0
         errors: list[str] = []
@@ -685,6 +686,9 @@ class SyncImportSourceWorker(BaseWorker):
                 folder.last_synced_at = datetime.utcnow()
                 folder.last_sync_error = None
 
+                # Commit after each folder to release locks and allow reads
+                await db.commit()
+
             except Exception as e:
                 error_msg = f"Failed to sync folder {folder.display_name}: {e}"
                 all_errors.append(error_msg)
@@ -798,7 +802,8 @@ class SyncImportSourceWorker(BaseWorker):
             )
             db.add(record)
 
-        await db.flush()
+        # Commit records to release locks before potentially long import operations
+        await db.commit()
 
         imported = 0
         errors: list[str] = []
@@ -911,7 +916,8 @@ class SyncImportSourceWorker(BaseWorker):
             )
             db.add(record)
 
-        await db.flush()
+        # Commit records to release locks before potentially long import operations
+        await db.commit()
 
         imported = 0
         errors: list[str] = []
