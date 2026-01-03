@@ -37,7 +37,7 @@ class GoogleOAuthStatus(BaseModel):
 class GoogleOAuthInitResponse(BaseModel):
     """OAuth authorization URL response."""
 
-    auth_url: str
+    authorization_url: str
     state: str
 
 
@@ -140,7 +140,7 @@ async def initiate_oauth(
     try:
         auth_url = service.get_oauth_url(state=state)
         logger.info("oauth_initiated", state=state[:8])
-        return GoogleOAuthInitResponse(auth_url=auth_url, state=state)
+        return GoogleOAuthInitResponse(authorization_url=auth_url, state=state)
     except GoogleAuthError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -206,6 +206,7 @@ export interface ImportSourceCreate {
 
   // Google Drive specific
   google_drive_url?: string | null
+  google_credentials_id?: string | null
 
   // Bulk folder specific
   folder_path?: string | null

@@ -76,7 +76,12 @@ export function AddImportSourceModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onSubmit(formData)
+    // Include google_credentials_id if a Google account was selected
+    const submitData = {
+      ...formData,
+      ...(selectedCredentialsId && { google_credentials_id: selectedCredentialsId }),
+    }
+    onSubmit(submitData)
   }
 
   const canProceedFromConfigure = () => {

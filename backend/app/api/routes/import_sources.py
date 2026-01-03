@@ -277,6 +277,7 @@ async def create_import_source(
         status=ImportSourceStatus.PENDING,
         google_drive_url=data.google_drive_url,
         google_drive_folder_id=folder_id,
+        google_credentials_id=data.google_credentials_id,
         folder_path=data.folder_path,
         import_profile_id=data.import_profile_id,
         default_designer=data.default_designer,

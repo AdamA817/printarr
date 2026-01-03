@@ -141,6 +141,9 @@ class ImportSourceCreate(BaseModel):
     google_drive_url: str | None = Field(
         None, max_length=1024, description="Google Drive folder/file URL"
     )
+    google_credentials_id: str | None = Field(
+        None, description="ID of stored Google OAuth credentials for private folders"
+    )
 
     # Bulk folder specific
     folder_path: str | None = Field(
