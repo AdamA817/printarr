@@ -270,6 +270,27 @@ class SyncResult(BaseModel):
     last_file_id: str | None = None
 
 
+class ChangeInfo(BaseModel):
+    """Information about a file change from Google Drive Changes API."""
+
+    file_id: str
+    file_name: str | None = None
+    mime_type: str | None = None
+    removed: bool = False
+    file_info: FileInfo | None = None
+
+
+class IncrementalSyncResult(BaseModel):
+    """Result of an incremental sync using change tokens."""
+
+    new_page_token: str
+    changes: list[ChangeInfo] = Field(default_factory=list)
+    has_more: bool = False
+    files_added: int = 0
+    files_modified: int = 0
+    files_removed: int = 0
+
+
 class VirtualFolder:
     """Represents a folder in the virtual file tree built from Google Drive."""
 
@@ -631,6 +652,103 @@ class GoogleDriveService:
             if not next_token:
                 break
             page_token = next_token
+
+    async def list_folder_cached(
+        self,
+        folder_id: str,
+        credentials: GoogleCredentials | None = None,
+        use_cache: bool = True,
+    ) -> list[FileInfo]:
+        """List files in a folder with caching support.
+
+        Args:
+            folder_id: Google Drive folder ID.
+            credentials: Optional credentials for private folders.
+            use_cache: Whether to use cached results if available.
+
+        Returns:
+            List of FileInfo in the folder.
+        """
+        cache = get_file_cache()
+
+        # Check cache first
+        if use_cache:
+            cached = await cache.get(folder_id)
+            if cached is not None:
+                return cached
+
+        # Fetch from API
+        all_files: list[FileInfo] = []
+        page_token = None
+        while True:
+            files, next_token = await self.list_folder(
+                folder_id, credentials, page_token
+            )
+            all_files.extend(files)
+            if not next_token:
+                break
+            page_token = next_token
+
+        # Cache the results
+        await cache.set(folder_id, all_files)
+
+        return all_files
+
+    async def list_folder_recursive_cached(
+        self,
+        folder_id: str,
+        credentials: GoogleCredentials | None = None,
+        max_depth: int = 10,
+        use_cache: bool = True,
+    ) -> list[FileInfo]:
+        """List all files in a folder recursively with caching and batching.
+
+        Optimized version that uses:
+        - Batch requests for listing multiple folders at once
+        - Caching to avoid re-fetching unchanged folders
+
+        Args:
+            folder_id: Google Drive folder ID.
+            credentials: Optional credentials for private folders.
+            max_depth: Maximum recursion depth.
+            use_cache: Whether to use cached results if available.
+
+        Returns:
+            List of all FileInfo in folder tree.
+        """
+        cache = get_file_cache()
+        all_files: list[FileInfo] = []
+
+        # Track folders to process at each depth level
+        folders_to_process = [folder_id]
+        current_depth = 0
+
+        while folders_to_process and current_depth < max_depth:
+            # Check cache for each folder
+            uncached_folders = []
+            for fid in folders_to_process:
+                if use_cache:
+                    cached = await cache.get(fid)
+                    if cached is not None:
+                        all_files.extend(cached)
+                        continue
+                uncached_folders.append(fid)
+
+            # Batch fetch uncached folders
+            if uncached_folders:
+                batch_results = await self.list_folders_batch(uncached_folders, credentials)
+
+                for fid, files in batch_results.items():
+                    all_files.extend(files)
+                    # Cache the results
+                    await cache.set(fid, files)
+
+            # Collect subfolders for next depth level
+            next_folders = [f.id for f in all_files if f.is_folder and f.parent_id in folders_to_process]
+            folders_to_process = next_folders
+            current_depth += 1
+
+        return all_files
 
     # ========== File Download ==========
 
@@ -1039,6 +1157,8 @@ class GoogleDriveService:
         folder_id: str,
         credentials: GoogleCredentials | None = None,
         config: "ImportProfileConfig | None" = None,
+        use_cache: bool = True,
+        use_batch: bool = True,
     ) -> list[DetectedGoogleDriveDesign]:
         """Scan a Google Drive folder for designs using an import profile.
 
@@ -1046,6 +1166,8 @@ class GoogleDriveService:
             folder_id: Root folder ID to scan.
             credentials: Optional credentials for private folders.
             config: Import profile config. Uses default detection if not provided.
+            use_cache: Whether to use cached file listings (default True).
+            use_batch: Whether to use batch requests for efficiency (default True).
 
         Returns:
             List of detected designs.
@@ -1055,8 +1177,13 @@ class GoogleDriveService:
         if config is None:
             config = ImportProfileConfig()
 
-        # List all files recursively
-        all_files = await self.list_folder_recursive(folder_id, credentials)
+        # List all files recursively - use optimized version with caching and batching
+        if use_batch:
+            all_files = await self.list_folder_recursive_cached(
+                folder_id, credentials, use_cache=use_cache
+            )
+        else:
+            all_files = await self.list_folder_recursive(folder_id, credentials)
 
         logger.info(
             "gdrive_scan_started",
@@ -1419,3 +1546,365 @@ class GoogleDriveService:
             parent_id = parent.parent_id
 
         return "/".join(path_parts)
+
+    # ========== Batch Requests ==========
+
+    async def list_folders_batch(
+        self,
+        folder_ids: list[str],
+        credentials: GoogleCredentials | None = None,
+    ) -> dict[str, list[FileInfo]]:
+        """List files in multiple folders using batch requests.
+
+        Batches up to 100 requests per API call, significantly reducing quota usage.
+
+        Args:
+            folder_ids: List of Google Drive folder IDs to list.
+            credentials: Optional credentials for private folders.
+
+        Returns:
+            Dict mapping folder_id -> list of FileInfo.
+
+        Raises:
+            GoogleDriveError: If batch request fails.
+        """
+        try:
+            from googleapiclient.http import BatchHttpRequest
+            from googleapiclient.errors import HttpError
+        except ImportError as e:
+            raise GoogleDriveError("Google API libraries not installed") from e
+
+        if not folder_ids:
+            return {}
+
+        service = await self._get_drive_service(credentials)
+        results: dict[str, list[FileInfo]] = {fid: [] for fid in folder_ids}
+        errors: dict[str, str] = {}
+
+        # Process in batches of 100 (Google's limit)
+        batch_size = 100
+
+        for batch_start in range(0, len(folder_ids), batch_size):
+            batch_folder_ids = folder_ids[batch_start:batch_start + batch_size]
+
+            # Pace the batch request (counts as 1 quota hit for batch)
+            await get_request_pacer().acquire()
+
+            batch = service.new_batch_http_request()
+
+            def make_callback(fid: str):
+                def callback(request_id, response, exception):
+                    if exception:
+                        errors[fid] = str(exception)
+                        logger.warning(
+                            "batch_list_folder_error",
+                            folder_id=fid,
+                            error=str(exception),
+                        )
+                    elif response:
+                        for f in response.get("files", []):
+                            results[fid].append(FileInfo(
+                                id=f["id"],
+                                name=f["name"],
+                                mime_type=f["mimeType"],
+                                size=int(f.get("size", 0)),
+                                created_time=datetime.fromisoformat(
+                                    f["createdTime"].replace("Z", "+00:00")
+                                ) if f.get("createdTime") else None,
+                                modified_time=datetime.fromisoformat(
+                                    f["modifiedTime"].replace("Z", "+00:00")
+                                ) if f.get("modifiedTime") else None,
+                                parent_id=f["parents"][0] if f.get("parents") else None,
+                                is_folder=f["mimeType"] == "application/vnd.google-apps.folder",
+                                web_view_link=f.get("webViewLink"),
+                            ))
+                return callback
+
+            # Add requests to batch
+            for folder_id in batch_folder_ids:
+                query = f"'{folder_id}' in parents and trashed = false"
+                request = service.files().list(
+                    q=query,
+                    fields="files(id, name, mimeType, size, createdTime, modifiedTime, parents, webViewLink)",
+                    pageSize=1000,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                )
+                batch.add(request, callback=make_callback(folder_id))
+
+            # Execute batch
+            try:
+                batch.execute()
+            except HttpError as e:
+                if e.resp.status == 429:
+                    raise GoogleRateLimitError(f"Batch request rate limited: {e}") from e
+                raise GoogleDriveError(f"Batch request failed: {e}") from e
+
+        logger.info(
+            "batch_list_complete",
+            folders_requested=len(folder_ids),
+            folders_succeeded=len(folder_ids) - len(errors),
+            total_files=sum(len(files) for files in results.values()),
+        )
+
+        return results
+
+    # ========== Change Tokens (Incremental Sync) ==========
+
+    async def get_start_page_token(
+        self,
+        credentials: GoogleCredentials | None = None,
+    ) -> str:
+        """Get the starting page token for change tracking.
+
+        Call this once when first setting up sync to get the initial token.
+        Store this token and use it with list_changes() for incremental sync.
+
+        Args:
+            credentials: Optional credentials for authenticated access.
+
+        Returns:
+            The start page token string.
+
+        Raises:
+            GoogleDriveError: If request fails.
+        """
+        try:
+            from googleapiclient.errors import HttpError
+        except ImportError as e:
+            raise GoogleDriveError("Google API libraries not installed") from e
+
+        service = await self._get_drive_service(credentials)
+
+        await get_request_pacer().acquire()
+
+        try:
+            response = service.changes().getStartPageToken(
+                supportsAllDrives=True,
+            ).execute()
+            return response.get("startPageToken")
+        except HttpError as e:
+            if e.resp.status == 429:
+                raise GoogleRateLimitError(f"Rate limited getting start token: {e}") from e
+            raise GoogleDriveError(f"Failed to get start page token: {e}") from e
+
+    async def list_changes(
+        self,
+        page_token: str,
+        folder_id: str | None = None,
+        credentials: GoogleCredentials | None = None,
+        page_size: int = 100,
+    ) -> IncrementalSyncResult:
+        """List changes since the given page token.
+
+        Use this for incremental sync instead of re-listing entire folders.
+
+        Args:
+            page_token: Token from get_start_page_token() or previous list_changes().
+            folder_id: Optional folder ID to filter changes to (recommended).
+            credentials: Optional credentials for authenticated access.
+            page_size: Number of changes per page.
+
+        Returns:
+            IncrementalSyncResult with changes and new page token.
+
+        Raises:
+            GoogleDriveError: If request fails.
+        """
+        try:
+            from googleapiclient.errors import HttpError
+        except ImportError as e:
+            raise GoogleDriveError("Google API libraries not installed") from e
+
+        service = await self._get_drive_service(credentials)
+
+        await get_request_pacer().acquire()
+
+        try:
+            # Build change request
+            request_params = {
+                "pageToken": page_token,
+                "pageSize": page_size,
+                "fields": "nextPageToken, newStartPageToken, changes(fileId, removed, file(id, name, mimeType, size, parents, modifiedTime, trashed))",
+                "supportsAllDrives": True,
+                "includeItemsFromAllDrives": True,
+            }
+
+            response = service.changes().list(**request_params).execute()
+
+            changes: list[ChangeInfo] = []
+            files_added = 0
+            files_modified = 0
+            files_removed = 0
+
+            for change in response.get("changes", []):
+                file_id = change.get("fileId")
+                removed = change.get("removed", False)
+                file_data = change.get("file")
+
+                # Skip if filtering by folder and file isn't in that folder
+                if folder_id and file_data:
+                    parents = file_data.get("parents", [])
+                    # Check if file is in the target folder or its subfolders
+                    # For now, we do a simple parent check (direct children only)
+                    if folder_id not in parents:
+                        continue
+
+                # Skip trashed files
+                if file_data and file_data.get("trashed"):
+                    removed = True
+
+                file_info = None
+                if file_data and not removed:
+                    file_info = FileInfo(
+                        id=file_data["id"],
+                        name=file_data.get("name", ""),
+                        mime_type=file_data.get("mimeType", ""),
+                        size=int(file_data.get("size", 0)),
+                        modified_time=datetime.fromisoformat(
+                            file_data["modifiedTime"].replace("Z", "+00:00")
+                        ) if file_data.get("modifiedTime") else None,
+                        parent_id=file_data["parents"][0] if file_data.get("parents") else None,
+                        is_folder=file_data.get("mimeType") == "application/vnd.google-apps.folder",
+                    )
+
+                change_info = ChangeInfo(
+                    file_id=file_id,
+                    file_name=file_data.get("name") if file_data else None,
+                    mime_type=file_data.get("mimeType") if file_data else None,
+                    removed=removed,
+                    file_info=file_info,
+                )
+                changes.append(change_info)
+
+                if removed:
+                    files_removed += 1
+                elif file_info:
+                    # Could be add or modify - we can't easily tell without tracking
+                    files_modified += 1
+
+            # Get the new page token
+            new_token = response.get("newStartPageToken") or response.get("nextPageToken", page_token)
+            has_more = "nextPageToken" in response
+
+            logger.debug(
+                "changes_listed",
+                changes_count=len(changes),
+                has_more=has_more,
+                filtered_to_folder=folder_id is not None,
+            )
+
+            return IncrementalSyncResult(
+                new_page_token=new_token,
+                changes=changes,
+                has_more=has_more,
+                files_added=files_added,
+                files_modified=files_modified,
+                files_removed=files_removed,
+            )
+
+        except HttpError as e:
+            if e.resp.status == 429:
+                raise GoogleRateLimitError(f"Rate limited listing changes: {e}") from e
+            raise GoogleDriveError(f"Failed to list changes: {e}") from e
+
+
+# ========== File Metadata Cache ==========
+
+class FileMetadataCache:
+    """In-memory cache for Google Drive file metadata.
+
+    Reduces API calls by caching file listings with TTL.
+    Thread-safe using asyncio locks.
+    """
+
+    def __init__(self, ttl_seconds: int = 300):
+        """Initialize cache with TTL.
+
+        Args:
+            ttl_seconds: Time-to-live for cached entries (default 5 minutes).
+        """
+        self.ttl_seconds = ttl_seconds
+        self._cache: dict[str, tuple[datetime, list[FileInfo]]] = {}
+        self._lock = asyncio.Lock()
+
+    async def get(self, folder_id: str) -> list[FileInfo] | None:
+        """Get cached file listing for a folder.
+
+        Args:
+            folder_id: Google Drive folder ID.
+
+        Returns:
+            List of FileInfo if cache hit and not expired, None otherwise.
+        """
+        async with self._lock:
+            if folder_id not in self._cache:
+                return None
+
+            cached_at, files = self._cache[folder_id]
+            if datetime.utcnow() - cached_at > timedelta(seconds=self.ttl_seconds):
+                # Expired
+                del self._cache[folder_id]
+                return None
+
+            logger.debug("cache_hit", folder_id=folder_id, files_count=len(files))
+            return files
+
+    async def set(self, folder_id: str, files: list[FileInfo]) -> None:
+        """Cache file listing for a folder.
+
+        Args:
+            folder_id: Google Drive folder ID.
+            files: List of FileInfo to cache.
+        """
+        async with self._lock:
+            self._cache[folder_id] = (datetime.utcnow(), files)
+            logger.debug("cache_set", folder_id=folder_id, files_count=len(files))
+
+    async def invalidate(self, folder_id: str) -> None:
+        """Invalidate cache for a specific folder.
+
+        Args:
+            folder_id: Google Drive folder ID to invalidate.
+        """
+        async with self._lock:
+            if folder_id in self._cache:
+                del self._cache[folder_id]
+                logger.debug("cache_invalidated", folder_id=folder_id)
+
+    async def clear(self) -> None:
+        """Clear all cached entries."""
+        async with self._lock:
+            count = len(self._cache)
+            self._cache.clear()
+            logger.debug("cache_cleared", entries_cleared=count)
+
+    async def cleanup_expired(self) -> int:
+        """Remove expired entries from cache.
+
+        Returns:
+            Number of entries removed.
+        """
+        async with self._lock:
+            now = datetime.utcnow()
+            expired = [
+                fid for fid, (cached_at, _) in self._cache.items()
+                if now - cached_at > timedelta(seconds=self.ttl_seconds)
+            ]
+            for fid in expired:
+                del self._cache[fid]
+            if expired:
+                logger.debug("cache_cleanup", entries_removed=len(expired))
+            return len(expired)
+
+
+# Global file metadata cache (5 minute TTL)
+_file_cache: FileMetadataCache | None = None
+
+
+def get_file_cache() -> FileMetadataCache:
+    """Get or create the global file metadata cache."""
+    global _file_cache
+    if _file_cache is None:
+        _file_cache = FileMetadataCache(ttl_seconds=300)
+    return _file_cache
