@@ -42,7 +42,7 @@ from app.db.models import (
 from app.db.session import async_session_maker
 from app.services.auto_render import auto_queue_render_for_design
 from app.services.bulk_import import BulkImportError, BulkImportPathError, BulkImportService
-from app.services.google_drive import GoogleDriveError, GoogleDriveService
+from app.services.google_drive import GoogleDriveError, GoogleDriveService, GoogleRateLimitError
 from app.services.import_profile import ImportProfileService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
@@ -204,6 +204,18 @@ class SyncImportSourceWorker(BaseWorker):
                 source.status = ImportSourceStatus.ERROR
                 source.last_sync_error = str(e)
                 await db.commit()
+                raise RetryableError(str(e))
+
+            except GoogleRateLimitError as e:
+                # Set specific status for rate limiting so UI can show it
+                source.status = ImportSourceStatus.RATE_LIMITED
+                source.last_sync_error = f"Google API rate limited. Will retry automatically. {e}"
+                await db.commit()
+                logger.warning(
+                    "sync_rate_limited",
+                    source_id=source_id,
+                    error=str(e),
+                )
                 raise RetryableError(str(e))
 
             except GoogleDriveError as e:

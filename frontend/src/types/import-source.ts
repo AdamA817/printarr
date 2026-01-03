@@ -9,7 +9,7 @@
 
 export type ImportSourceType = 'GOOGLE_DRIVE' | 'UPLOAD' | 'BULK_FOLDER'
 
-export type ImportSourceStatus = 'ACTIVE' | 'PAUSED' | 'ERROR' | 'PENDING'
+export type ImportSourceStatus = 'ACTIVE' | 'PAUSED' | 'ERROR' | 'PENDING' | 'RATE_LIMITED'
 
 export type ImportRecordStatus = 'PENDING' | 'IMPORTING' | 'IMPORTED' | 'SKIPPED' | 'ERROR'
 

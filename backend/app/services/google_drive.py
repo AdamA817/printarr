@@ -6,18 +6,21 @@ Provides:
 - File listing with pagination
 - File downloading
 - Credential encryption and storage
+- Rate limiting with exponential backoff
 
 See DEC-034 for design decisions.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
+import random
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable, TypeVar
 
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -29,6 +32,14 @@ from app.db.models import GoogleCredentials
 
 if TYPE_CHECKING:
     pass
+
+T = TypeVar("T")
+
+# Rate limiting configuration
+RATE_LIMIT_MAX_RETRIES = 5
+RATE_LIMIT_BASE_DELAY = 2.0  # seconds
+RATE_LIMIT_MAX_DELAY = 300.0  # 5 minutes
+RATE_LIMIT_JITTER = 0.3  # 30% jitter
 
 logger = get_logger(__name__)
 
@@ -75,7 +86,83 @@ class GoogleNotFoundError(GoogleDriveError):
 class GoogleRateLimitError(GoogleDriveError):
     """Raised when rate limited by Google API."""
 
-    pass
+    def __init__(self, message: str = "Google API rate limit exceeded", retry_after: int | None = None):
+        super().__init__(message)
+        self.retry_after = retry_after  # Seconds to wait before retry
+
+
+async def with_rate_limit_retry(
+    func: Callable[[], T],
+    max_retries: int = RATE_LIMIT_MAX_RETRIES,
+    operation: str = "API call",
+) -> T:
+    """Execute a function with automatic retry on rate limiting.
+
+    Implements exponential backoff with jitter for Google API rate limits.
+
+    Args:
+        func: Async function to execute.
+        max_retries: Maximum number of retry attempts.
+        operation: Description of the operation for logging.
+
+    Returns:
+        Result of the function call.
+
+    Raises:
+        GoogleRateLimitError: If max retries exceeded.
+    """
+    last_error = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await asyncio.to_thread(func)
+        except Exception as e:
+            # Check if it's a rate limit error
+            error_str = str(e).lower()
+            is_rate_limit = (
+                "429" in error_str
+                or "rate limit" in error_str
+                or "quota" in error_str
+                or "automated queries" in error_str
+            )
+
+            if not is_rate_limit:
+                raise
+
+            last_error = e
+
+            if attempt >= max_retries:
+                logger.error(
+                    "rate_limit_max_retries",
+                    operation=operation,
+                    attempts=attempt + 1,
+                    error=str(e),
+                )
+                raise GoogleRateLimitError(
+                    f"Rate limit exceeded after {attempt + 1} attempts: {e}"
+                ) from e
+
+            # Calculate delay with exponential backoff and jitter
+            delay = min(
+                RATE_LIMIT_BASE_DELAY * (2 ** attempt),
+                RATE_LIMIT_MAX_DELAY,
+            )
+            jitter = delay * RATE_LIMIT_JITTER * (2 * random.random() - 1)
+            delay += jitter
+
+            logger.warning(
+                "rate_limit_retry",
+                operation=operation,
+                attempt=attempt + 1,
+                max_retries=max_retries,
+                delay_seconds=round(delay, 1),
+                error=str(e),
+            )
+
+            await asyncio.sleep(delay)
+
+    # Should never reach here, but just in case
+    raise GoogleRateLimitError(f"Rate limit handling failed: {last_error}")
 
 
 class FolderInfo(BaseModel):
@@ -254,6 +341,7 @@ class GoogleDriveService:
         Raises:
             GoogleNotFoundError: If folder doesn't exist.
             GoogleAccessDeniedError: If access is denied.
+            GoogleRateLimitError: If rate limited after max retries.
         """
         # Lazy import to avoid startup errors if google libs not installed
         try:
@@ -264,49 +352,73 @@ class GoogleDriveService:
                 "Google API libraries not installed. Run: pip install google-api-python-client"
             ) from e
 
-        try:
-            service = await self._get_drive_service(credentials)
-            file = service.files().get(
-                fileId=folder_id,
-                fields="id, name, mimeType, owners",
-                supportsAllDrives=True,
-            ).execute()
+        service = await self._get_drive_service(credentials)
 
-            if file.get("mimeType") != "application/vnd.google-apps.folder":
-                raise GoogleDriveError(f"ID {folder_id} is not a folder")
+        async def _execute_with_retry() -> FolderInfo:
+            for attempt in range(RATE_LIMIT_MAX_RETRIES + 1):
+                try:
+                    file = service.files().get(
+                        fileId=folder_id,
+                        fields="id, name, mimeType, owners",
+                        supportsAllDrives=True,
+                    ).execute()
 
-            # Count files in folder
-            query = f"'{folder_id}' in parents and trashed = false"
-            result = service.files().list(
-                q=query,
-                fields="files(id)",
-                pageSize=1000,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-            ).execute()
-            file_count = len(result.get("files", []))
+                    if file.get("mimeType") != "application/vnd.google-apps.folder":
+                        raise GoogleDriveError(f"ID {folder_id} is not a folder")
 
-            owners = file.get("owners", [])
-            owner_email = owners[0].get("emailAddress") if owners else None
+                    # Count files in folder
+                    query = f"'{folder_id}' in parents and trashed = false"
+                    result = service.files().list(
+                        q=query,
+                        fields="files(id)",
+                        pageSize=1000,
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True,
+                    ).execute()
+                    file_count = len(result.get("files", []))
 
-            return FolderInfo(
-                id=file["id"],
-                name=file["name"],
-                is_public=credentials is None,
-                file_count=file_count,
-                owner_email=owner_email,
-            )
+                    owners = file.get("owners", [])
+                    owner_email = owners[0].get("emailAddress") if owners else None
 
-        except HttpError as e:
-            if e.resp.status == 404:
-                raise GoogleNotFoundError(f"Folder {folder_id} not found") from e
-            if e.resp.status in (401, 403):
-                raise GoogleAccessDeniedError(
-                    f"Access denied to folder {folder_id}. May require authentication."
-                ) from e
-            if e.resp.status == 429:
-                raise GoogleRateLimitError("Google API rate limit exceeded") from e
-            raise GoogleDriveError(f"Google API error: {e}") from e
+                    return FolderInfo(
+                        id=file["id"],
+                        name=file["name"],
+                        is_public=credentials is None,
+                        file_count=file_count,
+                        owner_email=owner_email,
+                    )
+
+                except HttpError as e:
+                    if e.resp.status == 404:
+                        raise GoogleNotFoundError(f"Folder {folder_id} not found") from e
+                    if e.resp.status in (401, 403):
+                        raise GoogleAccessDeniedError(
+                            f"Access denied to folder {folder_id}. May require authentication."
+                        ) from e
+                    if e.resp.status == 429:
+                        if attempt >= RATE_LIMIT_MAX_RETRIES:
+                            raise GoogleRateLimitError(
+                                f"Rate limit exceeded after {attempt + 1} attempts"
+                            ) from e
+
+                        delay = min(RATE_LIMIT_BASE_DELAY * (2 ** attempt), RATE_LIMIT_MAX_DELAY)
+                        jitter = delay * RATE_LIMIT_JITTER * (2 * random.random() - 1)
+                        delay += jitter
+
+                        logger.warning(
+                            "rate_limit_retry",
+                            operation="get_folder_info",
+                            folder_id=folder_id,
+                            attempt=attempt + 1,
+                            delay_seconds=round(delay, 1),
+                        )
+                        await asyncio.sleep(delay)
+                        continue
+                    raise GoogleDriveError(f"Google API error: {e}") from e
+
+            raise GoogleRateLimitError("Rate limit handling exhausted")
+
+        return await _execute_with_retry()
 
     async def list_folder(
         self,
@@ -328,50 +440,71 @@ class GoogleDriveService:
 
         Raises:
             GoogleDriveError: If listing fails.
+            GoogleRateLimitError: If rate limited after max retries.
         """
         try:
             from googleapiclient.errors import HttpError
         except ImportError as e:
             raise GoogleDriveError("Google API libraries not installed") from e
 
-        try:
-            service = await self._get_drive_service(credentials)
+        service = await self._get_drive_service(credentials)
 
-            query = f"'{folder_id}' in parents and trashed = false"
-            result = service.files().list(
-                q=query,
-                fields="nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime, parents, webViewLink)",
-                pageToken=page_token,
-                pageSize=page_size,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-                orderBy="name",
-            ).execute()
+        for attempt in range(RATE_LIMIT_MAX_RETRIES + 1):
+            try:
+                query = f"'{folder_id}' in parents and trashed = false"
+                result = service.files().list(
+                    q=query,
+                    fields="nextPageToken, files(id, name, mimeType, size, createdTime, modifiedTime, parents, webViewLink)",
+                    pageToken=page_token,
+                    pageSize=page_size,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    orderBy="name",
+                ).execute()
 
-            files = []
-            for f in result.get("files", []):
-                files.append(FileInfo(
-                    id=f["id"],
-                    name=f["name"],
-                    mime_type=f["mimeType"],
-                    size=int(f.get("size", 0)),
-                    created_time=datetime.fromisoformat(f["createdTime"].replace("Z", "+00:00")) if f.get("createdTime") else None,
-                    modified_time=datetime.fromisoformat(f["modifiedTime"].replace("Z", "+00:00")) if f.get("modifiedTime") else None,
-                    parent_id=f["parents"][0] if f.get("parents") else None,
-                    is_folder=f["mimeType"] == "application/vnd.google-apps.folder",
-                    web_view_link=f.get("webViewLink"),
-                ))
+                files = []
+                for f in result.get("files", []):
+                    files.append(FileInfo(
+                        id=f["id"],
+                        name=f["name"],
+                        mime_type=f["mimeType"],
+                        size=int(f.get("size", 0)),
+                        created_time=datetime.fromisoformat(f["createdTime"].replace("Z", "+00:00")) if f.get("createdTime") else None,
+                        modified_time=datetime.fromisoformat(f["modifiedTime"].replace("Z", "+00:00")) if f.get("modifiedTime") else None,
+                        parent_id=f["parents"][0] if f.get("parents") else None,
+                        is_folder=f["mimeType"] == "application/vnd.google-apps.folder",
+                        web_view_link=f.get("webViewLink"),
+                    ))
 
-            return files, result.get("nextPageToken")
+                return files, result.get("nextPageToken")
 
-        except HttpError as e:
-            if e.resp.status == 404:
-                raise GoogleNotFoundError(f"Folder {folder_id} not found") from e
-            if e.resp.status in (401, 403):
-                raise GoogleAccessDeniedError(f"Access denied to folder {folder_id}") from e
-            if e.resp.status == 429:
-                raise GoogleRateLimitError("Google API rate limit exceeded") from e
-            raise GoogleDriveError(f"Google API error: {e}") from e
+            except HttpError as e:
+                if e.resp.status == 404:
+                    raise GoogleNotFoundError(f"Folder {folder_id} not found") from e
+                if e.resp.status in (401, 403):
+                    raise GoogleAccessDeniedError(f"Access denied to folder {folder_id}") from e
+                if e.resp.status == 429:
+                    if attempt >= RATE_LIMIT_MAX_RETRIES:
+                        raise GoogleRateLimitError(
+                            f"Rate limit exceeded after {attempt + 1} attempts"
+                        ) from e
+
+                    delay = min(RATE_LIMIT_BASE_DELAY * (2 ** attempt), RATE_LIMIT_MAX_DELAY)
+                    jitter = delay * RATE_LIMIT_JITTER * (2 * random.random() - 1)
+                    delay += jitter
+
+                    logger.warning(
+                        "rate_limit_retry",
+                        operation="list_folder",
+                        folder_id=folder_id,
+                        attempt=attempt + 1,
+                        delay_seconds=round(delay, 1),
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise GoogleDriveError(f"Google API error: {e}") from e
+
+        raise GoogleRateLimitError("Rate limit handling exhausted")
 
     async def list_folder_recursive(
         self,
@@ -440,6 +573,7 @@ class GoogleDriveService:
 
         Raises:
             GoogleDriveError: If download fails.
+            GoogleRateLimitError: If rate limited after max retries.
         """
         try:
             from googleapiclient.errors import HttpError
@@ -449,48 +583,68 @@ class GoogleDriveService:
 
         import io
 
-        try:
-            service = await self._get_drive_service(credentials)
+        service = await self._get_drive_service(credentials)
 
-            # Get file metadata first
-            file_meta = service.files().get(
-                fileId=file_id,
-                fields="name, size, mimeType",
-                supportsAllDrives=True,
-            ).execute()
+        for attempt in range(RATE_LIMIT_MAX_RETRIES + 1):
+            try:
+                # Get file metadata first
+                file_meta = service.files().get(
+                    fileId=file_id,
+                    fields="name, size, mimeType",
+                    supportsAllDrives=True,
+                ).execute()
 
-            # Create parent directories
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
+                # Create parent directories
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Download file
-            request = service.files().get_media(
-                fileId=file_id,
-                supportsAllDrives=True,
-            )
+                # Download file
+                request = service.files().get_media(
+                    fileId=file_id,
+                    supportsAllDrives=True,
+                )
 
-            with open(dest_path, "wb") as f:
-                downloader = MediaIoBaseDownload(f, request)
-                done = False
-                while not done:
-                    status, done = downloader.next_chunk()
+                with open(dest_path, "wb") as f:
+                    downloader = MediaIoBaseDownload(f, request)
+                    done = False
+                    while not done:
+                        status, done = downloader.next_chunk()
 
-            logger.info(
-                "file_downloaded",
-                file_id=file_id,
-                name=file_meta["name"],
-                size=file_meta.get("size", 0),
-                dest=str(dest_path),
-            )
-            return dest_path
+                logger.info(
+                    "file_downloaded",
+                    file_id=file_id,
+                    name=file_meta["name"],
+                    size=file_meta.get("size", 0),
+                    dest=str(dest_path),
+                )
+                return dest_path
 
-        except HttpError as e:
-            if e.resp.status == 404:
-                raise GoogleNotFoundError(f"File {file_id} not found") from e
-            if e.resp.status in (401, 403):
-                raise GoogleAccessDeniedError(f"Access denied to file {file_id}") from e
-            if e.resp.status == 429:
-                raise GoogleRateLimitError("Google API rate limit exceeded") from e
-            raise GoogleDriveError(f"Download failed: {e}") from e
+            except HttpError as e:
+                if e.resp.status == 404:
+                    raise GoogleNotFoundError(f"File {file_id} not found") from e
+                if e.resp.status in (401, 403):
+                    raise GoogleAccessDeniedError(f"Access denied to file {file_id}") from e
+                if e.resp.status == 429:
+                    if attempt >= RATE_LIMIT_MAX_RETRIES:
+                        raise GoogleRateLimitError(
+                            f"Rate limit exceeded after {attempt + 1} attempts"
+                        ) from e
+
+                    delay = min(RATE_LIMIT_BASE_DELAY * (2 ** attempt), RATE_LIMIT_MAX_DELAY)
+                    jitter = delay * RATE_LIMIT_JITTER * (2 * random.random() - 1)
+                    delay += jitter
+
+                    logger.warning(
+                        "rate_limit_retry",
+                        operation="download_file",
+                        file_id=file_id,
+                        attempt=attempt + 1,
+                        delay_seconds=round(delay, 1),
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise GoogleDriveError(f"Download failed: {e}") from e
+
+        raise GoogleRateLimitError("Rate limit handling exhausted")
 
     # ========== OAuth2 Flow ==========
 

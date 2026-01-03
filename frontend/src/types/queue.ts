@@ -1,5 +1,5 @@
 // Must match backend/app/db/models/enums.py
-export type JobType = 'DOWNLOAD_DESIGN' | 'EXTRACT_ARCHIVE' | 'IMPORT_FILES' | 'GENERATE_PREVIEW'
+export type JobType = 'DOWNLOAD_DESIGN' | 'EXTRACT_ARCHIVE' | 'IMPORT_FILES' | 'GENERATE_PREVIEW' | 'SYNC_IMPORT_SOURCE'
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'
 export type JobPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
 
@@ -24,6 +24,7 @@ export interface QueueItem {
   started_at: string | null
   completed_at: string | null
   design: QueueItemDesign | null
+  import_source: QueueItemImportSource | null
 }
 
 // Simplified design info for queue display
@@ -32,6 +33,13 @@ export interface QueueItemDesign {
   canonical_title: string
   canonical_designer: string
   channel_title: string | null
+}
+
+// Import source info for SYNC_IMPORT_SOURCE jobs
+export interface QueueItemImportSource {
+  id: string
+  name: string
+  source_type: string
 }
 
 // Queue list response
@@ -50,6 +58,7 @@ export interface QueueStats {
 }
 
 // Activity history item from GET /api/v1/activity/
+// Note: inherits import_source from QueueItem
 export interface ActivityItem extends QueueItem {
   duration_seconds: number | null
 }

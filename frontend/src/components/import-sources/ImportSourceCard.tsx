@@ -115,15 +115,23 @@ export function ImportSourceCard({
       )
     }
 
-    const statusStyles = {
+    const statusStyles: Record<string, string> = {
       ACTIVE: 'bg-accent-success/20 text-accent-success',
       PAUSED: 'bg-text-muted/20 text-text-muted',
       ERROR: 'bg-accent-danger/20 text-accent-danger',
       PENDING: 'bg-accent-warning/20 text-accent-warning',
+      RATE_LIMITED: 'bg-amber-500/20 text-amber-500',
+    }
+    const statusLabels: Record<string, string> = {
+      ACTIVE: 'ACTIVE',
+      PAUSED: 'PAUSED',
+      ERROR: 'ERROR',
+      PENDING: 'PENDING',
+      RATE_LIMITED: 'RATE LIMITED',
     }
     return (
-      <span className={`px-2 py-1 rounded text-xs font-medium ${statusStyles[source.status]}`}>
-        {source.status}
+      <span className={`px-2 py-1 rounded text-xs font-medium ${statusStyles[source.status] || 'bg-text-muted/20 text-text-muted'}`}>
+        {statusLabels[source.status] || source.status}
       </span>
     )
   }
@@ -257,9 +265,13 @@ export function ImportSourceCard({
           </div>
         </div>
 
-        {/* Error message if last sync failed */}
-        {source.status === 'ERROR' && source.last_sync_error && (
-          <div className="mt-3 px-3 py-2 bg-accent-danger/10 border border-accent-danger/20 rounded text-sm text-accent-danger">
+        {/* Error message if last sync failed or rate limited */}
+        {(source.status === 'ERROR' || source.status === 'RATE_LIMITED') && source.last_sync_error && (
+          <div className={`mt-3 px-3 py-2 rounded text-sm ${
+            source.status === 'RATE_LIMITED'
+              ? 'bg-amber-500/10 border border-amber-500/20 text-amber-500'
+              : 'bg-accent-danger/10 border border-accent-danger/20 text-accent-danger'
+          }`}>
             {source.last_sync_error}
           </div>
         )}

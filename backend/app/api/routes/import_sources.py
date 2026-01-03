@@ -285,6 +285,24 @@ async def create_import_source(
         sync_interval_hours=data.sync_interval_hours,
     )
     db.add(source)
+    await db.flush()  # Get the ID before queuing job
+
+    # Auto-queue initial sync job if sync is enabled
+    if data.sync_enabled:
+        queue = JobQueueService(db)
+        await queue.enqueue(
+            job_type=JobType.SYNC_IMPORT_SOURCE,
+            payload={
+                "source_id": source.id,
+                "auto_import": True,  # Auto-import on initial sync
+            },
+            priority=5,  # Normal priority
+        )
+        logger.info(
+            "import_source_initial_sync_queued",
+            source_id=source.id,
+        )
+
     await db.commit()
 
     # Reload with folders relationship eagerly loaded

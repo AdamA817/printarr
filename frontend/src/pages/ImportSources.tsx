@@ -41,17 +41,11 @@ export function ImportSources() {
 
   const handleAddSource = (formData: ImportSourceCreate) => {
     createSource.mutate(formData, {
-      onSuccess: (newSource) => {
+      onSuccess: () => {
         setIsAddModalOpen(false)
         createSource.reset()
-
-        // Auto-trigger sync for bulk folder sources
-        if (newSource.source_type === 'BULK_FOLDER' || newSource.source_type === 'GOOGLE_DRIVE') {
-          triggerSync.mutate({
-            id: newSource.id,
-            request: { auto_import: true },
-          })
-        }
+        // Note: Backend auto-queues initial sync job when sync_enabled=true,
+        // so we don't need to trigger sync manually here
       },
     })
   }

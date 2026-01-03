@@ -31,6 +31,7 @@ const jobTypeLabels: Record<string, string> = {
   EXTRACT_ARCHIVE: 'Extracting',
   IMPORT_FILES: 'Importing',
   GENERATE_PREVIEW: 'Generating Preview',
+  SYNC_IMPORT_SOURCE: 'Syncing',
 }
 
 // Priority options
@@ -107,6 +108,26 @@ function LoadingSpinner({ className }: { className?: string }) {
   )
 }
 
+function SyncIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+      <path d="M16 16h5v5" />
+    </svg>
+  )
+}
+
 export function QueueItem({ item, position }: QueueItemProps) {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [isChangingPriority, setIsChangingPriority] = useState(false)
@@ -136,6 +157,36 @@ export function QueueItem({ item, position }: QueueItemProps) {
 
   const isActive = item.status === 'RUNNING'
   const isQueued = item.status === 'QUEUED'
+  const isSyncJob = item.job_type === 'SYNC_IMPORT_SOURCE'
+
+  // Determine what to display based on job type
+  const getTitle = () => {
+    if (isSyncJob && item.import_source) {
+      return item.import_source.name
+    }
+    if (item.design) {
+      return item.design.canonical_title
+    }
+    return 'Unknown'
+  }
+
+  const getSubtitle = () => {
+    if (isSyncJob && item.import_source) {
+      const typeLabel = item.import_source.source_type === 'GOOGLE_DRIVE' ? 'Google Drive' : 'Folder'
+      return `Import Source (${typeLabel})`
+    }
+    if (item.design) {
+      const parts = []
+      if (item.design.canonical_designer) {
+        parts.push(`by ${item.design.canonical_designer}`)
+      }
+      if (item.design.channel_title) {
+        parts.push(item.design.channel_title)
+      }
+      return parts.join(' • ')
+    }
+    return ''
+  }
 
   return (
     <div className={`bg-bg-secondary rounded-lg p-4 ${isActive ? 'ring-1 ring-accent-primary/30' : ''}`}>
@@ -144,6 +195,8 @@ export function QueueItem({ item, position }: QueueItemProps) {
         <div className="w-12 h-12 bg-bg-tertiary rounded-lg flex items-center justify-center flex-shrink-0">
           {isActive ? (
             <LoadingSpinner className="w-6 h-6 text-accent-primary" />
+          ) : isSyncJob ? (
+            <SyncIcon className="w-6 h-6 text-text-muted" />
           ) : (
             <CubeIcon className="w-6 h-6 text-text-muted" />
           )}
@@ -154,29 +207,30 @@ export function QueueItem({ item, position }: QueueItemProps) {
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               {/* Title */}
-              {item.design ? (
+              {item.design && !isSyncJob ? (
                 <Link
                   to={`/designs/${item.design.id}`}
                   className="text-text-primary font-medium hover:text-accent-primary transition-colors block truncate"
                 >
-                  {item.design.canonical_title}
+                  {getTitle()}
+                </Link>
+              ) : isSyncJob && item.import_source ? (
+                <Link
+                  to="/settings/imports"
+                  className="text-text-primary font-medium hover:text-accent-primary transition-colors block truncate"
+                >
+                  {getTitle()}
                 </Link>
               ) : (
-                <span className="text-text-primary font-medium">Unknown Design</span>
+                <span className="text-text-primary font-medium">{getTitle()}</span>
               )}
 
-              {/* Designer & Channel */}
-              <div className="flex items-center gap-2 text-sm text-text-secondary mt-0.5">
-                {item.design?.canonical_designer && (
-                  <span>by {item.design.canonical_designer}</span>
-                )}
-                {item.design?.channel_title && (
-                  <>
-                    <span className="text-text-muted">•</span>
-                    <span>{item.design.channel_title}</span>
-                  </>
-                )}
-              </div>
+              {/* Subtitle */}
+              {getSubtitle() && (
+                <div className="flex items-center gap-2 text-sm text-text-secondary mt-0.5">
+                  <span>{getSubtitle()}</span>
+                </div>
+              )}
             </div>
 
             {/* Status & Position */}

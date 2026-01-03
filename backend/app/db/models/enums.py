@@ -215,6 +215,7 @@ class ImportSourceStatus(str, enum.Enum):
     PAUSED = "PAUSED"  # Temporarily disabled
     ERROR = "ERROR"  # Last sync failed
     PENDING = "PENDING"  # Waiting for initial sync
+    RATE_LIMITED = "RATE_LIMITED"  # Google API rate limited, retry later
 
 
 class ImportRecordStatus(str, enum.Enum):

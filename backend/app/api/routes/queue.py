@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,9 +11,10 @@ from sqlalchemy.orm import selectinload
 
 from app.core.logging import get_logger
 from app.db import get_db
-from app.db.models import Design, DesignSource, Job, JobStatus, JobType
+from app.db.models import Design, DesignSource, ImportSource, Job, JobStatus, JobType
 from app.schemas.queue import (
     DesignSummary,
+    ImportSourceSummary,
     QueueItemResponse,
     QueueListResponse,
     QueueStatsResponse,
@@ -76,6 +79,26 @@ async def list_queue(
     result = await db.execute(query)
     jobs = result.scalars().all()
 
+    # Collect source IDs from SYNC_IMPORT_SOURCE jobs
+    source_ids = set()
+    for job in jobs:
+        if job.type == JobType.SYNC_IMPORT_SOURCE and job.payload_json:
+            try:
+                payload = json.loads(job.payload_json)
+                if source_id := payload.get("source_id"):
+                    source_ids.add(source_id)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    # Load import sources in bulk
+    source_map: dict[str, ImportSource] = {}
+    if source_ids:
+        source_result = await db.execute(
+            select(ImportSource).where(ImportSource.id.in_(source_ids))
+        )
+        for source in source_result.scalars().all():
+            source_map[source.id] = source
+
     # Transform to response
     items = []
     for job in jobs:
@@ -94,6 +117,21 @@ async def list_queue(
                 channel_title=channel_title,
             )
 
+        # Get import source for SYNC_IMPORT_SOURCE jobs
+        import_source_summary = None
+        if job.type == JobType.SYNC_IMPORT_SOURCE and job.payload_json:
+            try:
+                payload = json.loads(job.payload_json)
+                if source_id := payload.get("source_id"):
+                    if source := source_map.get(source_id):
+                        import_source_summary = ImportSourceSummary(
+                            id=source.id,
+                            name=source.name,
+                            source_type=source.source_type.value,
+                        )
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         items.append(
             QueueItemResponse(
                 id=job.id,
@@ -103,6 +141,7 @@ async def list_queue(
                 progress=job.progress_percent,
                 progress_message=_get_progress_message(job),
                 design=design_summary,
+                import_source=import_source_summary,
                 created_at=job.created_at,
                 started_at=job.started_at,
                 last_error=job.last_error,
@@ -263,6 +302,10 @@ def _get_progress_message(job: Job) -> str | None:
             return "Extracting archives..."
         elif job.type == JobType.IMPORT_TO_LIBRARY:
             return "Organizing files..."
+        elif job.type == JobType.SYNC_IMPORT_SOURCE:
+            if job.progress_percent is not None:
+                return f"Syncing... {job.progress_percent:.0f}%"
+            return "Syncing..."
         else:
             return "Processing..."
     return None

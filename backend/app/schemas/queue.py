@@ -20,6 +20,16 @@ class DesignSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ImportSourceSummary(BaseModel):
+    """Summary of import source info for queue items."""
+
+    id: str
+    name: str
+    source_type: str
+
+    model_config = {"from_attributes": True}
+
+
 class QueueItemResponse(BaseModel):
     """Schema for a job in the queue."""
 
@@ -34,6 +44,9 @@ class QueueItemResponse(BaseModel):
 
     # Related design
     design: DesignSummary | None = None
+
+    # Related import source (for SYNC_IMPORT_SOURCE jobs)
+    import_source: ImportSourceSummary | None = None
 
     # Timing
     created_at: datetime
@@ -84,6 +97,9 @@ class ActivityItemResponse(BaseModel):
 
     # Related design
     design: DesignSummary | None = None
+
+    # Related import source (for SYNC_IMPORT_SOURCE jobs)
+    import_source: ImportSourceSummary | None = None
 
     # Timing
     created_at: datetime

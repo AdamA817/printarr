@@ -46,6 +46,12 @@ export function SyncStatusBadge({
         bgColor: 'bg-accent-warning/20',
         label: 'Pending',
       },
+      RATE_LIMITED: {
+        icon: <ThrottleIcon className="w-4 h-4" />,
+        color: 'text-amber-500',
+        bgColor: 'bg-amber-500/20',
+        label: 'Rate Limited',
+      },
     }
     return configs[status]
   }
@@ -75,8 +81,8 @@ export function SyncStatusBadge({
           Last sync: {formatRelativeTime(lastSyncAt)}
         </p>
       )}
-      {status === 'ERROR' && lastError && (
-        <p className="text-xs text-accent-danger truncate max-w-[200px]" title={lastError}>
+      {(status === 'ERROR' || status === 'RATE_LIMITED') && lastError && (
+        <p className={`text-xs ${status === 'RATE_LIMITED' ? 'text-amber-500' : 'text-accent-danger'} truncate max-w-[200px]`} title={lastError}>
           {lastError}
         </p>
       )}
@@ -150,6 +156,19 @@ function ClockIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  )
+}
+
+function ThrottleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
       />
     </svg>
   )
