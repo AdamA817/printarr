@@ -72,6 +72,8 @@ class BaseWorker(ABC):
         self._jobs_processed = 0
         self._jobs_failed = 0
         self._started_at: datetime | None = None
+        self._last_progress_update: datetime | None = None
+        self._progress_update_interval = 1.0  # Minimum seconds between updates
 
     @abstractmethod
     async def process(
@@ -160,6 +162,7 @@ class BaseWorker(ABC):
 
             # Process the job
             self._current_job = job
+            self._last_progress_update = None  # Reset throttle for new job
             payload = queue.get_payload(job)
 
             try:
@@ -212,20 +215,48 @@ class BaseWorker(ABC):
         self,
         current: int,
         total: int | None = None,
+        force: bool = False,
     ) -> None:
         """Update progress for the current job.
+
+        This method is non-fatal - if the progress update fails due to
+        database locking (common with SQLite during long-running operations),
+        the error is logged but doesn't cause the job to fail.
+
+        Progress updates are throttled to avoid excessive database writes.
+        Use force=True to bypass throttling (e.g., for 100% completion).
 
         Args:
             current: Current progress value.
             total: Total expected value.
+            force: Bypass throttling if True.
         """
         if self._current_job is None:
             return
 
-        async with async_session_maker() as db:
-            queue = JobQueueService(db)
-            await queue.update_progress(self._current_job.id, current, total)
-            await db.commit()
+        # Throttle progress updates to reduce DB contention
+        now = datetime.utcnow()
+        if not force and self._last_progress_update:
+            elapsed = (now - self._last_progress_update).total_seconds()
+            if elapsed < self._progress_update_interval:
+                return  # Skip this update
+
+        try:
+            async with async_session_maker() as db:
+                queue = JobQueueService(db)
+                await queue.update_progress(self._current_job.id, current, total)
+                await db.commit()
+            self._last_progress_update = now
+        except Exception as e:
+            # Progress updates are non-fatal - log and continue
+            # This prevents SQLite locking issues from causing job failures
+            logger.debug(
+                "progress_update_failed",
+                job_id=self._current_job.id,
+                current=current,
+                total=total,
+                error=str(e),
+            )
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the worker."""

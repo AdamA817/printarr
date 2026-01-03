@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -134,8 +135,13 @@ class SyncImportSourceWorker(BaseWorker):
         errors: list[str] = []
 
         async with async_session_maker() as db:
-            # Load the import source
-            source = await db.get(ImportSource, source_id)
+            # Load the import source with folders eagerly loaded
+            result = await db.execute(
+                select(ImportSource)
+                .options(selectinload(ImportSource.folders))
+                .where(ImportSource.id == source_id)
+            )
+            source = result.scalar_one_or_none()
             if not source:
                 raise NonRetryableError(f"Import source {source_id} not found")
 
@@ -268,8 +274,8 @@ class SyncImportSourceWorker(BaseWorker):
                     error=str(e),
                 )
 
-        # Update progress: complete
-        await self.update_progress(100, 100)
+        # Update progress: complete (force to bypass throttle)
+        await self.update_progress(100, 100, force=True)
 
         return {
             "detected": detected,
@@ -358,8 +364,8 @@ class SyncImportSourceWorker(BaseWorker):
                 db, source, conflict_resolution
             )
 
-        # Update progress: complete
-        await self.update_progress(100, 100)
+        # Update progress: complete (force to bypass throttle)
+        await self.update_progress(100, 100, force=True)
 
         return {
             "detected": detected,
