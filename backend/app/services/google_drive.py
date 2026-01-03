@@ -43,6 +43,76 @@ RATE_LIMIT_JITTER = 0.3  # 30% jitter
 
 logger = get_logger(__name__)
 
+
+class RequestPacer:
+    """Rate limiter for Google API requests.
+
+    Implements:
+    - Minimum delay between requests (prevents burst requests)
+    - Per-minute request limiting with sliding window
+    """
+
+    def __init__(
+        self,
+        min_delay: float = 0.5,
+        requests_per_minute: int = 60,
+    ):
+        self.min_delay = min_delay
+        self.requests_per_minute = requests_per_minute
+        self._last_request: datetime | None = None
+        self._request_times: list[datetime] = []
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        """Wait until it's safe to make a request."""
+        async with self._lock:
+            now = datetime.utcnow()
+
+            # Clean up old request times (older than 1 minute)
+            cutoff = now - timedelta(seconds=60)
+            self._request_times = [t for t in self._request_times if t > cutoff]
+
+            # Check per-minute limit
+            if len(self._request_times) >= self.requests_per_minute:
+                # Wait until oldest request falls out of window
+                oldest = self._request_times[0]
+                wait_time = 60 - (now - oldest).total_seconds()
+                if wait_time > 0:
+                    logger.debug(
+                        "rate_pacer_waiting",
+                        wait_seconds=round(wait_time, 2),
+                        reason="per_minute_limit",
+                    )
+                    await asyncio.sleep(wait_time)
+                    now = datetime.utcnow()
+
+            # Enforce minimum delay between requests
+            if self._last_request and self.min_delay > 0:
+                elapsed = (now - self._last_request).total_seconds()
+                if elapsed < self.min_delay:
+                    wait_time = self.min_delay - elapsed
+                    await asyncio.sleep(wait_time)
+
+            # Record this request
+            self._last_request = datetime.utcnow()
+            self._request_times.append(self._last_request)
+
+
+# Global pacer instance (initialized lazily with settings)
+_pacer: RequestPacer | None = None
+
+
+def get_request_pacer() -> RequestPacer:
+    """Get or create the global request pacer."""
+    global _pacer
+    if _pacer is None:
+        _pacer = RequestPacer(
+            min_delay=settings.google_request_delay,
+            requests_per_minute=settings.google_requests_per_minute,
+        )
+    return _pacer
+
+
 # Google Drive API scopes
 SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
@@ -357,6 +427,9 @@ class GoogleDriveService:
         async def _execute_with_retry() -> FolderInfo:
             for attempt in range(RATE_LIMIT_MAX_RETRIES + 1):
                 try:
+                    # Pace requests to avoid rate limiting
+                    await get_request_pacer().acquire()
+
                     file = service.files().get(
                         fileId=folder_id,
                         fields="id, name, mimeType, owners",
@@ -365,6 +438,9 @@ class GoogleDriveService:
 
                     if file.get("mimeType") != "application/vnd.google-apps.folder":
                         raise GoogleDriveError(f"ID {folder_id} is not a folder")
+
+                    # Pace second request
+                    await get_request_pacer().acquire()
 
                     # Count files in folder
                     query = f"'{folder_id}' in parents and trashed = false"
@@ -451,6 +527,9 @@ class GoogleDriveService:
 
         for attempt in range(RATE_LIMIT_MAX_RETRIES + 1):
             try:
+                # Pace requests to avoid rate limiting
+                await get_request_pacer().acquire()
+
                 query = f"'{folder_id}' in parents and trashed = false"
                 result = service.files().list(
                     q=query,
@@ -587,6 +666,9 @@ class GoogleDriveService:
 
         for attempt in range(RATE_LIMIT_MAX_RETRIES + 1):
             try:
+                # Pace requests to avoid rate limiting
+                await get_request_pacer().acquire()
+
                 # Get file metadata first
                 file_meta = service.files().get(
                     fileId=file_id,
@@ -596,6 +678,9 @@ class GoogleDriveService:
 
                 # Create parent directories
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Pace before download
+                await get_request_pacer().acquire()
 
                 # Download file
                 request = service.files().get_media(

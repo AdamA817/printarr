@@ -9,7 +9,6 @@ import {
   useCreateImportSource,
   useUpdateImportSource,
   useDeleteImportSource,
-  useTriggerSync,
   useAddFolder,
 } from '@/hooks/useImportSources'
 import {
@@ -36,7 +35,6 @@ export function ImportSources() {
   const createSource = useCreateImportSource()
   const updateSource = useUpdateImportSource()
   const deleteSource = useDeleteImportSource()
-  const triggerSync = useTriggerSync()
   const addFolder = useAddFolder()
 
   const handleAddSource = (formData: ImportSourceCreate) => {

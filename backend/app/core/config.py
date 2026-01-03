@@ -127,6 +127,20 @@ class Settings(BaseSettings):
         description="OAuth redirect URI",
     )
 
+    # Google API rate limiting settings
+    google_request_delay: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=10.0,
+        description="Delay in seconds between Google API requests (0.5-10)",
+    )
+    google_requests_per_minute: int = Field(
+        default=60,
+        ge=10,
+        le=1000,
+        description="Maximum Google API requests per minute (10-1000)",
+    )
+
     # Encryption key for storing OAuth tokens (auto-generated if not set)
     encryption_key: str | None = Field(
         default=None,
