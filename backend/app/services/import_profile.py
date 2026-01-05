@@ -101,15 +101,17 @@ BUILTIN_PROFILES: dict[str, dict] = {
     },
     "yosh-studios": {
         "name": "Yosh Studios",
-        "description": "Profile for Yosh Studios folder structure with tier-based organization. Requires Renders folder.",
+        "description": "Profile for Yosh Studios folder structure with tier-based organization. "
+        "Uses depth-based detection: Root -> Tier folders -> Design folders.",
         "config": ImportProfileConfig(
             detection=ProfileDetectionConfig(
                 model_extensions=[".stl", ".3mf"],
                 archive_extensions=[".zip", ".rar", ".7z"],
                 min_model_files=1,
                 structure="nested",
-                model_subfolders=["STLs", "stls", "Supported", "Unsupported", "Pre-Supported", "Un-Supported"],
-                require_preview_folder=True,
+                model_subfolders=["STL", "STLs", "stl", "stls", "Supported", "Unsupported", "Pre-Supported", "Un-Supported", "Models"],
+                require_preview_folder=False,  # Not needed with design_depth
+                design_depth=2,  # Root (0) -> Tier folders (1) -> Design (2)
             ),
             title=ProfileTitleConfig(
                 source="folder_name",
@@ -382,31 +384,41 @@ class ImportProfileService:
     # ========== Built-in Profile Seeding ==========
 
     async def ensure_builtin_profiles(self) -> int:
-        """Ensure all built-in profiles exist in the database.
+        """Ensure all built-in profiles exist in the database with current configs.
 
-        Creates any missing built-in profiles. Called on startup.
+        Creates any missing built-in profiles and updates existing ones if
+        the configuration has changed. Called on startup.
 
         Returns:
-            Number of profiles created.
+            Number of profiles created or updated.
         """
-        created = 0
+        changed = 0
         for key, profile_def in BUILTIN_PROFILES.items():
             existing = await self.get_profile_by_name(profile_def["name"])
+            new_config_json = profile_def["config"].model_dump_json()
+
             if existing is None:
+                # Create new built-in profile
                 profile = ImportProfile(
                     name=profile_def["name"],
                     description=profile_def["description"],
                     is_builtin=True,
-                    config_json=profile_def["config"].model_dump_json(),
+                    config_json=new_config_json,
                 )
                 self.db.add(profile)
-                created += 1
+                changed += 1
                 logger.info("builtin_profile_created", name=profile_def["name"])
+            elif existing.is_builtin and existing.config_json != new_config_json:
+                # Update existing built-in profile with new config
+                existing.config_json = new_config_json
+                existing.description = profile_def["description"]
+                changed += 1
+                logger.info("builtin_profile_updated", name=profile_def["name"])
 
-        if created > 0:
+        if changed > 0:
             await self.db.flush()
 
-        return created
+        return changed
 
     # ========== Design Detection (DEC-036) ==========
 
@@ -577,11 +589,11 @@ class ImportProfileService:
                 except PermissionError:
                     pass
 
-        # Check wildcard folders
+        # Check wildcard folders (case-insensitive matching)
         for pattern in preview.wildcard_folders:
             try:
                 for subfolder in folder_path.iterdir():
-                    if subfolder.is_dir() and fnmatch.fnmatch(subfolder.name, pattern):
+                    if subfolder.is_dir() and fnmatch.fnmatch(subfolder.name.lower(), pattern.lower()):
                         has_preview_folder = True
                         for f in subfolder.rglob("*"):
                             if f.is_file() and f.suffix.lower() in preview_extensions:
@@ -682,7 +694,7 @@ class ImportProfileService:
             List of (path, detection_result) tuples for all detected designs.
         """
         designs: list[tuple[Path, DesignDetectionResult]] = []
-        self._traverse_recursive(root_path, config, designs)
+        self._traverse_recursive(root_path, config, designs, current_depth=0)
         return designs
 
     def _traverse_recursive(
@@ -690,6 +702,7 @@ class ImportProfileService:
         folder_path: Path,
         config: ImportProfileConfig,
         results: list[tuple[Path, DesignDetectionResult]],
+        current_depth: int = 0,
     ) -> None:
         """Recursive helper for folder traversal.
 
@@ -697,12 +710,35 @@ class ImportProfileService:
             folder_path: Current folder to check.
             config: Import profile configuration.
             results: Accumulator for detected designs.
+            current_depth: Current depth in the tree (0 = root).
         """
         # Skip ignored folders
         if self._should_ignore_folder(folder_path.name, config.ignore):
             return
 
-        # Check if this folder is a design
+        # Check if we're using depth-based detection
+        design_depth = config.detection.design_depth
+        if design_depth is not None:
+            if current_depth == design_depth:
+                # At target depth - treat this folder as a design
+                detection = self._create_design_from_folder(folder_path, config)
+                if detection.is_design:
+                    results.append((folder_path, detection))
+                return
+            elif current_depth < design_depth:
+                # Not deep enough yet, recurse into children
+                try:
+                    for child in folder_path.iterdir():
+                        if child.is_dir():
+                            self._traverse_recursive(child, config, results, current_depth + 1)
+                except PermissionError:
+                    logger.warning("permission_denied_traversal", path=str(folder_path))
+                return
+            else:
+                # Deeper than target, skip
+                return
+
+        # Normal detection logic (design_depth not set)
         detection = self.is_design_folder(folder_path, config)
 
         if detection.is_design:
@@ -714,6 +750,63 @@ class ImportProfileService:
         try:
             for child in folder_path.iterdir():
                 if child.is_dir():
-                    self._traverse_recursive(child, config, results)
+                    self._traverse_recursive(child, config, results, current_depth + 1)
         except PermissionError:
             logger.warning("permission_denied_traversal", path=str(folder_path))
+
+    def _create_design_from_folder(
+        self,
+        folder_path: Path,
+        config: ImportProfileConfig,
+    ) -> DesignDetectionResult:
+        """Create a design from a folder without complex detection logic.
+
+        Used when design_depth is set - treats the folder as a design and
+        scans for all model/preview files within it.
+
+        Args:
+            folder_path: Folder to treat as a design.
+            config: Import profile configuration.
+
+        Returns:
+            DesignDetectionResult with all files found.
+        """
+        detection = config.detection
+        model_extensions = set(ext.lower() for ext in detection.model_extensions)
+        archive_extensions = set(ext.lower() for ext in detection.archive_extensions)
+        preview_extensions = set(ext.lower() for ext in config.preview.extensions)
+
+        model_files: list[str] = []
+        archive_files: list[str] = []
+        preview_files: list[str] = []
+
+        # Scan all files recursively
+        try:
+            for f in folder_path.rglob("*"):
+                if f.is_file():
+                    ext = f.suffix.lower()
+                    rel_path = str(f.relative_to(folder_path))
+
+                    if ext in model_extensions:
+                        model_files.append(rel_path)
+                    elif ext in archive_extensions:
+                        archive_files.append(rel_path)
+                    elif ext in preview_extensions:
+                        preview_files.append(rel_path)
+        except PermissionError:
+            pass
+
+        # Must have at least one model or archive file
+        if not model_files and not archive_files:
+            return DesignDetectionResult(is_design=False)
+
+        title = self._extract_title(folder_path, config.title)
+
+        return DesignDetectionResult(
+            is_design=True,
+            title=title,
+            model_files=model_files,
+            archive_files=archive_files,
+            preview_files=preview_files,
+            detection_reason=f"Depth-based detection at level {config.detection.design_depth}",
+        )

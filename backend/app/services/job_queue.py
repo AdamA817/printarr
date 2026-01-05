@@ -448,30 +448,35 @@ class JobQueueService:
     async def cancel_jobs_for_import_source(
         self,
         source_id: str,
+        import_record_ids: list[str] | None = None,
     ) -> int:
         """Cancel all pending/running jobs for an import source (#191).
 
-        Cancels SYNC_IMPORT_SOURCE jobs that have this source_id in their payload.
+        Cancels:
+        - SYNC_IMPORT_SOURCE jobs that have this source_id in their payload
+        - DOWNLOAD_IMPORT_RECORD jobs for the given import record IDs
+
         This should be called when deleting an import source.
 
         Args:
             source_id: The import source ID.
+            import_record_ids: Optional list of import record IDs to cancel jobs for.
 
         Returns:
             Number of jobs canceled.
         """
-        # Fetch jobs to check payload (JSON queries differ between SQLite/PostgreSQL)
+        job_ids_to_cancel = []
+
+        # Cancel SYNC_IMPORT_SOURCE jobs
         result = await self.db.execute(
             select(Job).where(
                 Job.type == JobType.SYNC_IMPORT_SOURCE,
                 Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
             )
         )
-        jobs = result.scalars().all()
+        sync_jobs = result.scalars().all()
 
-        # Filter by source_id in payload
-        job_ids_to_cancel = []
-        for job in jobs:
+        for job in sync_jobs:
             if job.payload_json:
                 try:
                     payload = json.loads(job.payload_json)
@@ -479,6 +484,25 @@ class JobQueueService:
                         job_ids_to_cancel.append(job.id)
                 except json.JSONDecodeError:
                     pass
+
+        # Cancel DOWNLOAD_IMPORT_RECORD jobs for the import records
+        if import_record_ids:
+            result = await self.db.execute(
+                select(Job).where(
+                    Job.type == JobType.DOWNLOAD_IMPORT_RECORD,
+                    Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+                )
+            )
+            download_jobs = result.scalars().all()
+
+            for job in download_jobs:
+                if job.payload_json:
+                    try:
+                        payload = json.loads(job.payload_json)
+                        if payload.get("import_record_id") in import_record_ids:
+                            job_ids_to_cancel.append(job.id)
+                    except json.JSONDecodeError:
+                        pass
 
         if not job_ids_to_cancel:
             return 0

@@ -84,7 +84,7 @@ class Design(Base):
 
     # Import source (v0.8 - for non-Telegram imports)
     import_source_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("import_sources.id"), nullable=True
+        String(36), ForeignKey("import_sources.id", ondelete="SET NULL"), nullable=True
     )
 
     # Timestamps

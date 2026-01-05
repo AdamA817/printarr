@@ -496,9 +496,30 @@ async def delete_import_source(
 
     source = await _get_source_or_404(db, source_id)
 
-    # Cancel pending sync jobs for this source (#191)
+    # Get all import record IDs for this source (needed for job cancellation)
+    # Records can be linked via import_source_id (deprecated) or via folders
+    from app.db.models import ImportRecord, ImportSourceFolder
+    from sqlalchemy import or_
+
+    # Get folder IDs for this source
+    folders_result = await db.execute(
+        select(ImportSourceFolder.id).where(ImportSourceFolder.import_source_id == source_id)
+    )
+    folder_ids = [row[0] for row in folders_result.fetchall()]
+
+    # Get import records (via source or folders)
+    record_conditions = [ImportRecord.import_source_id == source_id]
+    if folder_ids:
+        record_conditions.append(ImportRecord.import_source_folder_id.in_(folder_ids))
+
+    records_result = await db.execute(
+        select(ImportRecord.id).where(or_(*record_conditions))
+    )
+    import_record_ids = [row[0] for row in records_result.fetchall()]
+
+    # Cancel pending jobs for this source (#191) - includes SYNC and DOWNLOAD jobs
     queue = JobQueueService(db)
-    canceled_count = await queue.cancel_jobs_for_import_source(source_id)
+    canceled_count = await queue.cancel_jobs_for_import_source(source_id, import_record_ids)
     if canceled_count > 0:
         logger.info(
             "import_source_jobs_canceled",

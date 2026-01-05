@@ -36,6 +36,13 @@ class ProfileDetectionConfig(BaseModel):
         default=False,
         description="Require a preview/renders folder to be considered a design",
     )
+    design_depth: int | None = Field(
+        default=None,
+        ge=1,
+        le=10,
+        description="If set, treat ALL folders at this depth as designs (skips detection logic). "
+        "Depth 1 = immediate children of root, depth 2 = grandchildren, etc.",
+    )
 
 
 class ProfileTitleConfig(BaseModel):

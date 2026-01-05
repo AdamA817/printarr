@@ -1261,17 +1261,20 @@ class GoogleDriveService:
         folder: VirtualFolder,
         config: "ImportProfileConfig",
         current_path: str,
+        current_depth: int = 0,
     ) -> list[DetectedGoogleDriveDesign]:
         """Recursively detect designs in a folder tree.
 
         Implements the same traversal strategy as local folders:
-        - If a folder is a design, add it and don't recurse deeper
+        - If design_depth is set and we're at that depth, treat all folders as designs
+        - Otherwise, if a folder is a design, add it and don't recurse deeper
         - If not a design, recurse into children
 
         Args:
             folder: Current folder to check.
             config: Import profile configuration.
             current_path: Current relative path from root.
+            current_depth: Current depth in the tree (0 = root).
 
         Returns:
             List of detected designs.
@@ -1284,7 +1287,28 @@ class GoogleDriveService:
         if folder.name and self._should_ignore_folder(folder.name, config.ignore):
             return results
 
-        # Check if this folder is a design
+        # Check if we're using depth-based detection
+        design_depth = config.detection.design_depth
+        if design_depth is not None:
+            if current_depth == design_depth:
+                # At target depth - treat this folder as a design
+                detection = self._create_design_from_folder(folder, config)
+                if detection:
+                    results.append(detection)
+                return results
+            elif current_depth < design_depth:
+                # Not deep enough yet, recurse into subfolders
+                for subfolder in folder.subfolders.values():
+                    subfolder_path = f"{current_path}/{subfolder.name}" if current_path else subfolder.name
+                    results.extend(self._detect_designs_in_tree(
+                        subfolder, config, subfolder_path, current_depth + 1
+                    ))
+                return results
+            else:
+                # Deeper than target, shouldn't happen but skip
+                return results
+
+        # Normal detection logic (design_depth not set)
         detection = self._is_design_folder_virtual(folder, config)
 
         if detection is not None:
@@ -1295,9 +1319,68 @@ class GoogleDriveService:
         # Not a design, recurse into subfolders
         for subfolder in folder.subfolders.values():
             subfolder_path = f"{current_path}/{subfolder.name}" if current_path else subfolder.name
-            results.extend(self._detect_designs_in_tree(subfolder, config, subfolder_path))
+            results.extend(self._detect_designs_in_tree(
+                subfolder, config, subfolder_path, current_depth + 1
+            ))
 
         return results
+
+    def _create_design_from_folder(
+        self,
+        folder: VirtualFolder,
+        config: "ImportProfileConfig",
+    ) -> DetectedGoogleDriveDesign | None:
+        """Create a design from a folder without complex detection logic.
+
+        Used when design_depth is set - treats the folder as a design and
+        scans for all model/preview files within it.
+
+        Args:
+            folder: Folder to treat as a design.
+            config: Import profile configuration.
+
+        Returns:
+            DetectedGoogleDriveDesign or None if folder is empty/ignored.
+        """
+        detection = config.detection
+        model_extensions = set(ext.lower() for ext in detection.model_extensions)
+        archive_extensions = set(ext.lower() for ext in detection.archive_extensions)
+        preview_extensions = set(ext.lower() for ext in config.preview.extensions)
+
+        model_files: list[str] = []
+        archive_files: list[str] = []
+        preview_files: list[str] = []
+        total_size = 0
+
+        # Scan all files recursively
+        for rel_path, f in folder.get_all_files_recursive():
+            ext = self._get_extension(f.name)
+            total_size += f.size
+
+            if ext in model_extensions:
+                model_files.append(rel_path)
+            elif ext in archive_extensions:
+                archive_files.append(rel_path)
+            elif ext in preview_extensions:
+                preview_files.append(rel_path)
+
+        # Must have at least one model or archive file
+        if not model_files and not archive_files:
+            return None
+
+        # Extract title
+        title = self._extract_title_from_name(folder.name, config.title)
+
+        return DetectedGoogleDriveDesign(
+            folder_id=folder.id,
+            folder_name=folder.name,
+            relative_path=folder.path,
+            title=title,
+            model_files=model_files,
+            archive_files=archive_files,
+            preview_files=preview_files,
+            total_size=total_size,
+        )
 
     def _is_design_folder_virtual(
         self,
@@ -1365,10 +1448,10 @@ class GoogleDriveService:
                     if ext in preview_extensions:
                         preview_files.append(f"{preview_folder.name}/{rel_path}")
 
-        # Check wildcard preview folders
+        # Check wildcard preview folders (case-insensitive matching)
         for pattern in config.preview.wildcard_folders:
             for subfolder in folder.subfolders.values():
-                if fnmatch.fnmatch(subfolder.name, pattern):
+                if fnmatch.fnmatch(subfolder.name.lower(), pattern.lower()):
                     has_preview_folder = True
                     for rel_path, f in subfolder.get_all_files_recursive():
                         ext = self._get_extension(f.name)
