@@ -46,6 +46,22 @@ function formatDuration(seconds: number | null): string {
   return `${hours}h ${mins}m`
 }
 
+function formatFileSize(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined || bytes === 0) return '--'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+function formatSpeed(bytes: number | null | undefined, seconds: number | null): string {
+  if (!bytes || !seconds || seconds === 0) return '--'
+  const bytesPerSecond = bytes / seconds
+  if (bytesPerSecond < 1024) return `${bytesPerSecond.toFixed(0)} B/s`
+  if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`
+  return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`
+}
+
 function formatTimestamp(dateString: string | null): string {
   if (!dateString) return '--'
   const date = new Date(dateString)
@@ -231,12 +247,66 @@ export function HistoryItem({ item }: HistoryItemProps) {
             </div>
 
             {/* Meta info */}
-            <div className="mt-2 flex items-center gap-4 text-xs text-text-muted">
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-muted">
               <span>{formatTimestamp(item.completed_at)}</span>
               {item.duration_seconds !== null && (
                 <>
                   <span>•</span>
                   <span>Duration: {formatDuration(item.duration_seconds)}</span>
+                </>
+              )}
+              {/* Result stats based on job type */}
+              {item.result && item.status === 'SUCCESS' && (
+                <>
+                  {/* Download job stats */}
+                  {item.job_type === 'DOWNLOAD_DESIGN' && item.result.total_bytes && (
+                    <>
+                      <span>•</span>
+                      <span>{formatFileSize(item.result.total_bytes)}</span>
+                      <span>•</span>
+                      <span>{formatSpeed(item.result.total_bytes, item.duration_seconds)}</span>
+                      {item.result.files_downloaded && (
+                        <>
+                          <span>•</span>
+                          <span>{item.result.files_downloaded} file{item.result.files_downloaded !== 1 ? 's' : ''}</span>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {/* Extraction job stats */}
+                  {item.job_type === 'EXTRACT_ARCHIVE' && (
+                    <>
+                      {item.result.archives_extracted && (
+                        <>
+                          <span>•</span>
+                          <span>{item.result.archives_extracted} archive{item.result.archives_extracted !== 1 ? 's' : ''}</span>
+                        </>
+                      )}
+                      {item.result.files_created && (
+                        <>
+                          <span>•</span>
+                          <span>{item.result.files_created} file{item.result.files_created !== 1 ? 's' : ''} extracted</span>
+                        </>
+                      )}
+                    </>
+                  )}
+                  {/* Import job stats */}
+                  {item.job_type === 'IMPORT_FILES' && (
+                    <>
+                      {item.result.files_imported && (
+                        <>
+                          <span>•</span>
+                          <span>{item.result.files_imported} file{item.result.files_imported !== 1 ? 's' : ''} imported</span>
+                        </>
+                      )}
+                      {item.result.total_bytes && (
+                        <>
+                          <span>•</span>
+                          <span>{formatFileSize(item.result.total_bytes)}</span>
+                        </>
+                      )}
+                    </>
+                  )}
                 </>
               )}
             </div>

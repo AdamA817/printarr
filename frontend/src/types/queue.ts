@@ -57,10 +57,26 @@ export interface QueueStats {
   total_active: number
 }
 
+// Result stats for completed jobs (#95)
+export interface JobResultStats {
+  // Download jobs
+  files_downloaded?: number
+  total_bytes?: number
+  has_archives?: boolean
+  // Extraction jobs
+  archives_extracted?: number
+  files_created?: number
+  nested_archives?: number
+  // Import jobs
+  files_imported?: number
+  library_path?: string
+}
+
 // Activity history item from GET /api/v1/activity/
 // Note: inherits import_source from QueueItem
 export interface ActivityItem extends QueueItem {
   duration_seconds: number | null
+  result: JobResultStats | null
 }
 
 export interface ActivityList {
