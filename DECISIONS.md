@@ -1424,6 +1424,95 @@ Split import into scan + individual download jobs:
 
 ---
 
+### DEC-041: Deduplication Strategy
+**Date**: 2026-01-05
+**Status**: Accepted
+
+**Context**
+v0.9 introduces deduplication to detect and merge duplicate designs across channels and import sources. Need to define when detection runs, what signals to use, and how to handle matches.
+
+**Decisions Made**
+
+1. **Detection Timing**: Two-stage approach
+   - Pre-download: Heuristic matching to skip obvious duplicates (saves bandwidth)
+   - Post-download: SHA-256 hash verification for exact file matching
+
+2. **Matching Signals** (all used, weighted for confidence)
+   - Title + designer match (fuzzy matching)
+   - File size + filename similarity
+   - Thangs ID match (same external link = same design)
+   - SHA-256 file hash (post-download, exact match)
+
+3. **Merge Behavior**
+   - Auto-merge silently when duplicate detected
+   - Merged design retains preferred source (first downloaded or user-selected)
+   - User can "split" merged design to undo (creates new independent design)
+   - No data loss: all sources tracked via DesignSource records
+
+4. **Hash Algorithm**: SHA-256
+   - Standard cryptographic hash, collision-resistant
+   - Computed during/after download, stored per DesignFile
+   - Used for exact duplicate detection post-download
+
+**Implementation Notes**
+- `DuplicateService` handles detection and merge logic
+- New `DuplicateCandidate` table for queuing potential matches
+- `DesignFile.file_hash` field for SHA-256 storage
+- Confidence scoring: Thangs ID (1.0) > Hash (1.0) > Title+Designer (0.7) > Filename+Size (0.5)
+
+**Consequences**
+- Reduces redundant downloads when same design appears in multiple channels
+- Clean library with single entry per design, multiple sources linked
+- Silent auto-merge requires good splitting UX if user disagrees
+- Hash computation adds minor overhead to download phase
+
+---
+
+### DEC-042: Reliability & Error Handling Strategy
+**Date**: 2026-01-05
+**Status**: Accepted
+
+**Context**
+v0.9 includes reliability improvements for job handling, Telegram rate limiting, and error visibility. Need to define retry behavior, rate limiting approach, and UI requirements.
+
+**Decisions Made**
+
+1. **Job Retry Logic**
+   - Automatic retry with exponential backoff: 1m, 5m, 15m, 60m
+   - Max retries: 4 (configurable per job type)
+   - Final failure moves job to FAILED status with error details
+   - User can manually retry failed jobs from Activity page
+   - New Job fields: `retry_count`, `next_retry_at`, `last_error`
+
+2. **Telegram Rate Limiting**
+   - Detect FloodWaitError and respect wait time
+   - Proactive throttling: max 30 requests/minute to Telegram
+   - Per-channel backoff when 429 received
+   - Queue jobs rather than blocking (async-friendly)
+   - Log rate limit events for debugging
+
+3. **Error Handling UI**
+   - Activity page shows error details for failed jobs
+   - Expandable error message with stack trace (admin-only detail)
+   - "Retry" button on failed jobs
+   - "Clear All Failed" bulk action
+   - Toast notifications for job failures
+   - System health indicator in sidebar (green/yellow/red)
+
+**Implementation Notes**
+- `RetryService` handles backoff calculation and rescheduling
+- `TelegramRateLimiter` wrapper for all Telethon calls
+- Error categorization: TRANSIENT (retry), PERMANENT (no retry), UNKNOWN (retry once)
+- Health check endpoint: `/api/v1/health/detailed` with subsystem status
+
+**Consequences**
+- Failed operations recover automatically when possible
+- Users have visibility into what went wrong
+- Telegram bans prevented through proactive limiting
+- More complex job state machine, but clearer failure handling
+
+---
+
 ## Pending Decisions
 
 *No pending decisions at this time.*
