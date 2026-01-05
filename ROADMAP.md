@@ -244,45 +244,46 @@ Channels like Wicked STL post designs across multiple messages:
 
 ---
 
-## v0.8 - Manual Imports
+## v0.8 - Manual Imports ✅
 **Goal**: Import designs from external sources beyond Telegram
+**Status**: Complete
 
 ### Scope
-- [ ] **Google Drive Integration**:
-  - [ ] Add Google Drive links as import sources
-  - [ ] Support both public and authenticated (OAuth) access
-  - [ ] Periodic sync for new files in linked folders
-  - [ ] Folder traversal to detect designs
-- [ ] **Direct File Upload**:
-  - [ ] Upload files directly via web UI
-  - [ ] Drag-and-drop support
-  - [ ] ZIP/archive upload and extraction
-- [ ] **Bulk Folder Import**:
-  - [ ] Monitor local folders for new designs
-  - [ ] Support multiple bulk import paths
-  - [ ] Detect and import existing library content
-- [ ] **Import Profiles**:
-  - [ ] Configurable rules for different folder structures
-  - [ ] Built-in presets (Yosh Studios, Supported/Unsupported, etc.)
-  - [ ] Design detection algorithm (model files at root OR in subfolders)
-  - [ ] Title extraction from folder names
-  - [ ] Preview folder detection (Renders/, Images/)
-  - [ ] Auto-tagging from folder hierarchy
-  - [ ] Ignore patterns (slicer files, project folders)
-- [ ] **Metadata & Attribution**:
-  - [ ] Default designer per import source
-  - [ ] Default tags per import source
-  - [ ] Optional virtual channel assignment
-  - [ ] Conflict handling (ask user, skip existing)
-- [ ] **Import Source Management UI**:
-  - [ ] Add/edit/remove import sources
-  - [ ] Configure sync intervals
-  - [ ] View import history
-  - [ ] Manual "Sync Now" trigger
-- [ ] **Auto-Queue Preview Renders**:
-  - [ ] Queue GENERATE_RENDER job after IMPORT_TO_LIBRARY completes
-  - [ ] Skip if design already has preview images
-  - [ ] Works for both Telegram downloads and manual imports
+- [x] **Google Drive Integration**:
+  - [x] Add Google Drive links as import sources
+  - [x] Support both public and authenticated (OAuth) access
+  - [x] Periodic sync for new files in linked folders
+  - [x] Folder traversal to detect designs
+- [x] **Direct File Upload**:
+  - [x] Upload files directly via web UI
+  - [x] Drag-and-drop support
+  - [x] ZIP/archive upload and extraction
+- [x] **Bulk Folder Import**:
+  - [x] Monitor local folders for new designs
+  - [x] Support multiple bulk import paths
+  - [x] Detect and import existing library content
+- [x] **Import Profiles**:
+  - [x] Configurable rules for different folder structures
+  - [x] Built-in presets (Yosh Studios, Supported/Unsupported, etc.)
+  - [x] Design detection algorithm (model files at root OR in subfolders)
+  - [x] Title extraction from folder names
+  - [x] Preview folder detection (Renders/, Images/)
+  - [x] Auto-tagging from folder hierarchy
+  - [x] Ignore patterns (slicer files, project folders)
+- [x] **Metadata & Attribution**:
+  - [x] Default designer per import source
+  - [x] Default tags per import source
+  - [x] Optional virtual channel assignment
+  - [x] Conflict handling (ask user, skip existing)
+- [x] **Import Source Management UI**:
+  - [x] Add/edit/remove import sources
+  - [x] Configure sync intervals
+  - [x] View import history
+  - [x] Manual "Sync Now" trigger
+- [x] **Auto-Queue Preview Renders**:
+  - [x] Queue GENERATE_RENDER job after IMPORT_TO_LIBRARY completes
+  - [x] Skip if design already has preview images
+  - [x] Works for both Telegram downloads and manual imports
 
 ### Success Criteria
 - Add a Google Drive folder link (public or authenticated)
@@ -357,9 +358,9 @@ Channels like Wicked STL post designs across multiple messages:
 
 ## Current Status
 
-**Active Version**: v0.8 (planning complete, ready for implementation)
+**Active Version**: v0.9 - Deduplication & Reliability
 
-**Last Updated**: 2026-01-02
+**Last Updated**: 2026-01-05
 
 ---
 
@@ -374,6 +375,6 @@ Channels like Wicked STL post designs across multiple messages:
 | v0.5 | Downloads | ✅ Complete | Job queue + library + session-per-operation pattern |
 | v0.6 | Live Monitoring & Discovery | ✅ Complete | SyncService + DiscoveryService + Dashboard |
 | v0.7 | Previews & Metadata | ✅ Complete | Images + tags + Thangs enrichment |
-| v0.8 | Manual Imports | 🔜 Next | Google Drive + uploads + bulk folders |
-| v0.9 | Deduplication | - | Handle duplicates |
+| v0.8 | Manual Imports | ✅ Complete | Google Drive + uploads + bulk folders + PostgreSQL + import profiles |
+| v0.9 | Deduplication | 🔜 Next | Handle duplicates + reliability |
 | v1.0 | Production | - | Full release |
