@@ -6,13 +6,20 @@ import asyncio
 import time
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
 from app.core.logging import get_logger
-from app.db.models import Job, JobType
+from app.db.models import Attachment, Design, DesignSource, Job, JobType
 from app.db.session import async_session_maker
 from app.services.download import DownloadError, DownloadService
+from app.services.duplicate import DuplicateService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
 logger = get_logger(__name__)
+
+# Auto-merge threshold for pre-download duplicate check
+AUTO_MERGE_THRESHOLD = 0.9
 
 # Throttle progress updates to avoid database spam
 PROGRESS_UPDATE_INTERVAL_SECONDS = 1.0
@@ -78,6 +85,22 @@ class DownloadWorker(BaseWorker):
             job_id=job.id,
             design_id=design_id,
         )
+
+        # Check for duplicates before downloading (DEC-041 / #216)
+        merged_design = await self._check_pre_download_duplicate(design_id)
+        if merged_design:
+            logger.info(
+                "download_skipped_duplicate_merged",
+                job_id=job.id,
+                design_id=design_id,
+                merged_into_design_id=merged_design.id,
+            )
+            return {
+                "status": "skipped_duplicate",
+                "merged_into": merged_design.id,
+                "files_downloaded": 0,
+                "total_bytes": 0,
+            }
 
         try:
             # DownloadService manages its own sessions for download_design
@@ -211,3 +234,86 @@ class DownloadWorker(BaseWorker):
                     )
 
         return sync_progress
+
+    async def _check_pre_download_duplicate(self, design_id: str) -> Design | None:
+        """Check for duplicates before downloading (DEC-041 / #216).
+
+        If a high-confidence duplicate is found, merge sources instead of downloading.
+
+        Args:
+            design_id: The design ID to check.
+
+        Returns:
+            The merged design if duplicate was found and merged, None otherwise.
+        """
+        async with async_session_maker() as db:
+            # Load design with sources and attachments
+            result = await db.execute(
+                select(Design)
+                .options(
+                    selectinload(Design.sources).selectinload(DesignSource.message)
+                )
+                .where(Design.id == design_id)
+            )
+            design = result.scalar_one_or_none()
+
+            if not design:
+                return None
+
+            # Build file info from attachments
+            files: list[dict] = []
+            for source in design.sources:
+                if source.message:
+                    # Get attachments for this message
+                    attach_result = await db.execute(
+                        select(Attachment).where(Attachment.message_id == source.message.id)
+                    )
+                    attachments = attach_result.scalars().all()
+
+                    for att in attachments:
+                        if att.file_name and att.file_size:
+                            files.append({
+                                "filename": att.file_name,
+                                "size": att.file_size,
+                            })
+
+            # Check for duplicates
+            dup_service = DuplicateService(db)
+            match, match_type, confidence = await dup_service.check_pre_download(
+                title=design.canonical_title or "",
+                designer=design.canonical_designer or "",
+                files=files,
+            )
+
+            if match and confidence >= AUTO_MERGE_THRESHOLD:
+                # High confidence match - merge sources instead of downloading
+                logger.info(
+                    "pre_download_duplicate_found",
+                    design_id=design_id,
+                    match_design_id=match.id,
+                    match_type=match_type.value if match_type else None,
+                    confidence=confidence,
+                )
+
+                # Move sources from this design to the matched design
+                for source in design.sources:
+                    source.design_id = match.id
+                    source.is_preferred = False  # Don't override existing preferred
+
+                # Delete the duplicate design (it has no files yet)
+                await db.delete(design)
+                await db.commit()
+
+                return match
+
+            elif match and confidence > 0:
+                # Lower confidence - log for review but still download
+                logger.info(
+                    "pre_download_potential_duplicate",
+                    design_id=design_id,
+                    match_design_id=match.id,
+                    match_type=match_type.value if match_type else None,
+                    confidence=confidence,
+                )
+
+            return None

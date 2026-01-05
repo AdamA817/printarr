@@ -34,10 +34,14 @@ from app.db.models import (
 )
 from app.db.session import async_session_maker
 from app.services.auto_render import auto_queue_render_for_design
+from app.services.duplicate import DuplicateService
 from app.services.google_drive import GoogleDriveError, GoogleDriveService, GoogleRateLimitError
 from app.services.job_queue import JobQueueService
 from app.utils import compute_file_hash
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
+
+# Auto-merge threshold for pre-download duplicate check (DEC-041 / #216)
+AUTO_MERGE_THRESHOLD = 0.9
 
 # File extensions for 3D model files
 MODEL_EXTENSIONS = {".stl", ".3mf", ".obj", ".step", ".stp", ".iges", ".igs", ".blend", ".gcode"}
@@ -102,6 +106,27 @@ class DownloadImportRecordWorker(BaseWorker):
                     "record_id": import_record_id,
                     "status": "already_imported",
                     "design_id": record.design_id,
+                }
+
+            # Check for duplicates before downloading (DEC-041 / #216)
+            existing_design = await self._check_pre_download_duplicate(
+                db, record, source
+            )
+            if existing_design:
+                # High confidence duplicate found - skip download and link record
+                record.status = ImportRecordStatus.SKIPPED
+                record.design_id = existing_design.id
+                await db.commit()
+
+                logger.info(
+                    "download_skipped_duplicate_found",
+                    record_id=import_record_id,
+                    match_design_id=existing_design.id,
+                )
+                return {
+                    "record_id": import_record_id,
+                    "status": "skipped_duplicate",
+                    "design_id": existing_design.id,
                 }
 
             try:
@@ -305,3 +330,54 @@ class DownloadImportRecordWorker(BaseWorker):
     async def _compute_file_hash(self, file_path: Path) -> str:
         """Compute SHA256 hash of a file."""
         return await compute_file_hash(file_path)
+
+    async def _check_pre_download_duplicate(
+        self,
+        db,
+        record: ImportRecord,
+        source: ImportSource,
+    ) -> Design | None:
+        """Check for duplicates before downloading (DEC-041 / #216).
+
+        Uses DuplicateService to find cross-source duplicates including
+        Telegram designs.
+
+        Args:
+            db: Database session.
+            record: The import record to check.
+            source: The import source.
+
+        Returns:
+            The matched Design if high-confidence duplicate found, None otherwise.
+        """
+        if not record.detected_title:
+            return None
+
+        dup_service = DuplicateService(db)
+        match, match_type, confidence = await dup_service.check_pre_download(
+            title=record.detected_title,
+            designer=record.detected_designer or source.default_designer or "",
+            files=[],  # File info not yet available before download
+        )
+
+        if match and confidence >= AUTO_MERGE_THRESHOLD:
+            logger.info(
+                "pre_download_duplicate_found",
+                record_id=record.id,
+                match_design_id=match.id,
+                match_type=match_type.value if match_type else None,
+                confidence=confidence,
+            )
+            return match
+
+        elif match and confidence > 0:
+            # Lower confidence - log but proceed with download
+            logger.info(
+                "pre_download_potential_duplicate",
+                record_id=record.id,
+                match_design_id=match.id,
+                match_type=match_type.value if match_type else None,
+                confidence=confidence,
+            )
+
+        return None

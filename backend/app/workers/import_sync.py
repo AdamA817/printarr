@@ -42,10 +42,14 @@ from app.db.models import (
 from app.db.session import async_session_maker
 from app.services.auto_render import auto_queue_render_for_design
 from app.services.bulk_import import BulkImportError, BulkImportPathError, BulkImportService
+from app.services.duplicate import DuplicateService
 from app.services.google_drive import GoogleDriveError, GoogleDriveService, GoogleRateLimitError
 from app.services.import_profile import ImportProfileService
 from app.services.job_queue import JobQueueService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
+
+# Auto-merge threshold for cross-source duplicate detection (DEC-041 / #216)
+AUTO_MERGE_THRESHOLD = 0.9
 
 # File extensions for 3D model files
 MODEL_EXTENSIONS = {".stl", ".3mf", ".obj", ".step", ".stp", ".iges", ".igs", ".blend", ".gcode"}
@@ -656,10 +660,11 @@ class SyncImportSourceWorker(BaseWorker):
     ) -> Design | None:
         """Find an existing design that matches the record.
 
-        Checks for duplicates using multiple strategies (#189):
+        Checks for duplicates using multiple strategies (#189, #216):
         1. Exact match on google_folder_id (same GDrive folder across any source)
         2. Same source_path within the same import source
         3. Same detected_title from the same import source (fallback)
+        4. Cross-source duplicate via DuplicateService (matches Telegram designs too)
         """
         # Strategy 1: Check by google_folder_id across ALL sources
         # This catches the case where the same GDrive folder is added to multiple sources
@@ -735,6 +740,27 @@ class SyncImportSourceWorker(BaseWorker):
                         design_id=design.id,
                     )
                     return design
+
+        # Strategy 4: Cross-source duplicate detection via DuplicateService (#216)
+        # This checks against ALL designs including Telegram-sourced ones
+        if record.detected_title:
+            dup_service = DuplicateService(db)
+            match, match_type, confidence = await dup_service.check_pre_download(
+                title=record.detected_title,
+                designer=record.detected_designer or source.default_designer or "",
+                files=[],  # No file info available before download
+            )
+
+            if match and confidence >= AUTO_MERGE_THRESHOLD:
+                logger.info(
+                    "duplicate_found_cross_source",
+                    record_id=record.id,
+                    detected_title=record.detected_title,
+                    match_design_id=match.id,
+                    match_type=match_type.value if match_type else None,
+                    confidence=confidence,
+                )
+                return match
 
         return None
 
