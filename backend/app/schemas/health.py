@@ -8,3 +8,4 @@ class HealthResponse(BaseModel):
 
     status: str
     version: str
+    database: str  # "connected" or "disconnected"
