@@ -767,14 +767,8 @@ class DuplicateService:
         if not target.canonical_designer and source.canonical_designer:
             target.canonical_designer = source.canonical_designer
 
-        if not target.description and source.description:
-            target.description = source.description
-
         # Prefer downloaded status over discovered
-        if source.status == DesignStatus.ORGANIZED and target.status in (
-            DesignStatus.NEW,
-            DesignStatus.DISCOVERED,
-        ):
+        if source.status == DesignStatus.ORGANIZED and target.status == DesignStatus.DISCOVERED:
             target.status = source.status
 
     async def _recalculate_size(self, design: Design) -> None:
