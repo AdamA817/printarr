@@ -59,8 +59,24 @@ def upgrade() -> None:
             ).fetchone()
 
             if not result:
+                # Create the enum with all values
                 values_str = ", ".join(f"'{v}'" for v in values)
                 op.execute(f"CREATE TYPE {enum_name} AS ENUM ({values_str})")
+            else:
+                # Enum exists - add any missing values
+                # Get existing values
+                existing = bind.execute(
+                    sa.text(f"""
+                        SELECT enumlabel FROM pg_enum
+                        WHERE enumtypid = (SELECT oid FROM pg_type WHERE typname = '{enum_name}')
+                    """)
+                ).fetchall()
+                existing_values = {row[0] for row in existing}
+
+                # Add missing values
+                for value in values:
+                    if value not in existing_values:
+                        op.execute(f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{value}'")
     # SQLite: No enum types needed - stores as text
 
 

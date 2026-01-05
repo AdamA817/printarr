@@ -222,10 +222,10 @@ class RenderWorker(BaseWorker):
                 preview_service = PreviewService(db)
                 await preview_service.save_preview(
                     design_id=design_id,
-                    image_data=image_data,
                     source=PreviewSource.RENDERED,
+                    image_data=image_data,
+                    filename=output_path.name,
                     kind=PreviewKind.THUMBNAIL,
-                    original_filename=output_path.name,
                 )
                 await db.commit()
 
