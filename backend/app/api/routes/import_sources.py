@@ -19,6 +19,8 @@ from app.db.models import (
     ImportSourceFolder,
     ImportSourceStatus,
     ImportSourceType,
+    Job,
+    JobStatus,
     JobType,
 )
 from app.schemas.import_source import (
@@ -62,6 +64,42 @@ async def _get_source_or_404(db: AsyncSession, source_id: str) -> ImportSource:
     if not source:
         raise HTTPException(status_code=404, detail="Import source not found")
     return source
+
+
+async def _has_pending_sync_job(
+    db: AsyncSession,
+    source_id: str,
+    folder_id: str | None = None,
+) -> Job | None:
+    """Check if there's already a pending or running sync job for this source/folder.
+
+    Returns the existing job if found, None otherwise.
+    """
+    result = await db.execute(
+        select(Job).where(
+            Job.type == JobType.SYNC_IMPORT_SOURCE,
+            Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+        )
+    )
+    jobs = result.scalars().all()
+
+    # Filter by payload contents (source_id and optionally folder_id)
+    for job in jobs:
+        if not job.payload:
+            continue
+        payload = job.payload
+        if payload.get("source_id") != source_id:
+            continue
+        # If we're checking for a specific folder, match folder_id
+        if folder_id is not None:
+            if payload.get("folder_id") == folder_id:
+                return job
+        else:
+            # For source-level sync, match jobs without folder_id
+            if payload.get("folder_id") is None:
+                return job
+
+    return None
 
 
 async def _get_folder_or_404(
@@ -496,6 +534,23 @@ async def trigger_sync(
                 detail="Bulk folder source missing folder path",
             )
 
+    # Check for existing sync job to prevent duplicates
+    existing_job = await _has_pending_sync_job(db, source_id)
+    if existing_job:
+        logger.info(
+            "sync_job_already_exists",
+            source_id=source_id,
+            existing_job_id=existing_job.id,
+            status=existing_job.status.value,
+        )
+        return SyncTriggerResponse(
+            source_id=source_id,
+            job_id=existing_job.id,
+            message="Sync already in progress",
+            designs_detected=0,
+            designs_imported=0,
+        )
+
     # Queue the async sync job
     queue = JobQueueService(db)
     job = await queue.enqueue(
@@ -789,6 +844,24 @@ async def trigger_folder_sync(
                 status_code=400,
                 detail="Folder missing folder path",
             )
+
+    # Check for existing sync job for this folder to prevent duplicates
+    existing_job = await _has_pending_sync_job(db, source_id, folder_id)
+    if existing_job:
+        logger.info(
+            "folder_sync_job_already_exists",
+            source_id=source_id,
+            folder_id=folder_id,
+            existing_job_id=existing_job.id,
+            status=existing_job.status.value,
+        )
+        return FolderSyncTriggerResponse(
+            folder_id=folder_id,
+            job_id=existing_job.id,
+            message="Folder sync already in progress",
+            designs_detected=0,
+            designs_imported=0,
+        )
 
     # Queue the async sync job for this folder
     queue = JobQueueService(db)

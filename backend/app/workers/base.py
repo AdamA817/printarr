@@ -216,6 +216,10 @@ class BaseWorker(ABC):
         current: int,
         total: int | None = None,
         force: bool = False,
+        *,
+        current_file: str | None = None,
+        current_file_bytes: int | None = None,
+        current_file_total: int | None = None,
     ) -> None:
         """Update progress for the current job.
 
@@ -230,6 +234,9 @@ class BaseWorker(ABC):
             current: Current progress value.
             total: Total expected value.
             force: Bypass throttling if True.
+            current_file: Name of file currently being processed (#188).
+            current_file_bytes: Bytes downloaded for current file.
+            current_file_total: Total size of current file.
         """
         if self._current_job is None:
             return
@@ -244,7 +251,14 @@ class BaseWorker(ABC):
         try:
             async with async_session_maker() as db:
                 queue = JobQueueService(db)
-                await queue.update_progress(self._current_job.id, current, total)
+                await queue.update_progress(
+                    self._current_job.id,
+                    current,
+                    total,
+                    current_file=current_file,
+                    current_file_bytes=current_file_bytes,
+                    current_file_total=current_file_total,
+                )
                 await db.commit()
             self._last_progress_update = now
         except Exception as e:

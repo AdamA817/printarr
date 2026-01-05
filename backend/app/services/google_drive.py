@@ -1447,7 +1447,7 @@ class GoogleDriveService:
         folder_id: str,
         dest_dir: Path,
         credentials: GoogleCredentials | None = None,
-        progress_callback: "Callable[[int, int], None] | None" = None,
+        progress_callback: "Callable[[int, int, str, int], Awaitable[None] | None] | None" = None,
     ) -> list[tuple[Path, int]]:
         """Download all files from a Google Drive folder to a local directory.
 
@@ -1455,7 +1455,9 @@ class GoogleDriveService:
             folder_id: Google Drive folder ID.
             dest_dir: Local directory to download files to.
             credentials: Optional credentials for private folders.
-            progress_callback: Optional callback for progress updates (files_done, total_files).
+            progress_callback: Optional callback for progress updates.
+                Called with (files_done, total_files, current_filename, current_file_size).
+                Can be sync or async - async callbacks will be awaited.
 
         Returns:
             List of tuples (local_path, file_size) for each downloaded file.
@@ -1463,7 +1465,8 @@ class GoogleDriveService:
         Raises:
             GoogleDriveError: If download fails.
         """
-        from typing import Callable
+        import inspect
+        from typing import Awaitable, Callable
 
         # List all files in folder recursively
         all_files = await self.list_folder_recursive(folder_id, credentials)
@@ -1513,7 +1516,10 @@ class GoogleDriveService:
                 # Continue with other files
 
             if progress_callback:
-                progress_callback(i + 1, len(files_to_download))
+                result = progress_callback(i + 1, len(files_to_download), file_info.name, file_info.size)
+                # Await if callback is async
+                if inspect.isawaitable(result):
+                    await result
 
         logger.info(
             "gdrive_download_complete",

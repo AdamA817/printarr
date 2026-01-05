@@ -527,10 +527,22 @@ class SyncImportSourceWorker(BaseWorker):
             if source.google_credentials_id:
                 credentials = await gdrive_service.get_credentials(source.google_credentials_id)
 
+            # Progress callback to report current file being downloaded (#188)
+            async def download_progress(
+                files_done: int, total_files: int, filename: str, file_size: int
+            ) -> None:
+                await self.update_progress(
+                    files_done,
+                    total_files,
+                    current_file=filename,
+                    current_file_total=file_size,
+                )
+
             downloaded_files = await gdrive_service.download_folder(
                 record.google_folder_id,
                 staging_dir,
                 credentials=credentials,
+                progress_callback=download_progress,
             )
 
             if not downloaded_files:
@@ -629,7 +641,39 @@ class SyncImportSourceWorker(BaseWorker):
     async def _find_existing_design(
         self, db, record: ImportRecord, source: ImportSource
     ) -> Design | None:
-        """Find an existing design that matches the record."""
+        """Find an existing design that matches the record.
+
+        Checks for duplicates using multiple strategies (#189):
+        1. Exact match on google_folder_id (same GDrive folder across any source)
+        2. Same source_path within the same import source
+        3. Same detected_title from the same import source (fallback)
+        """
+        # Strategy 1: Check by google_folder_id across ALL sources
+        # This catches the case where the same GDrive folder is added to multiple sources
+        if record.google_folder_id:
+            result = await db.execute(
+                select(ImportRecord).where(
+                    ImportRecord.google_folder_id == record.google_folder_id,
+                    ImportRecord.status == ImportRecordStatus.IMPORTED,
+                    ImportRecord.id != record.id,
+                )
+            )
+            existing_record = result.scalar_one_or_none()
+            if existing_record and existing_record.design_id:
+                design_result = await db.execute(
+                    select(Design).where(Design.id == existing_record.design_id)
+                )
+                design = design_result.scalar_one_or_none()
+                if design:
+                    logger.debug(
+                        "duplicate_found_by_google_folder_id",
+                        record_id=record.id,
+                        google_folder_id=record.google_folder_id,
+                        design_id=design.id,
+                    )
+                    return design
+
+        # Strategy 2: Check by source_path within same source
         result = await db.execute(
             select(ImportRecord).where(
                 ImportRecord.import_source_id == source.id,
@@ -643,7 +687,42 @@ class SyncImportSourceWorker(BaseWorker):
             design_result = await db.execute(
                 select(Design).where(Design.id == existing_record.design_id)
             )
-            return design_result.scalar_one_or_none()
+            design = design_result.scalar_one_or_none()
+            if design:
+                logger.debug(
+                    "duplicate_found_by_source_path",
+                    record_id=record.id,
+                    source_path=record.source_path,
+                    design_id=design.id,
+                )
+                return design
+
+        # Strategy 3: Check by detected_title within same source (fuzzy match)
+        # This catches renamed folders that point to the same content
+        if record.detected_title:
+            result = await db.execute(
+                select(ImportRecord).where(
+                    ImportRecord.import_source_id == source.id,
+                    ImportRecord.detected_title == record.detected_title,
+                    ImportRecord.status == ImportRecordStatus.IMPORTED,
+                    ImportRecord.id != record.id,
+                )
+            )
+            existing_record = result.scalar_one_or_none()
+            if existing_record and existing_record.design_id:
+                design_result = await db.execute(
+                    select(Design).where(Design.id == existing_record.design_id)
+                )
+                design = design_result.scalar_one_or_none()
+                if design:
+                    logger.debug(
+                        "duplicate_found_by_title",
+                        record_id=record.id,
+                        detected_title=record.detected_title,
+                        design_id=design.id,
+                    )
+                    return design
+
         return None
 
     async def _compute_file_hash(self, file_path: Path) -> str:

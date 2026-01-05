@@ -144,7 +144,9 @@ async def get_system_activity(
             category, field = JOB_CATEGORY_MAP[job_type]
 
             if category == "sync":
-                setattr(sync, field, running)
+                # Include both running and queued for sync stats (#186)
+                # Users expect to see pending syncs immediately after triggering
+                setattr(sync, field, running + queued)
             elif category == "downloads":
                 if field == "active":
                     downloads.active = running
