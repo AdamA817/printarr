@@ -78,6 +78,8 @@ export function ImportSourceCard({
 
   const isSyncing = triggerSync.isPending
   const hasFolders = source.folders && source.folders.length > 0
+  // Allow expanding for any source that can have multiple folders (even if currently empty)
+  const canHaveMultipleFolders = source.source_type === 'GOOGLE_DRIVE' || source.source_type === 'BULK_FOLDER'
 
   const getSourceIcon = () => {
     switch (source.source_type) {
@@ -169,8 +171,8 @@ export function ImportSourceCard({
         <div className="flex items-start justify-between gap-4">
           {/* Left side - icon and info */}
           <div className="flex items-start gap-4 flex-1 min-w-0">
-            {/* Expand button (if has folders) */}
-            {hasFolders && source.folders.length > 0 && (
+            {/* Expand button (show for any source that can have multiple folders) */}
+            {canHaveMultipleFolders && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="p-1 text-text-muted hover:text-text-primary transition-colors flex-shrink-0 mt-2"
@@ -278,7 +280,7 @@ export function ImportSourceCard({
       </div>
 
       {/* Expanded folder list */}
-      {isExpanded && hasFolders && (
+      {isExpanded && canHaveMultipleFolders && (
         <div className="border-t border-bg-tertiary">
           <div className="px-4 py-2 bg-bg-tertiary/50">
             <div className="flex items-center justify-between">
@@ -297,16 +299,24 @@ export function ImportSourceCard({
             </div>
           </div>
           <div className="divide-y divide-bg-tertiary/50">
-            {source.folders.map((folder) => (
-              <FolderRow
-                key={folder.id}
-                folder={folder}
-                sourceType={source.source_type}
-                onSync={() => handleFolderSync(folder.id)}
-                onToggleEnabled={() => handleToggleFolderEnabled(folder)}
-                isSyncing={syncFolder.isPending}
-              />
-            ))}
+            {source.folders.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <p className="text-sm text-text-muted">
+                  No folders configured yet. Click "Add Folder" to add one.
+                </p>
+              </div>
+            ) : (
+              source.folders.map((folder) => (
+                <FolderRow
+                  key={folder.id}
+                  folder={folder}
+                  sourceType={source.source_type}
+                  onSync={() => handleFolderSync(folder.id)}
+                  onToggleEnabled={() => handleToggleFolderEnabled(folder)}
+                  isSyncing={syncFolder.isPending}
+                />
+              ))
+            )}
           </div>
         </div>
       )}
