@@ -85,9 +85,12 @@ async def _has_pending_sync_job(
 
     # Filter by payload contents (source_id and optionally folder_id)
     for job in jobs:
-        if not job.payload:
+        if not job.payload_json:
             continue
-        payload = job.payload
+        try:
+            payload = json.loads(job.payload_json)
+        except json.JSONDecodeError:
+            continue
         if payload.get("source_id") != source_id:
             continue
         # If we're checking for a specific folder, match folder_id
