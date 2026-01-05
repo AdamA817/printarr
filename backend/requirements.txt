@@ -48,3 +48,6 @@ cryptography>=41.0.0
 
 # File System Monitoring (v0.8 Bulk Import)
 watchdog>=3.0.0
+
+# Fuzzy String Matching (v0.9 Deduplication)
+rapidfuzz>=3.5.0
