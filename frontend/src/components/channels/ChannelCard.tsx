@@ -11,6 +11,38 @@ interface ChannelCardProps {
   isDeleting: boolean
 }
 
+// Format relative time for "Synced X ago"
+function formatRelativeTime(dateString: string | null): string {
+  if (!dateString) return 'Never'
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / (1000 * 60))
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// Format backfill mode for display
+function formatBackfillMode(mode: Channel['backfill_mode'], value: number): string {
+  switch (mode) {
+    case 'LAST_N_MESSAGES':
+      return `Last ${value.toLocaleString()} messages`
+    case 'LAST_N_DAYS':
+      return `Last ${value} day${value !== 1 ? 's' : ''}`
+    case 'ALL_HISTORY':
+      return 'All history'
+    default:
+      return mode
+  }
+}
+
 export function ChannelCard({ channel, onEdit, onDelete, isDeleting }: ChannelCardProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [backfillResult, setBackfillResult] = useState<{
@@ -52,8 +84,15 @@ export function ChannelCard({ channel, onEdit, onDelete, isDeleting }: ChannelCa
           </div>
           <div>
             <h3 className="font-medium text-text-primary">{channel.title}</h3>
-            <p className="text-sm text-text-secondary">
-              {channel.username ? `@${channel.username}` : 'No username'}
+            <div className="flex items-center gap-2 text-sm text-text-secondary">
+              <span>{channel.username ? `@${channel.username}` : 'No username'}</span>
+              <span className="text-text-muted">•</span>
+              <span className="text-text-muted">
+                Synced {formatRelativeTime(channel.last_sync_at)}
+              </span>
+            </div>
+            <p className="text-xs text-text-muted mt-0.5">
+              {formatBackfillMode(channel.backfill_mode, channel.backfill_value)}
             </p>
           </div>
         </div>

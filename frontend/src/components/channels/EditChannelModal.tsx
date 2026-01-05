@@ -186,6 +186,35 @@ export function EditChannelModal({
             </div>
           )}
 
+          {/* Backfill Status (#227) */}
+          <div className="p-3 rounded-lg bg-bg-tertiary">
+            <h4 className="text-sm font-medium text-text-secondary mb-2">Backfill Status</h4>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span className="text-text-muted">Last Sync:</span>
+              </div>
+              <div className="text-text-primary">
+                {channel.last_sync_at
+                  ? new Date(channel.last_sync_at).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : 'Never'}
+              </div>
+              <div>
+                <span className="text-text-muted">Checkpoint:</span>
+              </div>
+              <div className="text-text-primary">
+                {channel.last_backfill_checkpoint
+                  ? `Message #${channel.last_backfill_checkpoint.toLocaleString()}`
+                  : 'None'}
+              </div>
+            </div>
+          </div>
+
           {/* Download Mode - uses dedicated API with confirmation flow */}
           <div className="border-t border-bg-tertiary pt-4 mt-4">
             <DownloadModeSelector
