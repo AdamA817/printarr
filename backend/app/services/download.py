@@ -7,7 +7,6 @@ holding database locks during long I/O operations. See DEC-019.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -32,6 +31,7 @@ from app.db.models import (
 from app.db.session import async_session_maker
 from app.services.job_queue import JobQueueService
 from app.telegram.exceptions import TelegramRateLimitError
+from app.utils import compute_file_hash
 from app.telegram.service import TelegramService
 
 if TYPE_CHECKING:
@@ -438,16 +438,7 @@ class DownloadService:
 
     async def _compute_file_hash(self, file_path: Path) -> str:
         """Compute SHA256 hash of file. No database access here."""
-        sha256 = hashlib.sha256()
-
-        def _hash_file() -> str:
-            with open(file_path, "rb") as f:
-                while chunk := f.read(8192):
-                    sha256.update(chunk)
-            return sha256.hexdigest()
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _hash_file)
+        return await compute_file_hash(file_path)
 
     def _get_staging_dir(self, design_id: str) -> Path:
         return settings.staging_path / design_id

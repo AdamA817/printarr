@@ -11,7 +11,6 @@ meaningful job names like "Download: Dragon Bust from Wicked STL".
 
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -37,6 +36,7 @@ from app.db.session import async_session_maker
 from app.services.auto_render import auto_queue_render_for_design
 from app.services.google_drive import GoogleDriveError, GoogleDriveService, GoogleRateLimitError
 from app.services.job_queue import JobQueueService
+from app.utils import compute_file_hash
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
 # File extensions for 3D model files
@@ -304,14 +304,4 @@ class DownloadImportRecordWorker(BaseWorker):
 
     async def _compute_file_hash(self, file_path: Path) -> str:
         """Compute SHA256 hash of a file."""
-        import asyncio
-
-        sha256 = hashlib.sha256()
-
-        def _hash_sync():
-            with open(file_path, "rb") as f:
-                for chunk in iter(lambda: f.read(8192), b""):
-                    sha256.update(chunk)
-            return sha256.hexdigest()
-
-        return await asyncio.get_event_loop().run_in_executor(None, _hash_sync)
+        return await compute_file_hash(file_path)

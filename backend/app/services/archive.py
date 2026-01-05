@@ -7,7 +7,6 @@ holding database locks during long I/O operations. See DEC-019.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import re
 import shutil
 import tarfile
@@ -32,6 +31,7 @@ from app.db.models import (
 from app.db.models.enums import PreviewKind, PreviewSource
 from app.db.session import async_session_maker
 from app.services.job_queue import JobQueueService
+from app.utils import compute_file_hash
 
 logger = get_logger(__name__)
 
@@ -500,15 +500,7 @@ class ArchiveExtractor:
 
     async def _compute_file_hash(self, file_path: Path) -> str:
         """Compute SHA256 hash of a file."""
-        def _hash() -> str:
-            sha256 = hashlib.sha256()
-            with open(file_path, "rb") as f:
-                while chunk := f.read(8192):
-                    sha256.update(chunk)
-            return sha256.hexdigest()
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _hash)
+        return await compute_file_hash(file_path)
 
     async def _delete_file(self, file_path: Path) -> None:
         """Delete a file asynchronously."""
