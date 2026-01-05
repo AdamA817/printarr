@@ -1411,8 +1411,65 @@ async def bulk_delete_designs(
 
 
 # =============================================================================
-# File Download Actions (#172)
+# File List & Download Actions (#172, #175)
 # =============================================================================
+
+
+class DesignFileResponse(BaseModel):
+    """Response schema for a design file (#175)."""
+
+    id: str
+    filename: str
+    ext: str
+    size_bytes: int | None
+    file_kind: str
+    is_primary: bool
+
+    model_config = {"from_attributes": True}
+
+
+@router.get("/{design_id}/files", response_model=list[DesignFileResponse])
+async def list_design_files(
+    design_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> list[DesignFileResponse]:
+    """List all files for a design (#175).
+
+    Returns file metadata for building download links in the UI.
+    Only returns files that exist in the library.
+    """
+    from app.db.models import DesignFile
+
+    # Verify design exists
+    design = await db.get(Design, design_id)
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Get all files for this design
+    files_result = await db.execute(
+        select(DesignFile)
+        .where(DesignFile.design_id == design_id)
+        .order_by(DesignFile.is_primary.desc(), DesignFile.filename.asc())
+    )
+    design_files = files_result.scalars().all()
+
+    # Filter to files that exist on disk
+    result = []
+    for df in design_files:
+        file_path = settings.library_path / df.relative_path
+        if file_path.exists():
+            result.append(
+                DesignFileResponse(
+                    id=df.id,
+                    filename=df.filename,
+                    ext=df.ext,
+                    size_bytes=df.size_bytes,
+                    file_kind=df.file_kind.value if df.file_kind else "OTHER",
+                    is_primary=df.is_primary,
+                )
+            )
+
+    return result
 
 
 @router.get("/{design_id}/download")
