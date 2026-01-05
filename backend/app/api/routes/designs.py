@@ -1408,3 +1408,135 @@ async def bulk_delete_designs(
         deleted_count=len(deleted_ids),
         deleted_ids=deleted_ids,
     )
+
+
+# =============================================================================
+# File Download Actions (#172)
+# =============================================================================
+
+
+@router.get("/{design_id}/download")
+async def download_design_files(
+    design_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download all design files as a ZIP archive.
+
+    Creates a ZIP file on-the-fly and streams it to the client.
+    Only includes files that exist in the library.
+    """
+    import io
+    import zipfile
+    from fastapi.responses import StreamingResponse
+
+    from app.db.models import DesignFile
+
+    # Get design
+    design = await db.get(Design, design_id)
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Get all files for this design
+    files_result = await db.execute(
+        select(DesignFile).where(DesignFile.design_id == design_id)
+    )
+    design_files = files_result.scalars().all()
+
+    if not design_files:
+        raise HTTPException(status_code=404, detail="Design has no files")
+
+    # Create ZIP in memory
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for df in design_files:
+            file_path = settings.library_path / df.relative_path
+            if file_path.exists():
+                # Use relative_path as the path in the ZIP
+                zip_file.write(file_path, df.relative_path)
+
+    zip_buffer.seek(0)
+
+    # Generate safe filename
+    safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in design.canonical_title)
+    filename = f"{safe_title}.zip"
+
+    logger.info(
+        "design_download_started",
+        design_id=design_id,
+        file_count=len(design_files),
+    )
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
+@router.get("/{design_id}/files/{file_id}/download")
+async def download_single_file(
+    design_id: str,
+    file_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Download a single file from a design.
+
+    Returns the file with proper Content-Disposition header for browser download.
+    Uses streaming for large files.
+    """
+    from fastapi.responses import FileResponse
+
+    from app.db.models import DesignFile
+
+    # Get design (for ownership validation)
+    design = await db.get(Design, design_id)
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Get the file
+    file_result = await db.execute(
+        select(DesignFile).where(
+            DesignFile.id == file_id,
+            DesignFile.design_id == design_id,
+        )
+    )
+    design_file = file_result.scalar_one_or_none()
+
+    if design_file is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # Build full path
+    file_path = settings.library_path / design_file.relative_path
+
+    # Validate path exists and is within library (prevent directory traversal)
+    try:
+        file_path = file_path.resolve()
+        if not str(file_path).startswith(str(settings.library_path.resolve())):
+            logger.warning(
+                "directory_traversal_attempt",
+                design_id=design_id,
+                file_id=file_id,
+                path=str(design_file.relative_path),
+            )
+            raise HTTPException(status_code=404, detail="File not found")
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    logger.info(
+        "file_download_started",
+        design_id=design_id,
+        file_id=file_id,
+        filename=design_file.filename,
+    )
+
+    return FileResponse(
+        path=str(file_path),
+        filename=design_file.filename,
+        media_type="application/octet-stream",
+    )
