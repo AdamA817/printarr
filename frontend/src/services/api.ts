@@ -40,6 +40,13 @@ import type {
   RemoveTagResponse,
 } from '@/types/design'
 import type {
+  UploadResponse,
+  BatchUploadResponse,
+  UploadStatusResponse,
+  ProcessUploadRequest,
+  ProcessUploadResponse,
+} from '@/types/upload'
+import type {
   AuthStatusResponse,
   AuthStartRequest,
   AuthStartResponse,
@@ -520,4 +527,52 @@ export const googleOAuthApi = {
   // Revoke and delete credentials
   revokeCredentials: (id: string) =>
     api.delete(`/google/credentials/${id}`),
+}
+
+// =============================================================================
+// Upload API (v0.8) - #179
+// =============================================================================
+
+export const uploadApi = {
+  // Upload a single file (returns upload_id for tracking)
+  uploadFile: (file: File, onProgress?: (progress: number) => void): Promise<UploadResponse> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    return api.post<UploadResponse>('/upload/files', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) {
+          onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+      },
+    }).then((r) => r.data)
+  },
+
+  // Upload multiple files at once (max 10)
+  uploadBatch: (files: File[], onProgress?: (progress: number) => void): Promise<BatchUploadResponse> => {
+    const formData = new FormData()
+    files.forEach((file) => formData.append('files', file))
+
+    return api.post<BatchUploadResponse>('/upload/files/batch', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (e) => {
+        if (onProgress && e.total) {
+          onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+      },
+    }).then((r) => r.data)
+  },
+
+  // Get upload status (for polling during processing)
+  getStatus: (uploadId: string) =>
+    api.get<UploadStatusResponse>(`/upload/${uploadId}/status`).then((r) => r.data),
+
+  // Process an upload (trigger import with optional profile/metadata)
+  process: (uploadId: string, request?: ProcessUploadRequest) =>
+    api.post<ProcessUploadResponse>(`/upload/${uploadId}/process`, request || {}).then((r) => r.data),
+
+  // Delete an upload (cancel or cleanup)
+  delete: (uploadId: string) =>
+    api.delete(`/upload/${uploadId}`),
 }

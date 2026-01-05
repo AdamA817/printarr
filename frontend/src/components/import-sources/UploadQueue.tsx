@@ -5,11 +5,13 @@
 export type UploadStatus = 'queued' | 'uploading' | 'processing' | 'complete' | 'error'
 
 export interface UploadItem {
-  id: string
+  id: string // Client-side ID for React key
   file: File
   status: UploadStatus
   progress: number // 0-100
   error?: string
+  serverUploadId?: string // Server-side upload ID (set after upload completes)
+  designId?: string // Design ID if processing completed successfully
 }
 
 interface UploadQueueProps {

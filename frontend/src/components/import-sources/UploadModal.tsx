@@ -7,6 +7,7 @@ import { UploadZone } from './UploadZone'
 import { UploadQueue } from './UploadQueue'
 import type { UploadItem, UploadStatus } from './UploadQueue'
 import { useImportProfiles } from '@/hooks/useImportProfiles'
+import { uploadApi } from '@/services/api'
 
 interface UploadModalProps {
   isOpen: boolean
@@ -21,6 +22,72 @@ export function UploadModal({ isOpen, onClose, onUploadsComplete }: UploadModalP
 
   const { data: profilesData } = useImportProfiles()
 
+  // Upload a file using the real API
+  const uploadFile = useCallback(async (id: string, file: File, profileId: string) => {
+    // Move to uploading state
+    setUploads((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, status: 'uploading' as UploadStatus } : u))
+    )
+
+    try {
+      // Step 1: Upload the file with progress tracking
+      const uploadResponse = await uploadApi.uploadFile(file, (progress) => {
+        setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, progress } : u)))
+      })
+
+      // Store the server upload ID
+      setUploads((prev) =>
+        prev.map((u) =>
+          u.id === id
+            ? { ...u, serverUploadId: uploadResponse.upload_id, progress: 100, status: 'processing' as UploadStatus }
+            : u
+        )
+      )
+
+      // Step 2: Process the upload with the selected import profile
+      const processResponse = await uploadApi.process(uploadResponse.upload_id, {
+        import_profile_id: profileId || undefined,
+      })
+
+      // Handle processing result
+      if (processResponse.status === 'COMPLETE') {
+        setUploads((prev) =>
+          prev.map((u) =>
+            u.id === id
+              ? {
+                  ...u,
+                  status: 'complete' as UploadStatus,
+                  designId: processResponse.design_id || undefined,
+                }
+              : u
+          )
+        )
+      } else if (processResponse.status === 'FAILED') {
+        setUploads((prev) =>
+          prev.map((u) =>
+            u.id === id
+              ? {
+                  ...u,
+                  status: 'error' as UploadStatus,
+                  error: processResponse.error_message || 'Processing failed',
+                }
+              : u
+          )
+        )
+      }
+    } catch (error) {
+      // Handle upload or processing error
+      const errorMessage = error instanceof Error ? error.message : 'Upload failed'
+      setUploads((prev) =>
+        prev.map((u) =>
+          u.id === id
+            ? { ...u, status: 'error' as UploadStatus, error: errorMessage }
+            : u
+        )
+      )
+    }
+  }, [])
+
   const handleFilesSelected = useCallback((files: File[]) => {
     const newUploads: UploadItem[] = files.map((file) => ({
       id: `upload-${++uploadIdCounter.current}`,
@@ -30,70 +97,45 @@ export function UploadModal({ isOpen, onClose, onUploadsComplete }: UploadModalP
     }))
     setUploads((prev) => [...prev, ...newUploads])
 
-    // Start processing the queue
+    // Start uploading each file
     newUploads.forEach((upload) => {
-      simulateUpload(upload.id)
+      uploadFile(upload.id, upload.file, selectedProfileId)
     })
-  }, [])
+  }, [uploadFile, selectedProfileId])
 
-  // Simulate upload progress (will be replaced with real API calls)
-  const simulateUpload = useCallback((id: string) => {
-    // Move to uploading state
-    setUploads((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, status: 'uploading' as UploadStatus } : u))
-    )
+  const handleCancel = useCallback(async (id: string) => {
+    // Find the upload to check if it has a server ID
+    const upload = uploads.find((u) => u.id === id)
 
-    // Simulate progress
-    let progress = 0
-    const interval = setInterval(() => {
-      progress += Math.random() * 15
-      if (progress >= 100) {
-        progress = 100
-        clearInterval(interval)
-
-        // Move to processing state
-        setUploads((prev) =>
-          prev.map((u) =>
-            u.id === id ? { ...u, status: 'processing' as UploadStatus, progress: 100 } : u
-          )
-        )
-
-        // Simulate processing time
-        setTimeout(() => {
-          // Random success/failure for demo
-          const success = Math.random() > 0.1
-          setUploads((prev) =>
-            prev.map((u) =>
-              u.id === id
-                ? {
-                    ...u,
-                    status: success ? ('complete' as UploadStatus) : ('error' as UploadStatus),
-                    error: success ? undefined : 'Failed to process file',
-                  }
-                : u
-            )
-          )
-        }, 500 + Math.random() * 1000)
-      } else {
-        setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, progress } : u)))
+    // If upload is in progress on server, try to delete it
+    if (upload?.serverUploadId) {
+      try {
+        await uploadApi.delete(upload.serverUploadId)
+      } catch {
+        // Ignore errors when canceling
       }
-    }, 100 + Math.random() * 200)
-  }, [])
+    }
 
-  const handleCancel = useCallback((id: string) => {
+    // Remove from local state
     setUploads((prev) => prev.filter((u) => u.id !== id))
-  }, [])
+  }, [uploads])
 
   const handleRetry = useCallback(
     (id: string) => {
+      const upload = uploads.find((u) => u.id === id)
+      if (!upload) return
+
+      // Reset state and retry
       setUploads((prev) =>
         prev.map((u) =>
-          u.id === id ? { ...u, status: 'queued' as UploadStatus, progress: 0, error: undefined } : u
+          u.id === id
+            ? { ...u, status: 'queued' as UploadStatus, progress: 0, error: undefined, serverUploadId: undefined }
+            : u
         )
       )
-      simulateUpload(id)
+      uploadFile(id, upload.file, selectedProfileId)
     },
-    [simulateUpload]
+    [uploads, uploadFile, selectedProfileId]
   )
 
   const handleRemove = useCallback((id: string) => {
