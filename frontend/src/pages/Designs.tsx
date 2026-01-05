@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { useDesigns, useMergeDesigns } from '@/hooks/useDesigns'
+import { useDesigns, useMergeDesigns, useBulkDeleteDesigns } from '@/hooks/useDesigns'
 import { useDesignFilters } from '@/hooks/useDesignFilters'
 import { useChannels } from '@/hooks/useChannels'
 import {
@@ -43,6 +43,8 @@ export function Designs() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showMergeModal, setShowMergeModal] = useState(false)
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [bulkDeleteWithFiles, setBulkDeleteWithFiles] = useState(false)
 
   // Page size based on view
   const pageSize = view === 'grid' ? 24 : 20
@@ -52,6 +54,7 @@ export function Designs() {
 
   // Merge mutation
   const mergeMutation = useMergeDesigns()
+  const bulkDeleteMutation = useBulkDeleteDesigns()
 
   // Merge page_size with filters
   const effectiveFilters = { ...filters, page_size: pageSize }
@@ -276,6 +279,12 @@ export function Designs() {
                 Clear Selection
               </button>
               <button
+                onClick={() => setShowBulkDeleteModal(true)}
+                className="px-3 py-1.5 text-sm rounded bg-accent-danger/20 text-accent-danger hover:bg-accent-danger/30 transition-colors"
+              >
+                Delete Selected
+              </button>
+              <button
                 onClick={() => setShowMergeModal(true)}
                 disabled={selectedIds.size < 2}
                 className="px-3 py-1.5 text-sm rounded bg-accent-primary text-white hover:bg-accent-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -299,6 +308,29 @@ export function Designs() {
             setShowMergeModal(false)
           }}
           isPending={mergeMutation.isPending}
+        />
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <BulkDeleteModal
+          count={selectedIds.size}
+          deleteFiles={bulkDeleteWithFiles}
+          onDeleteFilesChange={setBulkDeleteWithFiles}
+          onClose={() => {
+            setShowBulkDeleteModal(false)
+            setBulkDeleteWithFiles(false)
+          }}
+          onConfirm={async () => {
+            await bulkDeleteMutation.mutateAsync({
+              designIds: Array.from(selectedIds),
+              deleteFiles: bulkDeleteWithFiles,
+            })
+            clearSelection()
+            setShowBulkDeleteModal(false)
+            setBulkDeleteWithFiles(false)
+          }}
+          isPending={bulkDeleteMutation.isPending}
         />
       )}
     </div>
@@ -460,6 +492,162 @@ function CloseIcon() {
     >
       <line x1="18" y1="6" x2="6" y2="18" />
       <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  )
+}
+
+// Bulk Delete Modal
+interface BulkDeleteModalProps {
+  count: number
+  deleteFiles: boolean
+  onDeleteFilesChange: (value: boolean) => void
+  onClose: () => void
+  onConfirm: () => Promise<void>
+  isPending: boolean
+}
+
+function BulkDeleteModal({
+  count,
+  deleteFiles,
+  onDeleteFilesChange,
+  onClose,
+  onConfirm,
+  isPending,
+}: BulkDeleteModalProps) {
+  const [error, setError] = useState<string | null>(null)
+
+  const handleConfirm = async () => {
+    setError(null)
+    try {
+      await onConfirm()
+    } catch (err) {
+      setError((err as Error).message || 'Failed to delete designs')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/60 transition-opacity"
+        onClick={isPending ? undefined : onClose}
+        aria-hidden="true"
+      />
+
+      {/* Modal */}
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className="relative w-full max-w-md bg-bg-primary rounded-lg shadow-xl">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-accent-danger/20 rounded-lg">
+                <TrashIcon className="w-5 h-5 text-accent-danger" />
+              </div>
+              <h2 className="text-lg font-medium text-text-primary">
+                Delete {count} Design{count !== 1 ? 's' : ''}
+              </h2>
+            </div>
+            <button
+              onClick={onClose}
+              disabled={isPending}
+              className="p-2 rounded text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors disabled:opacity-50"
+              aria-label="Close"
+            >
+              <CloseIcon />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 space-y-4">
+            <p className="text-text-secondary">
+              Are you sure you want to delete {count} design{count !== 1 ? 's' : ''}?
+              This action cannot be undone.
+            </p>
+
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-text-muted">
+                Choose what to delete:
+              </p>
+              <label className="flex items-start gap-3 p-3 rounded-lg bg-bg-secondary cursor-pointer hover:bg-bg-tertiary transition-colors">
+                <input
+                  type="radio"
+                  name="bulkDeleteOption"
+                  checked={!deleteFiles}
+                  onChange={() => onDeleteFilesChange(false)}
+                  className="mt-0.5 text-accent-primary focus:ring-accent-primary"
+                />
+                <div>
+                  <p className="text-sm font-medium text-text-primary">
+                    Database only
+                  </p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Remove from Printarr but keep files in library
+                  </p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 p-3 rounded-lg bg-bg-secondary cursor-pointer hover:bg-bg-tertiary transition-colors">
+                <input
+                  type="radio"
+                  name="bulkDeleteOption"
+                  checked={deleteFiles}
+                  onChange={() => onDeleteFilesChange(true)}
+                  className="mt-0.5 text-accent-danger focus:ring-accent-danger"
+                />
+                <div>
+                  <p className="text-sm font-medium text-accent-danger">
+                    Database + Files
+                  </p>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Remove from Printarr and delete all files from disk
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {error && (
+              <div className="p-3 bg-accent-danger/20 rounded-lg">
+                <p className="text-sm text-accent-danger">{error}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary">
+            <button
+              onClick={onClose}
+              disabled={isPending}
+              className="px-4 py-2 text-sm rounded bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={isPending}
+              className="px-4 py-2 text-sm rounded bg-accent-danger text-white hover:bg-accent-danger/80 transition-colors disabled:opacity-50"
+            >
+              {isPending ? 'Deleting...' : `Delete ${count} Design${count !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+      />
     </svg>
   )
 }
