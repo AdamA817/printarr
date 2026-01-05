@@ -75,6 +75,7 @@ class DesignStatus(str, enum.Enum):
     IMPORTING = "IMPORTING"
     ORGANIZED = "ORGANIZED"
     FAILED = "FAILED"  # Final failure after all retries exhausted
+    DELETED = "DELETED"  # Soft-deleted (merged into another design)
 
 
 class FileKind(str, enum.Enum):
