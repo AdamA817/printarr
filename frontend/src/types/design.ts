@@ -320,3 +320,18 @@ export interface RemoveTagResponse {
   tag_id: string
   message: string
 }
+
+// =============================================================================
+// File API types (#172)
+// =============================================================================
+
+export type FileKind = 'MODEL' | 'IMAGE' | 'CONFIG' | 'DOCUMENTATION' | 'OTHER'
+
+export interface DesignFile {
+  id: string
+  filename: string
+  ext: string
+  size_bytes: number | null
+  file_kind: FileKind
+  is_primary: boolean
+}

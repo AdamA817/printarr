@@ -1,7 +1,25 @@
 import { useState } from 'react'
-import type { DesignStatus } from '@/types/design'
-import { useWantDesign, useDownloadDesign, useCancelDownload, useUpdateDesign } from '@/hooks/useDesigns'
+import type { DesignStatus, DesignFile, FileKind } from '@/types/design'
+import { useWantDesign, useDownloadDesign, useCancelDownload, useUpdateDesign, useDesignFiles } from '@/hooks/useDesigns'
 import { designsApi } from '@/services/api'
+
+// Format file size for display
+function formatFileSize(bytes: number | null): string {
+  if (bytes === null || bytes === 0) return '--'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+// File kind icons and colors
+const FILE_KIND_STYLES: Record<FileKind, { icon: string; color: string }> = {
+  MODEL: { icon: '3D', color: 'text-accent-primary bg-accent-primary/10' },
+  IMAGE: { icon: 'IMG', color: 'text-accent-success bg-accent-success/10' },
+  CONFIG: { icon: 'CFG', color: 'text-accent-warning bg-accent-warning/10' },
+  DOCUMENTATION: { icon: 'DOC', color: 'text-text-secondary bg-bg-tertiary' },
+  OTHER: { icon: 'FILE', color: 'text-text-muted bg-bg-tertiary' },
+}
 
 interface DownloadSectionProps {
   designId: string
@@ -425,43 +443,7 @@ export function DownloadSection({ designId, status, onError }: DownloadSectionPr
         )
 
       case 'ORGANIZED':
-        return (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <FolderIcon className="w-5 h-5 text-accent-success" />
-              <span className="text-sm text-accent-success font-medium">In Library</span>
-            </div>
-
-            <p className="text-sm text-text-muted">
-              This design has been organized into your library.
-            </p>
-
-            {/* Download All as ZIP button */}
-            <a
-              href={designsApi.getDownloadAllUrl(designId)}
-              download
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-accent-primary hover:bg-accent-primary/80 text-white font-medium transition-colors"
-            >
-              <SaveFileIcon className="w-5 h-5" />
-              Download All (ZIP)
-            </a>
-
-            <div className="space-y-2 pt-3 border-t border-bg-tertiary">
-              <button
-                onClick={handleRedownload}
-                disabled={isLoading}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded bg-bg-tertiary hover:bg-bg-tertiary/80 text-text-secondary hover:text-text-primary text-sm transition-colors disabled:opacity-50"
-              >
-                {isLoading ? (
-                  <LoadingSpinner className="w-4 h-4" />
-                ) : (
-                  <RefreshIcon className="w-4 h-4" />
-                )}
-                Re-download from Telegram
-              </button>
-            </div>
-          </div>
-        )
+        return <OrganizedSection designId={designId} isLoading={isLoading} onRedownload={handleRedownload} />
 
       default:
         return null
@@ -473,5 +455,147 @@ export function DownloadSection({ designId, status, onError }: DownloadSectionPr
       <h3 className="text-sm font-medium text-text-muted mb-4">Download</h3>
       {renderContent()}
     </section>
+  )
+}
+
+// Separate component for ORGANIZED status to use the files hook
+function OrganizedSection({
+  designId,
+  isLoading,
+  onRedownload,
+}: {
+  designId: string
+  isLoading: boolean
+  onRedownload: () => void
+}) {
+  const [showAllFiles, setShowAllFiles] = useState(false)
+  const { data: files, isLoading: filesLoading } = useDesignFiles(designId, true)
+
+  // Group files by kind
+  const modelFiles = files?.filter((f) => f.file_kind === 'MODEL') || []
+  const otherFiles = files?.filter((f) => f.file_kind !== 'MODEL') || []
+  const totalSize = files?.reduce((acc, f) => acc + (f.size_bytes || 0), 0) || 0
+
+  // Show max 5 files by default
+  const displayFiles = showAllFiles ? files : files?.slice(0, 5)
+  const hasMoreFiles = (files?.length || 0) > 5
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <FolderIcon className="w-5 h-5 text-accent-success" />
+        <span className="text-sm text-accent-success font-medium">In Library</span>
+      </div>
+
+      {/* File stats */}
+      {files && files.length > 0 && (
+        <div className="flex gap-3 text-xs text-text-muted">
+          <span>{files.length} file{files.length !== 1 ? 's' : ''}</span>
+          <span>{formatFileSize(totalSize)}</span>
+          {modelFiles.length > 0 && (
+            <span className="text-accent-primary">{modelFiles.length} model{modelFiles.length !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+      )}
+
+      {/* Download All as ZIP button */}
+      <a
+        href={designsApi.getDownloadAllUrl(designId)}
+        download
+        className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-accent-primary hover:bg-accent-primary/80 text-white font-medium transition-colors"
+      >
+        <SaveFileIcon className="w-5 h-5" />
+        Download All (ZIP)
+      </a>
+
+      {/* Individual files section */}
+      {filesLoading ? (
+        <div className="pt-3 border-t border-bg-tertiary">
+          <div className="animate-pulse space-y-2">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-10 bg-bg-tertiary rounded" />
+            ))}
+          </div>
+        </div>
+      ) : files && files.length > 0 ? (
+        <div className="pt-3 border-t border-bg-tertiary">
+          <p className="text-xs text-text-muted mb-2">Or download individual files:</p>
+          <div className="space-y-1 max-h-[300px] overflow-y-auto">
+            {displayFiles?.map((file) => (
+              <FileDownloadRow key={file.id} file={file} designId={designId} />
+            ))}
+          </div>
+          {hasMoreFiles && !showAllFiles && (
+            <button
+              onClick={() => setShowAllFiles(true)}
+              className="mt-2 w-full text-xs text-accent-primary hover:text-accent-primary/80 py-1"
+            >
+              Show {(files?.length || 0) - 5} more files...
+            </button>
+          )}
+          {showAllFiles && hasMoreFiles && (
+            <button
+              onClick={() => setShowAllFiles(false)}
+              className="mt-2 w-full text-xs text-text-muted hover:text-text-primary py-1"
+            >
+              Show fewer
+            </button>
+          )}
+        </div>
+      ) : null}
+
+      <div className="space-y-2 pt-3 border-t border-bg-tertiary">
+        <button
+          onClick={onRedownload}
+          disabled={isLoading}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded bg-bg-tertiary hover:bg-bg-tertiary/80 text-text-secondary hover:text-text-primary text-sm transition-colors disabled:opacity-50"
+        >
+          {isLoading ? (
+            <LoadingSpinner className="w-4 h-4" />
+          ) : (
+            <RefreshIcon className="w-4 h-4" />
+          )}
+          Re-download from Telegram
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Individual file download row
+function FileDownloadRow({ file, designId }: { file: DesignFile; designId: string }) {
+  const kindStyle = FILE_KIND_STYLES[file.file_kind] || FILE_KIND_STYLES.OTHER
+
+  return (
+    <a
+      href={designsApi.getFileDownloadUrl(designId, file.id)}
+      download={file.filename}
+      className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-tertiary transition-colors group"
+    >
+      {/* File kind badge */}
+      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${kindStyle.color}`}>
+        {kindStyle.icon}
+      </span>
+
+      {/* Filename */}
+      <span className="flex-1 text-sm text-text-primary truncate group-hover:text-accent-primary transition-colors">
+        {file.filename}
+      </span>
+
+      {/* Primary indicator */}
+      {file.is_primary && (
+        <span className="text-[10px] text-accent-primary bg-accent-primary/10 px-1.5 py-0.5 rounded">
+          PRIMARY
+        </span>
+      )}
+
+      {/* File size */}
+      <span className="text-xs text-text-muted">
+        {formatFileSize(file.size_bytes)}
+      </span>
+
+      {/* Download icon */}
+      <DownloadIcon className="w-4 h-4 text-text-muted group-hover:text-accent-primary opacity-0 group-hover:opacity-100 transition-all" />
+    </a>
   )
 }

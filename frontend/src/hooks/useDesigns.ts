@@ -259,6 +259,15 @@ export function useCancelDownload() {
   })
 }
 
+// List files for a design (#172)
+export function useDesignFiles(designId: string, enabled = true) {
+  return useQuery({
+    queryKey: ['designFiles', designId],
+    queryFn: () => designsApi.listFiles(designId),
+    enabled: !!designId && enabled,
+  })
+}
+
 // Delete a single design (#171)
 export function useDeleteDesign() {
   const queryClient = useQueryClient()

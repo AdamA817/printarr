@@ -27,6 +27,7 @@ import type {
   DownloadDesignResponse,
   CancelDownloadResponse,
   BulkDeleteResponse,
+  DesignFile,
   // v0.7 Preview & Tag types
   PreviewListResponse,
   UpdatePreviewRequest,
@@ -230,7 +231,9 @@ export const designsApi = {
   cancelDownload: (id: string) =>
     api.post<CancelDownloadResponse>(`/designs/${id}/cancel`).then((r) => r.data),
 
-  // File download URLs (#172)
+  // File operations (#172)
+  listFiles: (id: string) =>
+    api.get<DesignFile[]>(`/designs/${id}/files`).then((r) => r.data),
   getDownloadAllUrl: (id: string) => `/api/v1/designs/${id}/download`,
   getFileDownloadUrl: (designId: string, fileId: string) =>
     `/api/v1/designs/${designId}/files/${fileId}/download`,
