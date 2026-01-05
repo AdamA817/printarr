@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -61,7 +61,7 @@ class ImportRecord(Base):
         String(64), nullable=True, doc="SHA-256 hash for deduplication"
     )
     file_size: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, doc="File size in bytes"
+        BigInteger, nullable=True, doc="File size in bytes (BigInteger for files >2GB)"
     )
     file_mtime: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, doc="File modification time for change detection"
