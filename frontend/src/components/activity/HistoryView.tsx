@@ -1,11 +1,15 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useActivity, useRemoveActivity, useClearFailedActivity } from '@/hooks/useQueue'
 import { HistoryItem } from './HistoryItem'
-import type { ActivityListParams } from '@/types/queue'
+import type { ActivityListParams, ActivityItem } from '@/types/queue'
 
 type StatusFilter = 'all' | 'SUCCESS' | 'FAILED'
 type JobTypeFilter = 'all' | 'DOWNLOAD_DESIGN' | 'EXTRACT_ARCHIVE' | 'IMPORT_FILES' | 'GENERATE_PREVIEW'
 type DateFilter = 'all' | '24h' | '7d' | '30d'
+
+// Estimated row height for history items (actual height varies)
+const ESTIMATED_ITEM_HEIGHT = 140
 
 export function HistoryView() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -14,6 +18,7 @@ export function HistoryView() {
   const [page, setPage] = useState(1)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [showClearFailedConfirm, setShowClearFailedConfirm] = useState(false)
+  const parentRef = useRef<HTMLDivElement>(null)
 
   // Build query params
   const params: ActivityListParams = {
@@ -243,13 +248,9 @@ export function HistoryView() {
         </div>
       )}
 
-      {/* History list */}
+      {/* Virtualized History list */}
       {filteredItems.length > 0 && (
-        <div className="space-y-3">
-          {filteredItems.map((item) => (
-            <HistoryItem key={item.id} item={item} />
-          ))}
-        </div>
+        <VirtualizedHistoryList items={filteredItems} parentRef={parentRef} />
       )}
 
       {/* No results after filtering */}
@@ -293,6 +294,58 @@ export function HistoryView() {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// Virtualized history list component
+interface VirtualizedHistoryListProps {
+  items: ActivityItem[]
+  parentRef: React.RefObject<HTMLDivElement | null>
+}
+
+function VirtualizedHistoryList({ items, parentRef }: VirtualizedHistoryListProps) {
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: useCallback(() => ESTIMATED_ITEM_HEIGHT, []),
+    overscan: 5, // Render extra items for smooth scrolling
+    gap: 12, // space-y-3 = 12px gap
+  })
+
+  return (
+    <div
+      ref={parentRef}
+      className="overflow-auto h-[calc(100vh-380px)]"
+      style={{ contain: 'strict' }}
+    >
+      <div
+        style={{
+          height: virtualizer.getTotalSize(),
+          width: '100%',
+          position: 'relative',
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const item = items[virtualRow.index]
+          return (
+            <div
+              key={item.id}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <HistoryItem item={item} />
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

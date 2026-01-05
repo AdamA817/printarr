@@ -27,8 +27,8 @@ function renderApp(initialRoute = '/') {
 describe('App', () => {
   it('renders without crashing', () => {
     renderApp()
-    // App should render the sidebar with Printarr branding
-    expect(screen.getByText('Printarr')).toBeInTheDocument()
+    // App should render the sidebar with Printarr branding (logo image)
+    expect(screen.getByAltText('Printarr')).toBeInTheDocument()
   })
 
   it('shows dashboard by default', () => {

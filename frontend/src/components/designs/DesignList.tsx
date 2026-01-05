@@ -1,4 +1,6 @@
+import { useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { StatusBadge } from './StatusBadge'
 import { DesignActions } from './DesignActions'
 import type { DesignListItem, SortField, SortOrder } from '@/types/design'
@@ -12,6 +14,9 @@ interface DesignListProps {
   onToggleSelect?: (id: string) => void
   showActions?: boolean
 }
+
+// Row height for virtualization (matches py-3 padding + content)
+const ROW_HEIGHT = 56
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString)
@@ -38,8 +43,29 @@ const SORTABLE_COLUMNS: Record<string, SortableColumn | null> = {
   added: { field: 'created_at', label: 'Added' },
 }
 
+// Column widths for flex layout (matching header and rows)
+const COLUMN_WIDTHS = {
+  checkbox: 'w-10 flex-shrink-0',
+  title: 'flex-1 min-w-[200px]',
+  designer: 'w-32 flex-shrink-0',
+  channel: 'w-32 flex-shrink-0',
+  status: 'w-28 flex-shrink-0',
+  fileTypes: 'w-24 flex-shrink-0',
+  thangs: 'w-16 flex-shrink-0',
+  added: 'w-28 flex-shrink-0',
+  actions: 'w-24 flex-shrink-0',
+}
+
 export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, onToggleSelect, showActions = true }: DesignListProps) {
   const navigate = useNavigate()
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: designs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: useCallback(() => ROW_HEIGHT, []),
+    overscan: 10, // Render extra rows for smooth scrolling
+  })
 
   const handleRowClick = (id: string, e: React.MouseEvent) => {
     // Don't navigate if clicking on checkbox or action buttons
@@ -56,7 +82,7 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
   const renderColumnHeader = (
     column: string,
     label: string,
-    className?: string
+    widthClass: string
   ) => {
     const sortable = SORTABLE_COLUMNS[column]
     const isActive = sortable && sortBy === sortable.field
@@ -64,14 +90,14 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
 
     if (!canSort) {
       return (
-        <th className={`px-4 py-3 font-medium ${className || ''}`}>
+        <div className={`px-4 py-3 font-medium ${widthClass}`}>
           {label}
-        </th>
+        </div>
       )
     }
 
     return (
-      <th className={`px-4 py-3 font-medium ${className || ''}`}>
+      <div className={`px-4 py-3 font-medium ${widthClass}`}>
         <button
           onClick={() => onSort(sortable.field)}
           className="flex items-center gap-1 hover:text-text-primary transition-colors group"
@@ -79,40 +105,60 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
           {label}
           <SortIndicator active={isActive ?? false} direction={isActive ? sortOrder : undefined} />
         </button>
-      </th>
+      </div>
     )
   }
 
   return (
     <div className="bg-bg-secondary rounded-lg overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-bg-tertiary text-left text-sm text-text-secondary">
-              {onToggleSelect && (
-                <th className="px-4 py-3 w-10"></th>
-              )}
-              {renderColumnHeader('title', 'Title')}
-              {renderColumnHeader('designer', 'Designer')}
-              {renderColumnHeader('channel', 'Channel')}
-              {renderColumnHeader('status', 'Status')}
-              {renderColumnHeader('fileTypes', 'File Types')}
-              {renderColumnHeader('thangs', 'Thangs')}
-              {renderColumnHeader('added', 'Added')}
-              {showActions && <th className="px-4 py-3 font-medium w-24">Actions</th>}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-bg-tertiary">
-            {designs.map((design) => (
-              <tr
+      {/* Fixed header using flex layout */}
+      <div className="flex items-center bg-bg-tertiary text-left text-sm text-text-secondary">
+        {onToggleSelect && (
+          <div className={`px-4 py-3 ${COLUMN_WIDTHS.checkbox}`}></div>
+        )}
+        {renderColumnHeader('title', 'Title', COLUMN_WIDTHS.title)}
+        {renderColumnHeader('designer', 'Designer', COLUMN_WIDTHS.designer)}
+        {renderColumnHeader('channel', 'Channel', COLUMN_WIDTHS.channel)}
+        {renderColumnHeader('status', 'Status', COLUMN_WIDTHS.status)}
+        {renderColumnHeader('fileTypes', 'File Types', COLUMN_WIDTHS.fileTypes)}
+        {renderColumnHeader('thangs', 'Thangs', COLUMN_WIDTHS.thangs)}
+        {renderColumnHeader('added', 'Added', COLUMN_WIDTHS.added)}
+        {showActions && <div className={`px-4 py-3 font-medium ${COLUMN_WIDTHS.actions}`}>Actions</div>}
+      </div>
+
+      {/* Virtualized body */}
+      <div
+        ref={parentRef}
+        className="overflow-auto h-[calc(100vh-380px)]"
+        style={{ contain: 'strict' }}
+      >
+        <div
+          style={{
+            height: virtualizer.getTotalSize(),
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const design = designs[virtualRow.index]
+            return (
+              <div
                 key={design.id}
                 onClick={(e) => handleRowClick(design.id, e)}
-                className={`hover:bg-bg-tertiary/50 transition-colors cursor-pointer ${
+                className={`flex items-center hover:bg-bg-tertiary/50 transition-colors cursor-pointer border-b border-bg-tertiary ${
                   selectedIds?.has(design.id) ? 'bg-accent-primary/10' : ''
                 }`}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: virtualRow.size,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
               >
                 {onToggleSelect && (
-                  <td className="px-4 py-3 w-10">
+                  <div className={`px-4 py-3 ${COLUMN_WIDTHS.checkbox}`}>
                     <input
                       type="checkbox"
                       checked={selectedIds?.has(design.id) || false}
@@ -120,28 +166,28 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
                       onClick={(e) => handleCheckboxClick(e, design.id)}
                       className="w-4 h-4 rounded border-bg-tertiary bg-bg-tertiary text-accent-primary focus:ring-accent-primary cursor-pointer"
                     />
-                  </td>
+                  </div>
                 )}
-                <td className="px-4 py-3">
-                  <span className="text-text-primary font-medium truncate block max-w-xs">
+                <div className={`px-4 py-3 ${COLUMN_WIDTHS.title}`}>
+                  <span className="text-text-primary font-medium truncate block">
                     {design.canonical_title}
                   </span>
-                </td>
-                <td className="px-4 py-3 text-text-secondary">
+                </div>
+                <div className={`px-4 py-3 text-text-secondary truncate ${COLUMN_WIDTHS.designer}`}>
                   {design.canonical_designer}
-                </td>
-                <td className="px-4 py-3 text-text-secondary">
+                </div>
+                <div className={`px-4 py-3 text-text-secondary truncate ${COLUMN_WIDTHS.channel}`}>
                   {design.channel?.title || '—'}
-                </td>
-                <td className="px-4 py-3">
+                </div>
+                <div className={`px-4 py-3 ${COLUMN_WIDTHS.status}`}>
                   <StatusBadge status={design.status} />
-                </td>
-                <td className="px-4 py-3 text-text-secondary text-sm">
+                </div>
+                <div className={`px-4 py-3 text-text-secondary text-sm truncate ${COLUMN_WIDTHS.fileTypes}`}>
                   {design.file_types.length > 0
                     ? design.file_types.join(', ')
                     : '—'}
-                </td>
-                <td className="px-4 py-3">
+                </div>
+                <div className={`px-4 py-3 ${COLUMN_WIDTHS.thangs}`}>
                   {design.has_thangs_link ? (
                     <span
                       className="text-accent-primary"
@@ -152,24 +198,24 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
                   ) : (
                     <span className="text-text-muted">—</span>
                   )}
-                </td>
-                <td className="px-4 py-3 text-text-secondary text-sm">
+                </div>
+                <div className={`px-4 py-3 text-text-secondary text-sm ${COLUMN_WIDTHS.added}`}>
                   {formatDate(design.created_at)}
-                </td>
+                </div>
                 {showActions && (
-                  <td className="px-4 py-3">
+                  <div className={`px-4 py-3 ${COLUMN_WIDTHS.actions}`}>
                     <DesignActions
                       designId={design.id}
                       status={design.status}
                       size="sm"
                       variant="icon"
                     />
-                  </td>
+                  </div>
                 )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
