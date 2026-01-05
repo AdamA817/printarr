@@ -301,15 +301,19 @@ class DuplicateService:
                 return match, DuplicateMatchType.THANGS_ID, 1.0
 
         # Try title + designer match
-        match = await self._find_by_title_designer(title, designer)
+        match, is_exact = await self._find_by_title_designer(title, designer)
         if match:
+            # Exact title+designer match gets 1.0 confidence, fuzzy gets 0.7
+            confidence = 1.0 if is_exact else 0.7
             logger.info(
                 "pre_download_match_title_designer",
                 title=title,
                 designer=designer,
                 match_design_id=match.id,
+                is_exact=is_exact,
+                confidence=confidence,
             )
-            return match, DuplicateMatchType.TITLE_DESIGNER, 0.7
+            return match, DuplicateMatchType.TITLE_DESIGNER, confidence
 
         # Try filename + size match
         for file_info in files:
@@ -655,23 +659,60 @@ class DuplicateService:
 
     async def _find_by_title_designer(
         self, title: str, designer: str
-    ) -> Design | None:
-        """Find a design by exact or fuzzy title+designer match."""
-        # Try exact match first
+    ) -> tuple[Design | None, bool]:
+        """Find a design by exact or fuzzy title+designer match.
+
+        When designer is empty/missing, falls back to title-only matching
+        which returns is_exact=False (lower confidence).
+
+        Returns:
+            Tuple of (design, is_exact_match). is_exact_match is True if both
+            title and designer are exact matches (full confidence).
+        """
+        # Try exact title+designer match first (only if designer is provided)
+        if designer:
+            result = await self.db.execute(
+                select(Design)
+                .where(
+                    Design.canonical_title == title,
+                    Design.canonical_designer == designer,
+                    Design.status != DesignStatus.DELETED,
+                )
+            )
+            exact_match = result.scalar_one_or_none()
+
+            if exact_match:
+                return exact_match, True
+
+        # Try title-only exact match (when designer is missing or no full match)
+        # This handles cases where import source has no default_designer
         result = await self.db.execute(
             select(Design)
             .where(
                 Design.canonical_title == title,
-                Design.canonical_designer == designer,
                 Design.status != DesignStatus.DELETED,
             )
+            .limit(1)
         )
-        exact_match = result.scalar_one_or_none()
+        title_only_match = result.scalars().first()
 
-        if exact_match:
-            return exact_match
+        if title_only_match:
+            # Title-only match is treated as non-exact (0.7 confidence)
+            # unless designer also matches
+            if designer and title_only_match.canonical_designer:
+                designer_ratio = fuzz.ratio(
+                    designer.lower(), title_only_match.canonical_designer.lower()
+                )
+                if designer_ratio >= TITLE_SIMILARITY_THRESHOLD:
+                    # Designer also matches closely, treat as exact
+                    return title_only_match, True
+            elif not designer:
+                # No designer provided, title-only exact match is good enough
+                # Return as exact since the title matches perfectly
+                return title_only_match, True
+            return title_only_match, False
 
-        # Try fuzzy match
+        # Try fuzzy title match
         result = await self.db.execute(
             select(Design)
             .where(Design.status != DesignStatus.DELETED)
@@ -679,21 +720,24 @@ class DuplicateService:
         all_designs = result.scalars().all()
 
         for design in all_designs:
-            if not design.canonical_title or not design.canonical_designer:
+            if not design.canonical_title:
                 continue
 
             title_ratio = fuzz.ratio(title.lower(), design.canonical_title.lower())
-            designer_ratio = fuzz.ratio(
-                designer.lower(), design.canonical_designer.lower()
-            )
 
-            if (
-                title_ratio >= TITLE_SIMILARITY_THRESHOLD
-                and designer_ratio >= TITLE_SIMILARITY_THRESHOLD
-            ):
-                return design
+            if title_ratio >= TITLE_SIMILARITY_THRESHOLD:
+                # Check designer if both are provided
+                if designer and design.canonical_designer:
+                    designer_ratio = fuzz.ratio(
+                        designer.lower(), design.canonical_designer.lower()
+                    )
+                    if designer_ratio >= TITLE_SIMILARITY_THRESHOLD:
+                        return design, False
+                elif not designer:
+                    # No designer to check, title fuzzy match is enough
+                    return design, False
 
-        return None
+        return None, False
 
     async def _find_by_filename_size(
         self, filename: str, size: int
