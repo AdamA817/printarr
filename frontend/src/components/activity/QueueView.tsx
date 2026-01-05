@@ -82,10 +82,10 @@ export function QueueView() {
       )}
 
       {/* Queued items */}
-      {queuedItems.length > 0 && (
+      {((stats?.queued ?? 0) > 0 || queuedItems.length > 0) && (
         <section>
           <h2 className="text-lg font-medium text-text-primary mb-3">
-            Waiting ({queuedItems.length})
+            Waiting ({stats?.queued ?? queuedItems.length})
           </h2>
           <div className="space-y-3">
             {queuedItems.map((item, index) => (

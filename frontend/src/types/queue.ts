@@ -17,6 +17,7 @@ export interface QueueItem {
   job_type: JobType
   status: JobStatus
   priority: number
+  display_name: string | null // DEC-040: User-friendly job name
   progress: number | null
   progress_message: string | null
   error_message: string | null

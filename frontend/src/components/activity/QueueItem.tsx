@@ -193,6 +193,15 @@ export function QueueItem({ item, position }: QueueItemProps) {
     if (item.design) {
       return item.design.canonical_title
     }
+    // Use display_name as fallback for jobs without design (e.g., DOWNLOAD_IMPORT_RECORD)
+    if (item.display_name) {
+      // display_name format: "Download: Design Name from Source" - extract design name
+      const match = item.display_name.match(/^Download:\s*(.+?)(?:\s+from\s+|$)/)
+      if (match) {
+        return match[1]
+      }
+      return item.display_name
+    }
     return 'Unknown'
   }
 
