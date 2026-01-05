@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -92,6 +93,11 @@ class Design(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
+
+    # Full-text search vector (PostgreSQL generated column - #218)
+    # This column is GENERATED ALWAYS and managed by PostgreSQL, not SQLAlchemy
+    # It combines canonical_title (weight A) and canonical_designer (weight B)
+    # Use Design.search_vector.op('@@')(func.plainto_tsquery('english', search_term)) for queries
 
     # Relationships
     sources: Mapped[list[DesignSource]] = relationship(

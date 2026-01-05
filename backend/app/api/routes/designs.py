@@ -7,13 +7,14 @@ from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.db import get_db
+from app.services.count_cache import get_approximate_count, count_cache
 from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType
 from app.db.models.design_tag import DesignTag
 from app.db.models.enums import DesignStatus, MatchMethod, MetadataAuthority, MulticolorStatus
@@ -207,19 +208,49 @@ async def list_designs(
             query = query.where(Design.id.in_(designs_with_any_tag))
 
     if q:
-        # Full-text search on title and designer (case-insensitive)
-        search_pattern = f"%{q}%"
-        query = query.where(
-            or_(
-                Design.canonical_title.ilike(search_pattern),
-                Design.canonical_designer.ilike(search_pattern),
+        # Full-text search using PostgreSQL tsvector (#218)
+        # Uses the search_vector generated column with GIN index for performance
+        # For short queries (< 3 chars), fall back to trigram ILIKE for partial matching
+        if len(q) >= 3:
+            # Use full-text search with plainto_tsquery for natural language queries
+            # Also include partial match via trigram for better UX
+            search_condition = or_(
+                text("search_vector @@ plainto_tsquery('english', :q)"),
+                Design.canonical_title.ilike(f"%{q}%"),
             )
-        )
+            query = query.where(search_condition).params(q=q)
+        else:
+            # Short queries use ILIKE with trigram index
+            search_pattern = f"%{q}%"
+            query = query.where(
+                or_(
+                    Design.canonical_title.ilike(search_pattern),
+                    Design.canonical_designer.ilike(search_pattern),
+                )
+            )
 
-    # Get total count (before pagination)
-    count_query = select(func.count()).select_from(query.subquery())
-    total_result = await db.execute(count_query)
-    total = total_result.scalar() or 0
+    # Get total count (before pagination) - optimized (#219)
+    # Use approximate count for unfiltered queries on large tables
+    has_filters = any([status, channel_id, multicolor, has_files, import_source_id, tags, q])
+    is_approximate = False
+
+    if not has_filters:
+        # Try approximate count for unfiltered queries
+        approx_count = await get_approximate_count(db, "designs")
+        if approx_count is not None and approx_count > 10000:
+            # Use approximate count for large tables
+            total = approx_count
+            is_approximate = True
+        else:
+            # Small table or no stats, use exact count
+            count_query = select(func.count()).select_from(query.subquery())
+            total_result = await db.execute(count_query)
+            total = total_result.scalar() or 0
+    else:
+        # Filtered query - must use exact count
+        count_query = select(func.count()).select_from(query.subquery())
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
 
     # Apply sorting
     sort_column = getattr(Design, sort_by.value)

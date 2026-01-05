@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.db.models import Design, DesignStatus, Job, JobStatus, JobType
+from app.services.events import get_event_broadcaster
 
 logger = get_logger(__name__)
 
@@ -86,6 +88,16 @@ class JobQueueService:
             display_name=display_name,
         )
 
+        # Broadcast job created event (#217)
+        broadcaster = get_event_broadcaster()
+        asyncio.create_task(broadcaster.broadcast_job_created(
+            job_id=job.id,
+            job_type=job_type.value,
+            design_id=design_id,
+            display_name=display_name,
+            priority=priority,
+        ))
+
         return job
 
     async def dequeue(
@@ -150,6 +162,14 @@ class JobQueueService:
             job_type=job.type.value,
             attempt=job.attempts,
         )
+
+        # Broadcast job started event (#217)
+        broadcaster = get_event_broadcaster()
+        asyncio.create_task(broadcaster.broadcast_job_started(
+            job_id=job.id,
+            job_type=job.type.value,
+            design_id=job.design_id,
+        ))
 
         return job
 
@@ -228,6 +248,25 @@ class JobQueueService:
                     await self._update_design_status(job.design_id, DesignStatus.FAILED)
 
         await self.db.flush()
+
+        # Broadcast completion event (#217)
+        broadcaster = get_event_broadcaster()
+        if success:
+            asyncio.create_task(broadcaster.broadcast_job_completed(
+                job_id=job_id,
+                job_type=job.type.value,
+                design_id=job.design_id,
+                result=result,
+            ))
+        else:
+            asyncio.create_task(broadcaster.broadcast_job_failed(
+                job_id=job_id,
+                job_type=job.type.value,
+                design_id=job.design_id,
+                error=error,
+                will_retry=job.status == JobStatus.QUEUED,  # Will retry if re-queued
+            ))
+
         return job
 
     async def cancel(self, job_id: str) -> Job | None:
@@ -269,6 +308,14 @@ class JobQueueService:
             job_id=job_id,
             job_type=job.type.value,
         )
+
+        # Broadcast job canceled event (#217)
+        broadcaster = get_event_broadcaster()
+        asyncio.create_task(broadcaster.broadcast_job_canceled(
+            job_id=job_id,
+            job_type=job.type.value,
+            design_id=job.design_id,
+        ))
 
         return job
 
@@ -325,6 +372,21 @@ class JobQueueService:
             update(Job).where(Job.id == job_id).values(**update_values)
         )
         await self.db.flush()
+
+        # Broadcast progress event (#217)
+        # Calculate progress percentage
+        progress_percent = None
+        if total and total > 0:
+            progress_percent = int((current / total) * 100)
+
+        broadcaster = get_event_broadcaster()
+        asyncio.create_task(broadcaster.broadcast_job_progress(
+            job_id=job_id,
+            progress=progress_percent,
+            current_file=current_file,
+            current_file_bytes=current_file_bytes,
+            current_file_total=current_file_total,
+        ))
 
     async def get_queue_stats(self) -> dict[str, Any]:
         """Get statistics about the job queue.
@@ -674,3 +736,12 @@ class JobQueueService:
                 old_status=old_status.value if old_status else None,
                 new_status=new_status.value,
             )
+
+            # Broadcast design status change event (#217)
+            broadcaster = get_event_broadcaster()
+            asyncio.create_task(broadcaster.broadcast_design_status_changed(
+                design_id=design_id,
+                old_status=old_status.value if old_status else None,
+                new_status=new_status.value,
+                title=design.canonical_title,
+            ))

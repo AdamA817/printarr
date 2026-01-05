@@ -159,3 +159,22 @@ async def reset_settings(
         settings=defaults,
         message="All settings reset to defaults",
     )
+
+
+@router.get("/schema/all")
+async def get_settings_schema():
+    """Get the settings schema for UI rendering (#221).
+
+    Returns metadata for all available settings including:
+    - type (string, int, float, bool)
+    - min/max values for numeric types
+    - description
+    - default value
+    - whether a restart is required after changing
+
+    This endpoint is useful for building dynamic settings forms.
+    """
+    return {
+        "schema": SettingsService.get_schema(),
+        "keys": list(SETTINGS_DEFAULTS.keys()),
+    }
