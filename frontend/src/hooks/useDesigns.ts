@@ -31,10 +31,75 @@ export function useUpdateDesign() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: DesignUpdateRequest }) =>
       designsApi.update(id, data),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['design', variables.id] })
+    onMutate: async ({ id, data }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['designs'] })
+      await queryClient.cancelQueries({ queryKey: ['design', id] })
+
+      // Snapshot previous values
+      const previousDesigns = queryClient.getQueriesData<DesignList>({ queryKey: ['designs'] })
+      const previousDesign = queryClient.getQueryData<DesignDetail>(['design', id])
+
+      // Optimistically update in list
+      queryClient.setQueriesData<DesignList>({ queryKey: ['designs'] }, (oldData) => {
+        if (!oldData) return oldData
+        return {
+          ...oldData,
+          items: oldData.items.map((item: DesignListItem) =>
+            item.id === id ? { ...item, ...data } : item
+          ),
+        }
+      })
+
+      // Optimistically update detail
+      if (previousDesign) {
+        queryClient.setQueryData<DesignDetail>(['design', id], {
+          ...previousDesign,
+          ...data,
+        })
+      }
+
+      return { previousDesigns, previousDesign }
+    },
+    onError: (_err, { id }, context) => {
+      // Rollback on error
+      if (context?.previousDesigns) {
+        context.previousDesigns.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data)
+        })
+      }
+      if (context?.previousDesign) {
+        queryClient.setQueryData(['design', id], context.previousDesign)
+      }
+    },
+    onSettled: (_, __, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['design', id] })
       queryClient.invalidateQueries({ queryKey: ['designs'] })
     },
+  })
+}
+
+// Helper to update has_thangs_link in cache
+function updateThangslinkInCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  designId: string,
+  hasLink: boolean
+) {
+  // Update in list queries
+  queryClient.setQueriesData<DesignList>({ queryKey: ['designs'] }, (oldData) => {
+    if (!oldData) return oldData
+    return {
+      ...oldData,
+      items: oldData.items.map((item: DesignListItem) =>
+        item.id === designId ? { ...item, has_thangs_link: hasLink } : item
+      ),
+    }
+  })
+
+  // Update in detail query
+  queryClient.setQueryData<DesignDetail>(['design', designId], (oldData) => {
+    if (!oldData) return oldData
+    return { ...oldData, has_thangs_link: hasLink }
   })
 }
 
@@ -44,8 +109,30 @@ export function useLinkToThangs() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: ThangsLinkRequest }) =>
       designsApi.linkToThangs(id, data),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['design', variables.id] })
+    onMutate: async ({ id }) => {
+      await queryClient.cancelQueries({ queryKey: ['designs'] })
+      await queryClient.cancelQueries({ queryKey: ['design', id] })
+
+      const previousDesigns = queryClient.getQueriesData<DesignList>({ queryKey: ['designs'] })
+      const previousDesign = queryClient.getQueryData<DesignDetail>(['design', id])
+
+      // Optimistically set has_thangs_link to true
+      updateThangslinkInCache(queryClient, id, true)
+
+      return { previousDesigns, previousDesign }
+    },
+    onError: (_err, { id }, context) => {
+      if (context?.previousDesigns) {
+        context.previousDesigns.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data)
+        })
+      }
+      if (context?.previousDesign) {
+        queryClient.setQueryData(['design', id], context.previousDesign)
+      }
+    },
+    onSettled: (_, __, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['design', id] })
       queryClient.invalidateQueries({ queryKey: ['designs'] })
     },
   })
@@ -57,8 +144,30 @@ export function useLinkToThangsByUrl() {
   return useMutation({
     mutationFn: ({ id, url }: { id: string; url: string }) =>
       designsApi.linkToThangsByUrl(id, { url }),
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['design', variables.id] })
+    onMutate: async ({ id }) => {
+      await queryClient.cancelQueries({ queryKey: ['designs'] })
+      await queryClient.cancelQueries({ queryKey: ['design', id] })
+
+      const previousDesigns = queryClient.getQueriesData<DesignList>({ queryKey: ['designs'] })
+      const previousDesign = queryClient.getQueryData<DesignDetail>(['design', id])
+
+      // Optimistically set has_thangs_link to true
+      updateThangslinkInCache(queryClient, id, true)
+
+      return { previousDesigns, previousDesign }
+    },
+    onError: (_err, { id }, context) => {
+      if (context?.previousDesigns) {
+        context.previousDesigns.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data)
+        })
+      }
+      if (context?.previousDesign) {
+        queryClient.setQueryData(['design', id], context.previousDesign)
+      }
+    },
+    onSettled: (_, __, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['design', id] })
       queryClient.invalidateQueries({ queryKey: ['designs'] })
     },
   })
@@ -69,7 +178,29 @@ export function useUnlinkFromThangs() {
 
   return useMutation({
     mutationFn: (id: string) => designsApi.unlinkFromThangs(id),
-    onSuccess: (_data, id) => {
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['designs'] })
+      await queryClient.cancelQueries({ queryKey: ['design', id] })
+
+      const previousDesigns = queryClient.getQueriesData<DesignList>({ queryKey: ['designs'] })
+      const previousDesign = queryClient.getQueryData<DesignDetail>(['design', id])
+
+      // Optimistically set has_thangs_link to false
+      updateThangslinkInCache(queryClient, id, false)
+
+      return { previousDesigns, previousDesign }
+    },
+    onError: (_err, id, context) => {
+      if (context?.previousDesigns) {
+        context.previousDesigns.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data)
+        })
+      }
+      if (context?.previousDesign) {
+        queryClient.setQueryData(['design', id], context.previousDesign)
+      }
+    },
+    onSettled: (_, __, id) => {
       queryClient.invalidateQueries({ queryKey: ['design', id] })
       queryClient.invalidateQueries({ queryKey: ['designs'] })
     },
@@ -275,8 +406,35 @@ export function useDeleteDesign() {
   return useMutation({
     mutationFn: ({ id, deleteFiles }: { id: string; deleteFiles: boolean }) =>
       designsApi.delete(id, deleteFiles),
-    onSuccess: (_data, { id }) => {
-      // Remove from cache
+    onMutate: async ({ id }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['designs'] })
+
+      // Snapshot previous value
+      const previousDesigns = queryClient.getQueriesData<DesignList>({ queryKey: ['designs'] })
+
+      // Optimistically remove from list
+      queryClient.setQueriesData<DesignList>({ queryKey: ['designs'] }, (oldData) => {
+        if (!oldData) return oldData
+        return {
+          ...oldData,
+          items: oldData.items.filter((item: DesignListItem) => item.id !== id),
+          total: oldData.total - 1,
+        }
+      })
+
+      return { previousDesigns }
+    },
+    onError: (_err, _vars, context) => {
+      // Rollback on error
+      if (context?.previousDesigns) {
+        context.previousDesigns.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data)
+        })
+      }
+    },
+    onSettled: (_, __, { id }) => {
+      // Remove from cache and refetch
       queryClient.removeQueries({ queryKey: ['design', id] })
       queryClient.invalidateQueries({ queryKey: ['designs'] })
     },
@@ -290,9 +448,41 @@ export function useBulkDeleteDesigns() {
   return useMutation({
     mutationFn: ({ designIds, deleteFiles }: { designIds: string[]; deleteFiles: boolean }) =>
       designsApi.bulkDelete(designIds, deleteFiles),
-    onSuccess: (data) => {
+    onMutate: async ({ designIds }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['designs'] })
+
+      // Snapshot previous value
+      const previousDesigns = queryClient.getQueriesData<DesignList>({ queryKey: ['designs'] })
+
+      // Optimistically remove all selected designs from list
+      const designIdsSet = new Set(designIds)
+      queryClient.setQueriesData<DesignList>({ queryKey: ['designs'] }, (oldData) => {
+        if (!oldData) return oldData
+        const filteredItems = oldData.items.filter(
+          (item: DesignListItem) => !designIdsSet.has(item.id)
+        )
+        return {
+          ...oldData,
+          items: filteredItems,
+          total: oldData.total - designIds.length,
+        }
+      })
+
+      return { previousDesigns, designIds }
+    },
+    onError: (_err, _vars, context) => {
+      // Rollback on error
+      if (context?.previousDesigns) {
+        context.previousDesigns.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data)
+        })
+      }
+    },
+    onSettled: (data, _error, { designIds }) => {
       // Remove deleted designs from cache
-      data.deleted_ids.forEach((id) => {
+      const deletedIds = data?.deleted_ids ?? designIds
+      deletedIds.forEach((id) => {
         queryClient.removeQueries({ queryKey: ['design', id] })
       })
       queryClient.invalidateQueries({ queryKey: ['designs'] })

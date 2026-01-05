@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { channelsApi, type ChannelListParams } from '@/services/api'
-import type { ChannelCreate, ChannelUpdate, DownloadMode, DownloadModeRequest } from '@/types/channel'
+import type { Channel, ChannelCreate, ChannelUpdate, ChannelList, DownloadMode, DownloadModeRequest } from '@/types/channel'
 
 export function useChannels(params?: ChannelListParams) {
   return useQuery({
@@ -63,8 +63,50 @@ export function useUpdateChannel() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: ChannelUpdate }) =>
       channelsApi.update(id, data),
-    onSuccess: () => {
+    onMutate: async ({ id, data }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['channels'] })
+      await queryClient.cancelQueries({ queryKey: ['channel', id] })
+
+      // Snapshot previous values
+      const previousChannels = queryClient.getQueriesData<ChannelList>({ queryKey: ['channels'] })
+      const previousChannel = queryClient.getQueryData<Channel>(['channel', id])
+
+      // Optimistically update channel in list
+      queryClient.setQueriesData<ChannelList>({ queryKey: ['channels'] }, (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          items: old.items.map((channel) =>
+            channel.id === id ? { ...channel, ...data } : channel
+          ),
+        }
+      })
+
+      // Optimistically update single channel query
+      if (previousChannel) {
+        queryClient.setQueryData<Channel>(['channel', id], {
+          ...previousChannel,
+          ...data,
+        })
+      }
+
+      return { previousChannels, previousChannel }
+    },
+    onError: (_err, { id }, context) => {
+      // Rollback on error
+      if (context?.previousChannels) {
+        for (const [queryKey, data] of context.previousChannels) {
+          queryClient.setQueryData(queryKey, data)
+        }
+      }
+      if (context?.previousChannel) {
+        queryClient.setQueryData(['channel', id], context.previousChannel)
+      }
+    },
+    onSettled: (_, __, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['channels'] })
+      queryClient.invalidateQueries({ queryKey: ['channel', id] })
     },
   })
 }
@@ -74,7 +116,34 @@ export function useDeleteChannel() {
 
   return useMutation({
     mutationFn: (id: string) => channelsApi.delete(id),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['channels'] })
+
+      // Snapshot previous value
+      const previousChannels = queryClient.getQueriesData<ChannelList>({ queryKey: ['channels'] })
+
+      // Optimistically remove from list
+      queryClient.setQueriesData<ChannelList>({ queryKey: ['channels'] }, (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          items: old.items.filter((channel) => channel.id !== id),
+          total: old.total - 1,
+        }
+      })
+
+      return { previousChannels }
+    },
+    onError: (_err, _id, context) => {
+      // Rollback on error
+      if (context?.previousChannels) {
+        for (const [queryKey, data] of context.previousChannels) {
+          queryClient.setQueryData(queryKey, data)
+        }
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['channels'] })
     },
   })
@@ -89,6 +158,7 @@ export function useTriggerBackfill() {
       // Invalidate designs and stats since backfill may have created new designs
       queryClient.invalidateQueries({ queryKey: ['designs'] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
+      queryClient.invalidateQueries({ queryKey: ['queue'] })
     },
   })
 }
@@ -108,8 +178,52 @@ export function useUpdateDownloadMode() {
   return useMutation({
     mutationFn: ({ channelId, request }: { channelId: string; request: DownloadModeRequest }) =>
       channelsApi.updateDownloadMode(channelId, request),
-    onSuccess: () => {
+    onMutate: async ({ channelId, request }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['channels'] })
+      await queryClient.cancelQueries({ queryKey: ['channel', channelId] })
+
+      // Snapshot previous values
+      const previousChannels = queryClient.getQueriesData<ChannelList>({ queryKey: ['channels'] })
+      const previousChannel = queryClient.getQueryData<Channel>(['channel', channelId])
+
+      // Optimistically update download_mode in channel list
+      queryClient.setQueriesData<ChannelList>({ queryKey: ['channels'] }, (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          items: old.items.map((channel) =>
+            channel.id === channelId
+              ? { ...channel, download_mode: request.download_mode }
+              : channel
+          ),
+        }
+      })
+
+      // Optimistically update single channel query
+      if (previousChannel) {
+        queryClient.setQueryData<Channel>(['channel', channelId], {
+          ...previousChannel,
+          download_mode: request.download_mode,
+        })
+      }
+
+      return { previousChannels, previousChannel }
+    },
+    onError: (_err, { channelId }, context) => {
+      // Rollback on error
+      if (context?.previousChannels) {
+        for (const [queryKey, data] of context.previousChannels) {
+          queryClient.setQueryData(queryKey, data)
+        }
+      }
+      if (context?.previousChannel) {
+        queryClient.setQueryData(['channel', channelId], context.previousChannel)
+      }
+    },
+    onSettled: (_, __, { channelId }) => {
       queryClient.invalidateQueries({ queryKey: ['channels'] })
+      queryClient.invalidateQueries({ queryKey: ['channel', channelId] })
       queryClient.invalidateQueries({ queryKey: ['queue'] })
     },
   })
