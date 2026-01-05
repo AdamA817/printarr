@@ -437,10 +437,24 @@ class SyncImportSourceWorker(BaseWorker):
         errors: list[str] = []
         queue = JobQueueService(db)
 
+        # Track titles already queued in this batch for intra-batch deduplication
+        queued_titles: set[str] = set()
+
         for i, record in enumerate(records):
             try:
                 # Check for conflicts before queuing
                 if conflict_resolution == ConflictResolution.SKIP:
+                    # Intra-batch deduplication: skip if same title already queued
+                    if record.detected_title and record.detected_title in queued_titles:
+                        record.status = ImportRecordStatus.SKIPPED
+                        logger.info(
+                            "gdrive_import_skipped_intra_batch_duplicate",
+                            record_id=record.id,
+                            detected_title=record.detected_title,
+                        )
+                        continue
+
+                    # Cross-source deduplication: check against existing designs
                     existing = await self._find_existing_design(db, record, source)
                     if existing:
                         record.status = ImportRecordStatus.SKIPPED
@@ -463,6 +477,10 @@ class SyncImportSourceWorker(BaseWorker):
                     display_name=display_name,
                 )
                 queued += 1
+
+                # Track title for intra-batch deduplication
+                if record.detected_title:
+                    queued_titles.add(record.detected_title)
 
                 # Update progress
                 progress = 50 + int((i + 1) / len(records) * 45)  # 50-95% for queueing
@@ -1131,6 +1149,9 @@ class SyncImportSourceWorker(BaseWorker):
         errors: list[str] = []
         queue = JobQueueService(db)
 
+        # Track titles already queued in this batch for intra-batch deduplication
+        queued_titles: set[str] = set()
+
         for record in records:
             try:
                 # Only Google Drive folders support per-design downloads for now
@@ -1139,6 +1160,18 @@ class SyncImportSourceWorker(BaseWorker):
 
                 # Check for conflicts before queuing
                 if conflict_resolution == ConflictResolution.SKIP:
+                    # Intra-batch deduplication: skip if same title already queued
+                    if record.detected_title and record.detected_title in queued_titles:
+                        record.status = ImportRecordStatus.SKIPPED
+                        logger.info(
+                            "folder_import_skipped_intra_batch_duplicate",
+                            folder_id=folder.id,
+                            record_id=record.id,
+                            detected_title=record.detected_title,
+                        )
+                        continue
+
+                    # Cross-source deduplication: check against existing designs
                     existing = await self._find_existing_design(db, record, source)
                     if existing:
                         record.status = ImportRecordStatus.SKIPPED
@@ -1162,6 +1195,10 @@ class SyncImportSourceWorker(BaseWorker):
                     display_name=display_name,
                 )
                 queued += 1
+
+                # Track title for intra-batch deduplication
+                if record.detected_title:
+                    queued_titles.add(record.detected_title)
 
                 # Update folder stats
                 folder.items_imported = (folder.items_imported or 0) + 1
