@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import type { QueueItem as QueueItemType, JobStatus } from '@/types/queue'
 import { useCancelJob, useUpdateJobPriority } from '@/hooks/useQueue'
@@ -52,6 +52,24 @@ function getPriorityColor(priority: number): string {
   if (priority >= 10) return 'text-accent-warning'
   if (priority >= 5) return 'text-text-primary'
   return 'text-text-muted'
+}
+
+function formatElapsedTime(startedAt: string | null): string {
+  if (!startedAt) return '--'
+  const start = new Date(startedAt)
+  const now = new Date()
+  const diffMs = now.getTime() - start.getTime()
+  const seconds = Math.floor(diffMs / 1000)
+
+  if (seconds < 60) return `${seconds}s`
+  if (seconds < 3600) {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}m ${secs}s`
+  }
+  const hours = Math.floor(seconds / 3600)
+  const mins = Math.floor((seconds % 3600) / 60)
+  return `${hours}h ${mins}m`
 }
 
 // Icon components
@@ -131,9 +149,17 @@ function SyncIcon({ className }: { className?: string }) {
 export function QueueItem({ item, position }: QueueItemProps) {
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [isChangingPriority, setIsChangingPriority] = useState(false)
+  const [, setTick] = useState(0) // Force re-render for elapsed time
 
   const cancelJob = useCancelJob()
   const updatePriority = useUpdateJobPriority()
+
+  // Update elapsed time every second when job is running
+  useEffect(() => {
+    if (item.status !== 'RUNNING') return
+    const interval = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(interval)
+  }, [item.status])
 
   const handleCancel = async () => {
     try {
@@ -255,7 +281,11 @@ export function QueueItem({ item, position }: QueueItemProps) {
               </div>
               <div className="flex justify-between text-xs text-text-muted">
                 <span>{item.progress_message || 'Processing...'}</span>
-                <span>{item.progress !== null ? `${item.progress}%` : '--'}</span>
+                <div className="flex items-center gap-2">
+                  <span>{formatElapsedTime(item.started_at)}</span>
+                  <span className="text-text-muted/50">•</span>
+                  <span>{item.progress !== null ? `${item.progress}%` : '--'}</span>
+                </div>
               </div>
             </div>
           )}
