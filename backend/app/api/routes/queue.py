@@ -289,23 +289,84 @@ async def cancel_job(
     logger.info("job_cancelled", job_id=job_id)
 
 
+def _format_bytes(size: int) -> str:
+    """Format bytes to human-readable string."""
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size < 1024:
+            return f"{size:.1f}{unit}" if unit != "B" else f"{size}{unit}"
+        size /= 1024
+    return f"{size:.1f}TB"
+
+
 def _get_progress_message(job: Job) -> str | None:
-    """Get a human-readable progress message for a job."""
+    """Get a human-readable progress message for a job (#161).
+
+    Shows file-level progress when available:
+    - "Downloading file.stl (2.5MB / 10MB) [3/5]"
+    """
     if job.status == JobStatus.QUEUED:
         return "Waiting..."
     elif job.status == JobStatus.RUNNING:
+        # Parse extended progress from payload
+        progress_info = {}
+        if job.payload_json:
+            try:
+                payload = json.loads(job.payload_json)
+                progress_info = payload.get("progress", {})
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        current_file = progress_info.get("current_file")
+        current_file_bytes = progress_info.get("current_file_bytes")
+        current_file_total = progress_info.get("current_file_total")
+
         if job.type == JobType.DOWNLOAD_DESIGN:
-            if job.progress_percent is not None:
-                return f"Downloading... {job.progress_percent:.0f}%"
-            return "Downloading..."
+            # Build detailed message
+            parts = ["Downloading"]
+
+            if current_file:
+                # Truncate long filenames
+                display_name = current_file[:30] + "..." if len(current_file) > 30 else current_file
+                parts.append(f" {display_name}")
+
+            # Show byte progress for current file
+            if current_file_bytes is not None and current_file_total:
+                parts.append(f" ({_format_bytes(current_file_bytes)} / {_format_bytes(current_file_total)})")
+            elif current_file_bytes is not None:
+                parts.append(f" ({_format_bytes(current_file_bytes)})")
+
+            # Show file count progress
+            if job.progress_current is not None and job.progress_total:
+                parts.append(f" [{job.progress_current}/{job.progress_total}]")
+
+            return "".join(parts)
+
         elif job.type == JobType.EXTRACT_ARCHIVE:
+            if current_file:
+                display_name = current_file[:30] + "..." if len(current_file) > 30 else current_file
+                if job.progress_current is not None and job.progress_total:
+                    return f"Extracting {display_name} [{job.progress_current}/{job.progress_total}]"
+                return f"Extracting {display_name}..."
             return "Extracting archives..."
+
         elif job.type == JobType.IMPORT_TO_LIBRARY:
+            if current_file:
+                display_name = current_file[:30] + "..." if len(current_file) > 30 else current_file
+                if job.progress_current is not None and job.progress_total:
+                    return f"Organizing {display_name} [{job.progress_current}/{job.progress_total}]"
+                return f"Organizing {display_name}..."
             return "Organizing files..."
+
         elif job.type == JobType.SYNC_IMPORT_SOURCE:
+            if current_file:
+                display_name = current_file[:30] + "..." if len(current_file) > 30 else current_file
+                if job.progress_current is not None and job.progress_total:
+                    return f"Syncing {display_name} [{job.progress_current}/{job.progress_total}]"
+                return f"Syncing {display_name}..."
             if job.progress_percent is not None:
                 return f"Syncing... {job.progress_percent:.0f}%"
             return "Syncing..."
+
         else:
             return "Processing..."
     return None

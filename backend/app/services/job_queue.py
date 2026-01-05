@@ -259,17 +259,49 @@ class JobQueueService:
         job_id: str,
         current: int,
         total: int | None = None,
+        *,
+        current_file: str | None = None,
+        current_file_bytes: int | None = None,
+        current_file_total: int | None = None,
     ) -> None:
-        """Update job progress tracking.
+        """Update job progress tracking with optional file-level details (#161).
 
         Args:
             job_id: ID of the job.
-            current: Current progress value.
-            total: Total expected value (optional).
+            current: Current progress value (e.g., files completed).
+            total: Total expected value (e.g., total files).
+            current_file: Name of file currently being processed.
+            current_file_bytes: Bytes downloaded for current file.
+            current_file_total: Total size of current file.
         """
         update_values: dict[str, Any] = {"progress_current": current}
         if total is not None:
             update_values["progress_total"] = total
+
+        # Store extended progress info in payload_json
+        if current_file or current_file_bytes is not None or current_file_total is not None:
+            # Get current job to merge with existing payload
+            result = await self.db.execute(select(Job).where(Job.id == job_id))
+            job = result.scalar_one_or_none()
+            if job:
+                existing_payload = {}
+                if job.payload_json:
+                    try:
+                        existing_payload = json.loads(job.payload_json)
+                    except json.JSONDecodeError:
+                        pass
+
+                # Update progress fields
+                progress_info = existing_payload.get("progress", {})
+                if current_file:
+                    progress_info["current_file"] = current_file
+                if current_file_bytes is not None:
+                    progress_info["current_file_bytes"] = current_file_bytes
+                if current_file_total is not None:
+                    progress_info["current_file_total"] = current_file_total
+
+                existing_payload["progress"] = progress_info
+                update_values["payload_json"] = json.dumps(existing_payload)
 
         await self.db.execute(
             update(Job).where(Job.id == job_id).values(**update_values)
