@@ -63,7 +63,7 @@ class RenderWorker(BaseWorker):
             result = await db.execute(
                 select(DesignFile)
                 .where(DesignFile.design_id == design_id)
-                .where(DesignFile.kind == FileKind.MODEL)
+                .where(DesignFile.file_kind == FileKind.MODEL)
             )
             design_files = list(result.scalars().all())
 

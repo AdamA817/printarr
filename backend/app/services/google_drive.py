@@ -1043,7 +1043,11 @@ class GoogleDriveService:
             return
 
         # Refresh if expiring in next 5 minutes
-        if credentials.expires_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+        # Handle both timezone-naive (from DB) and timezone-aware datetimes
+        expires_at = credentials.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at > datetime.now(timezone.utc) + timedelta(minutes=5):
             return
 
         if not credentials.refresh_token_encrypted:
