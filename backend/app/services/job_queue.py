@@ -97,6 +97,9 @@ class JobQueueService:
         Uses SELECT ... FOR UPDATE to prevent race conditions when
         multiple workers try to claim the same job.
 
+        Jobs with next_retry_at in the future are not eligible until
+        that time passes (DEC-042 exponential backoff).
+
         Args:
             job_types: Optional list of job types to consider.
                       If None, considers all types.
@@ -104,8 +107,16 @@ class JobQueueService:
         Returns:
             The claimed Job instance, or None if no jobs available.
         """
-        # Build base query
-        conditions = [Job.status == JobStatus.QUEUED]
+        from sqlalchemy import or_
+
+        now = datetime.now(timezone.utc)
+
+        # Build base query - only pick jobs ready to run
+        # Jobs are ready if: next_retry_at is NULL or next_retry_at <= now
+        conditions = [
+            Job.status == JobStatus.QUEUED,
+            or_(Job.next_retry_at.is_(None), Job.next_retry_at <= now),
+        ]
 
         if job_types:
             conditions.append(Job.type.in_(job_types))
@@ -186,17 +197,20 @@ class JobQueueService:
         else:
             job.last_error = error
 
-            # Check if we should retry
-            if job.attempts < job.max_attempts:
-                job.status = JobStatus.QUEUED  # Re-queue for retry
-                job.started_at = None
-                job.finished_at = None
+            # Use RetryService for smart retry scheduling (DEC-042)
+            from app.services.retry import RetryService
+
+            retry_service = RetryService(self.db)
+            retry_scheduled = await retry_service.schedule_retry(job, error)
+
+            if retry_scheduled:
                 logger.info(
                     "job_failed_will_retry",
                     job_id=job_id,
                     job_type=job.type.value,
                     attempt=job.attempts,
                     max_attempts=job.max_attempts,
+                    next_retry_at=job.next_retry_at.isoformat() if job.next_retry_at else None,
                     error=error,
                 )
             else:

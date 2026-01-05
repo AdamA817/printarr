@@ -291,6 +291,75 @@ async def cancel_job(
     logger.info("job_cancelled", job_id=job_id)
 
 
+@router.post("/{job_id}/retry", response_model=QueueItemResponse)
+async def retry_job(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> QueueItemResponse:
+    """Manually retry a failed or canceled job (DEC-042).
+
+    Resets the job to QUEUED status and clears the attempt count.
+    Only works for FAILED or CANCELED jobs.
+    """
+    from app.services.retry import RetryService
+
+    retry_service = RetryService(db)
+    job = await retry_service.manual_retry(job_id)
+
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found or not in a retryable state (must be FAILED or CANCELED)",
+        )
+
+    # Load design relationship for response
+    query = (
+        select(Job)
+        .options(
+            selectinload(Job.design).selectinload(Design.sources).selectinload(DesignSource.channel)
+        )
+        .where(Job.id == job_id)
+    )
+    result = await db.execute(query)
+    job = result.scalar_one()
+
+    await db.commit()
+
+    logger.info("job_manual_retry", job_id=job_id)
+
+    # Build response
+    design_summary = None
+    if job.design:
+        channel_title = None
+        if job.design.sources:
+            preferred = next((s for s in job.design.sources if s.is_preferred), job.design.sources[0])
+            if preferred.channel:
+                channel_title = preferred.channel.title
+
+        design_summary = DesignSummary(
+            id=job.design.id,
+            canonical_title=job.design.canonical_title,
+            canonical_designer=job.design.canonical_designer,
+            channel_title=channel_title,
+        )
+
+    return QueueItemResponse(
+        id=job.id,
+        job_type=job.type,
+        status=job.status,
+        priority=job.priority,
+        display_name=job.display_name,
+        progress=job.progress_percent,
+        progress_message=_get_progress_message(job),
+        design=design_summary,
+        created_at=job.created_at,
+        started_at=job.started_at,
+        last_error=job.last_error,
+        attempts=job.attempts,
+        max_attempts=job.max_attempts,
+    )
+
+
 def _format_bytes(size: int) -> str:
     """Format bytes to human-readable string."""
     for unit in ["B", "KB", "MB", "GB"]:

@@ -53,10 +53,11 @@ class Job(Base):
     progress_current: Mapped[int | None] = mapped_column(Integer, nullable=True)
     progress_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # Retry handling
+    # Retry handling (DEC-042: exponential backoff)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
-    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=4)  # 4 attempts = 3 retries
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
@@ -72,6 +73,7 @@ class Job(Base):
         Index("ix_jobs_status_type_priority", "status", "type", "priority"),
         Index("ix_jobs_design_id", "design_id"),
         Index("ix_jobs_channel_id", "channel_id"),
+        Index("ix_jobs_next_retry_at", "next_retry_at"),
     )
 
     @property

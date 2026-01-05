@@ -17,17 +17,20 @@ logger = get_logger(__name__)
 
 
 def calculate_retry_delay(attempts: int) -> int:
-    """Calculate retry delay with exponential backoff.
+    """Calculate retry delay with exponential backoff (DEC-042).
 
-    Formula: min(30 * (2 ** attempts), 3600) seconds
+    Uses the delays: 1m, 5m, 15m, 60m.
 
     Args:
-        attempts: Number of attempts so far.
+        attempts: Number of attempts so far (1-indexed).
 
     Returns:
         Delay in seconds before next retry.
     """
-    return min(30 * (2 ** attempts), 3600)
+    delays = [60, 300, 900, 3600]  # 1m, 5m, 15m, 60m in seconds
+    index = min(attempts - 1, len(delays) - 1)
+    index = max(0, index)
+    return delays[index]
 
 
 class BaseWorker(ABC):
