@@ -305,23 +305,32 @@ Channels like Wicked STL post designs across multiple messages:
 
 ---
 
-## v0.9 - Deduplication & Reliability
+## v0.9 - Deduplication & Reliability ✅
 **Goal**: Handle duplicates, improve reliability
+**Status**: Complete
 
 ### Scope
-- [ ] Hash-based deduplication (post-download)
-- [ ] Filename/size heuristic matching
-- [ ] Merge duplicate designs
-- [ ] Multiple sources per design
-- [ ] Error handling improvements
-- [ ] Rate limiting / backoff for Telegram
-- [ ] Job retry logic and failure recovery
+- [x] Hash-based deduplication (post-download)
+- [x] Filename/size heuristic matching
+- [x] Merge duplicate designs
+- [x] Multiple sources per design
+- [x] Error handling improvements
+- [x] Rate limiting / backoff for Telegram
+- [x] Job retry logic and failure recovery
 
 ### Success Criteria
 - Same design from 2 channels shows as one entry
 - Preferred source selection works
 - System handles Telegram rate limits gracefully
 - Failed jobs can be retried
+
+### Technical Notes
+- DuplicateService implements DEC-041 with confidence scoring
+- SHA-256 hash computation during download phase
+- RetryService with exponential backoff (1m, 5m, 15m, 60m)
+- TelegramRateLimiter with token bucket and FloodWait handling
+- Detailed health endpoint at /api/v1/health/detailed
+- SystemHealthIndicator component in sidebar
 
 ---
 
@@ -358,7 +367,7 @@ Channels like Wicked STL post designs across multiple messages:
 
 ## Current Status
 
-**Active Version**: v0.9 - Deduplication & Reliability
+**Active Version**: v1.0 - Production Ready
 
 **Last Updated**: 2026-01-05
 
@@ -376,5 +385,5 @@ Channels like Wicked STL post designs across multiple messages:
 | v0.6 | Live Monitoring & Discovery | ✅ Complete | SyncService + DiscoveryService + Dashboard |
 | v0.7 | Previews & Metadata | ✅ Complete | Images + tags + Thangs enrichment |
 | v0.8 | Manual Imports | ✅ Complete | Google Drive + uploads + bulk folders + PostgreSQL + import profiles |
-| v0.9 | Deduplication | 🔜 Next | Handle duplicates + reliability |
-| v1.0 | Production | - | Full release |
+| v0.9 | Deduplication | ✅ Complete | DuplicateService + RetryService + RateLimiter + Health |
+| v1.0 | Production | 🔜 Next | Full release |
