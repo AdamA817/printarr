@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -123,7 +123,7 @@ async def get_discovered_channel_stats(
     total = total_result.scalar() or 0
 
     # New this week
-    week_ago = datetime.utcnow() - timedelta(days=7)
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
     new_week_result = await db.execute(
         select(func.count(DiscoveredChannel.id)).where(
             DiscoveredChannel.first_seen_at >= week_ago

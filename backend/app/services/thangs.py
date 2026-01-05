@@ -7,7 +7,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import httpx
@@ -646,7 +646,7 @@ class ThangsAdapter:
                 source.fetched_designer = metadata.get("designer")
                 tags = metadata.get("tags", [])
                 source.fetched_tags = ",".join(tags) if tags else None
-                source.last_fetched_at = datetime.utcnow()
+                source.last_fetched_at = datetime.now(timezone.utc)
 
                 logger.info(
                     "thangs_metadata_fetched",
@@ -858,7 +858,7 @@ class ThangsAdapter:
                             fetched_title=metadata.get("title"),
                             fetched_designer=metadata.get("designer"),
                             fetched_tags=",".join(metadata.get("tags", [])) if metadata.get("tags") else None,
-                            last_fetched_at=datetime.utcnow(),
+                            last_fetched_at=datetime.now(timezone.utc),
                         )
                     )
                     fetched += 1
@@ -872,7 +872,7 @@ class ThangsAdapter:
                     await self.db.execute(
                         update(ExternalMetadataSource)
                         .where(ExternalMetadataSource.id == source_info["id"])
-                        .values(last_fetched_at=datetime.utcnow())
+                        .values(last_fetched_at=datetime.now(timezone.utc))
                     )
                     failed += 1
                     logger.debug(

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import shutil
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO
 
@@ -151,7 +151,7 @@ class UploadService:
             "size": size,
             "mime_type": content_type,
             "status": UploadStatus.PENDING.value,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         })
 
         logger.info(
@@ -337,7 +337,7 @@ class UploadService:
 
             # Update metadata
             meta["status"] = UploadStatus.COMPLETED.value
-            meta["processed_at"] = datetime.utcnow().isoformat()
+            meta["processed_at"] = datetime.now(timezone.utc).isoformat()
             meta["design_id"] = design.id
             await self._save_meta(upload_id, meta)
 
@@ -389,7 +389,7 @@ class UploadService:
         if not self._staging_path.exists():
             return 0
 
-        cutoff = datetime.utcnow() - timedelta(hours=settings.upload_retention_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=settings.upload_retention_hours)
         cleaned = 0
 
         for upload_dir in self._staging_path.iterdir():

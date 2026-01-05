@@ -11,7 +11,7 @@ import re
 import shutil
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -308,7 +308,7 @@ class LibraryImportService:
 
     def _build_library_path(self, design_info: DesignInfo, template: str) -> Path:
         """Build the library path from template and design data."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         variables = {
             "designer": self._sanitize_name(design_info.display_designer or "Unknown"),

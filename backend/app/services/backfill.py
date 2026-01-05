@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import update
@@ -80,7 +80,7 @@ class BackfillService:
         if backfill_mode == BackfillMode.LAST_N_MESSAGES:
             limit = backfill_value
         elif backfill_mode == BackfillMode.LAST_N_DAYS:
-            offset_date = datetime.utcnow() - timedelta(days=backfill_value)
+            offset_date = datetime.now(timezone.utc) - timedelta(days=backfill_value)
         elif backfill_mode == BackfillMode.ALL_HISTORY:
             limit = None  # No limit, fetch all
 
@@ -190,7 +190,7 @@ class BackfillService:
             .where(Channel.id == channel_id)
             .values(
                 last_ingested_message_id=message_id,
-                last_sync_at=datetime.utcnow(),
+                last_sync_at=datetime.now(timezone.utc),
             )
         )
 

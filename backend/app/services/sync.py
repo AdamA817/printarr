@@ -8,7 +8,7 @@ This service implements hybrid monitoring per DEC-020:
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable
 
 from sqlalchemy import select
@@ -82,7 +82,7 @@ class SyncService:
             return
 
         self._running = True
-        self._started_at = datetime.utcnow()
+        self._started_at = datetime.now(timezone.utc)
         self._shutdown_event.clear()
 
         logger.info(
@@ -219,7 +219,7 @@ class SyncService:
 
                 # Update last_ingested_message_id
                 channel.last_ingested_message_id = message.id
-                channel.last_sync_at = datetime.utcnow()
+                channel.last_sync_at = datetime.now(timezone.utc)
 
             if design_created:
                 self._designs_created += 1
@@ -325,7 +325,7 @@ class SyncService:
             try:
                 # Perform catch-up sync
                 await self._catch_up_sync()
-                self._last_sync_at = datetime.utcnow()
+                self._last_sync_at = datetime.now(timezone.utc)
 
                 # Wait for poll interval or shutdown
                 try:
@@ -438,7 +438,7 @@ class SyncService:
                     # Update last_ingested_message_id
                     if message.id > (db_channel.last_ingested_message_id or 0):
                         db_channel.last_ingested_message_id = message.id
-                        db_channel.last_sync_at = datetime.utcnow()
+                        db_channel.last_sync_at = datetime.now(timezone.utc)
 
                 if design_created:
                     designs_created += 1
@@ -465,7 +465,7 @@ class SyncService:
     def _uptime_seconds(self) -> int:
         """Calculate service uptime in seconds."""
         if self._started_at:
-            return int((datetime.utcnow() - self._started_at).total_seconds())
+            return int((datetime.now(timezone.utc) - self._started_at).total_seconds())
         return 0
 
     @property

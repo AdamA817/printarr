@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import signal
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.core.logging import get_logger
@@ -104,7 +104,7 @@ class BaseWorker(ABC):
         Polls for jobs and processes them until shutdown is requested.
         """
         self._running = True
-        self._started_at = datetime.utcnow()
+        self._started_at = datetime.now(timezone.utc)
         self._setup_signal_handlers()
 
         logger.info(
@@ -235,7 +235,7 @@ class BaseWorker(ABC):
             return
 
         # Throttle progress updates to reduce DB contention
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if not force and self._last_progress_update:
             elapsed = (now - self._last_progress_update).total_seconds()
             if elapsed < self._progress_update_interval:
@@ -285,7 +285,7 @@ class BaseWorker(ABC):
     def _uptime_seconds(self) -> int:
         """Calculate worker uptime in seconds."""
         if self._started_at:
-            return int((datetime.utcnow() - self._started_at).total_seconds())
+            return int((datetime.now(timezone.utc) - self._started_at).total_seconds())
         return 0
 
     @property

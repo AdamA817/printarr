@@ -14,7 +14,7 @@ enabled folders in the source are synced.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -183,7 +183,7 @@ class SyncImportSourceWorker(BaseWorker):
 
                 # Update source status
                 source.status = ImportSourceStatus.ACTIVE
-                source.last_sync_at = datetime.utcnow()
+                source.last_sync_at = datetime.now(timezone.utc)
                 source.last_sync_error = None
 
                 logger.info(
@@ -365,7 +365,7 @@ class SyncImportSourceWorker(BaseWorker):
                 detected_designer=source.default_designer,
                 model_file_count=len(design.model_files),
                 preview_file_count=len(design.preview_files),
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(timezone.utc),
                 google_folder_id=design.folder_id,  # Store Google Drive folder ID for download
             )
             db.add(record)
@@ -607,11 +607,11 @@ class SyncImportSourceWorker(BaseWorker):
             # Update import record
             record.status = ImportRecordStatus.IMPORTED
             record.design_id = design.id
-            record.imported_at = datetime.utcnow()
+            record.imported_at = datetime.now(timezone.utc)
 
             # Update source stats
             source.items_imported = (source.items_imported or 0) + 1
-            source.last_sync_at = datetime.utcnow()
+            source.last_sync_at = datetime.now(timezone.utc)
 
             return design
 
@@ -723,7 +723,7 @@ class SyncImportSourceWorker(BaseWorker):
                 # Update folder stats
                 folder.items_detected = (folder.items_detected or 0) + result["detected"]
                 folder.items_imported = (folder.items_imported or 0) + result["imported"]
-                folder.last_synced_at = datetime.utcnow()
+                folder.last_synced_at = datetime.now(timezone.utc)
                 folder.last_sync_error = None
 
                 # Commit after each folder to release locks and allow reads
@@ -838,7 +838,7 @@ class SyncImportSourceWorker(BaseWorker):
                 detected_designer=effective_designer,
                 model_file_count=len(design_info.model_files),
                 preview_file_count=len(design_info.preview_files),
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(timezone.utc),
             )
             db.add(record)
 
@@ -951,7 +951,7 @@ class SyncImportSourceWorker(BaseWorker):
                 detected_designer=effective_designer,
                 model_file_count=len(design.model_files),
                 preview_file_count=len(design.preview_files),
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(timezone.utc),
                 google_folder_id=design.folder_id,  # Store for download
             )
             db.add(record)

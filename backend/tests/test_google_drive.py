@@ -12,7 +12,7 @@ Note: Most tests mock the Google API to avoid requiring real credentials.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -71,7 +71,7 @@ async def sample_credentials(db_session):
         email="test@example.com",
         access_token_encrypted="encrypted_access",
         refresh_token_encrypted="encrypted_refresh",
-        expires_at=datetime.utcnow() + timedelta(hours=1),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
     db_session.add(creds)
     await db_session.flush()
@@ -402,7 +402,7 @@ class TestTokenRefresh:
     async def test_refresh_not_needed_for_valid_token(self, service: GoogleDriveService, sample_credentials):
         """Test that refresh is not triggered for valid token."""
         # Token expires in 1 hour, no refresh needed
-        sample_credentials.expires_at = datetime.utcnow() + timedelta(hours=1)
+        sample_credentials.expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
 
         # Should not modify credentials
         await service._refresh_if_needed(sample_credentials)

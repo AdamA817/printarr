@@ -14,7 +14,7 @@ from __future__ import annotations
 import io
 import shutil
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -191,7 +191,7 @@ class TestGetUpload:
             "size": 100,
             "mime_type": "application/sla",
             "status": UploadStatus.PENDING.value,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         (upload_dir / ".upload_meta.json").write_text(json.dumps(meta))
 
@@ -226,7 +226,7 @@ class TestListUploads:
             "filename": "old.stl",
             "size": 100,
             "status": UploadStatus.EXPIRED.value,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         (upload_dir / ".upload_meta.json").write_text(json.dumps(meta))
 
@@ -266,7 +266,7 @@ class TestDeleteUpload:
             "filename": "model.stl",
             "size": 7,
             "status": UploadStatus.PENDING.value,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         (upload_dir / ".upload_meta.json").write_text(json.dumps(meta))
 
@@ -303,7 +303,7 @@ class TestProcessUpload:
             "filename": "model.stl",
             "size": 100,
             "status": UploadStatus.COMPLETED.value,  # Already completed
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         (upload_dir / ".upload_meta.json").write_text(json.dumps(meta))
 
@@ -331,7 +331,7 @@ class TestProcessUpload:
             "filename": "dragon.stl",
             "size": 30,
             "status": UploadStatus.PENDING.value,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         (upload_dir / ".upload_meta.json").write_text(json.dumps(meta))
 
@@ -377,7 +377,7 @@ class TestProcessUpload:
             "filename": "models.zip",
             "size": len(sample_zip_content),
             "status": UploadStatus.PENDING.value,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         (upload_dir / ".upload_meta.json").write_text(json.dumps(meta))
 
@@ -422,7 +422,7 @@ class TestCleanupExpired:
             (upload_dir / "model.stl").write_text("content")
 
             # Set created_at to 2 days ago
-            old_time = datetime.utcnow() - timedelta(days=2)
+            old_time = datetime.now(timezone.utc) - timedelta(days=2)
             meta = {
                 "filename": "model.stl",
                 "size": 7,
@@ -451,7 +451,7 @@ class TestCleanupExpired:
             upload_dir = staging_dir / upload_id
             upload_dir.mkdir()
 
-            old_time = datetime.utcnow() - timedelta(days=2)
+            old_time = datetime.now(timezone.utc) - timedelta(days=2)
             meta = {
                 "filename": "model.stl",
                 "size": 7,
@@ -494,7 +494,7 @@ class TestMetadata:
             "filename": "test.stl",
             "size": 100,
             "status": "PENDING",
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
         await service._save_meta(upload_id, meta)
@@ -540,7 +540,7 @@ class TestErrorHandling:
             "filename": "corrupt.zip",
             "size": 15,
             "status": UploadStatus.PENDING.value,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         (upload_dir / ".upload_meta.json").write_text(json.dumps(meta))
 

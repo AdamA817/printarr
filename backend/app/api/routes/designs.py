@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -493,7 +493,7 @@ async def refresh_metadata(
                     fetched_title=metadata.get("title"),
                     fetched_designer=metadata.get("designer"),
                     fetched_tags=",".join(metadata.get("tags", [])) if metadata.get("tags") else None,
-                    last_fetched_at=datetime.utcnow(),
+                    last_fetched_at=datetime.now(timezone.utc),
                 )
             )
             sources_refreshed += 1
@@ -660,7 +660,7 @@ async def link_to_thangs(
             source.fetched_designer = metadata.get("designer")
             tags = metadata.get("tags", [])
             source.fetched_tags = ",".join(tags) if tags else None
-            source.last_fetched_at = datetime.utcnow()
+            source.last_fetched_at = datetime.now(timezone.utc)
             logger.info(
                 "thangs_metadata_fetched_on_link",
                 design_id=design_id,

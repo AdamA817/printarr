@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
@@ -448,11 +448,11 @@ class BulkImportService:
             # Update record
             record.status = ImportRecordStatus.IMPORTED
             record.design_id = design.id
-            record.imported_at = datetime.utcnow()
+            record.imported_at = datetime.now(timezone.utc)
 
             # Update source stats
             source.items_imported = (source.items_imported or 0) + 1
-            source.last_sync_at = datetime.utcnow()
+            source.last_sync_at = datetime.now(timezone.utc)
 
             logger.info(
                 "design_imported",
@@ -695,7 +695,7 @@ class BulkImportService:
         )
 
         # Update source
-        source.last_sync_at = datetime.utcnow()
+        source.last_sync_at = datetime.now(timezone.utc)
         source.status = ImportSourceStatus.ACTIVE
 
         logger.info(
@@ -736,7 +736,7 @@ class BulkImportService:
 
         # Update source status
         source.status = ImportSourceStatus.ACTIVE
-        source.last_sync_at = datetime.utcnow()
+        source.last_sync_at = datetime.now(timezone.utc)
 
         logger.info(
             "initial_scan_complete",

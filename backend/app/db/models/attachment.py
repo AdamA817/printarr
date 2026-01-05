@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import BigInteger, Boolean, Enum, ForeignKey, Index, String
@@ -56,7 +56,7 @@ class Attachment(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        default=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships

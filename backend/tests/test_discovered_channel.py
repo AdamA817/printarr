@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -163,7 +163,7 @@ async def test_add_source_type_no_duplicate(db_session: AsyncSession) -> None:
 @pytest.mark.asyncio
 async def test_increment_reference(db_session: AsyncSession) -> None:
     """Test incrementing reference count."""
-    original_time = datetime.utcnow() - timedelta(hours=1)
+    original_time = datetime.now(timezone.utc) - timedelta(hours=1)
     channel = DiscoveredChannel(
         username="testchannel",
         reference_count=1,

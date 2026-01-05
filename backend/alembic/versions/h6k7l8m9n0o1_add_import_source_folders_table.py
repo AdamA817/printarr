@@ -13,7 +13,7 @@ This migration:
 4. Updates import_records to reference the new folders
 """
 from typing import Sequence, Union
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from alembic import op
@@ -148,7 +148,7 @@ def upgrade() -> None:
                 'last_sync': source[7],  # last_sync_at
                 'sync_error': source[8],  # last_sync_error
                 'items_imported': source[9] or 0,  # items_imported
-                'created_at': source[10] or datetime.utcnow(),  # created_at
+                'created_at': source[10] or datetime.now(timezone.utc),  # created_at
             }
         )
 

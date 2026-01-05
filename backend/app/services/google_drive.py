@@ -18,7 +18,7 @@ import base64
 import json
 import random
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, TypeVar
 
@@ -66,7 +66,7 @@ class RequestPacer:
     async def acquire(self) -> None:
         """Wait until it's safe to make a request."""
         async with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             # Clean up old request times (older than 1 minute)
             cutoff = now - timedelta(seconds=60)
@@ -84,7 +84,7 @@ class RequestPacer:
                         reason="per_minute_limit",
                     )
                     await asyncio.sleep(wait_time)
-                    now = datetime.utcnow()
+                    now = datetime.now(timezone.utc)
 
             # Enforce minimum delay between requests
             if self._last_request and self.min_delay > 0:
@@ -94,7 +94,7 @@ class RequestPacer:
                     await asyncio.sleep(wait_time)
 
             # Record this request
-            self._last_request = datetime.utcnow()
+            self._last_request = datetime.now(timezone.utc)
             self._request_times.append(self._last_request)
 
 
@@ -1043,7 +1043,7 @@ class GoogleDriveService:
             return
 
         # Refresh if expiring in next 5 minutes
-        if credentials.expires_at > datetime.utcnow() + timedelta(minutes=5):
+        if credentials.expires_at > datetime.now(timezone.utc) + timedelta(minutes=5):
             return
 
         if not credentials.refresh_token_encrypted:
@@ -1844,7 +1844,7 @@ class FileMetadataCache:
                 return None
 
             cached_at, files = self._cache[folder_id]
-            if datetime.utcnow() - cached_at > timedelta(seconds=self.ttl_seconds):
+            if datetime.now(timezone.utc) - cached_at > timedelta(seconds=self.ttl_seconds):
                 # Expired
                 del self._cache[folder_id]
                 return None
@@ -1860,7 +1860,7 @@ class FileMetadataCache:
             files: List of FileInfo to cache.
         """
         async with self._lock:
-            self._cache[folder_id] = (datetime.utcnow(), files)
+            self._cache[folder_id] = (datetime.now(timezone.utc), files)
             logger.debug("cache_set", folder_id=folder_id, files_count=len(files))
 
     async def invalidate(self, folder_id: str) -> None:
@@ -1888,7 +1888,7 @@ class FileMetadataCache:
             Number of entries removed.
         """
         async with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             expired = [
                 fid for fid, (cached_at, _) in self._cache.items()
                 if now - cached_at > timedelta(seconds=self.ttl_seconds)

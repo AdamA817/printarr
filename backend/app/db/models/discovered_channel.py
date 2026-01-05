@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Index, Integer, String, JSON
 from sqlalchemy.orm import Mapped, mapped_column
@@ -38,17 +38,17 @@ class DiscoveredChannel(Base):
 
     # Discovery tracking
     reference_count: Mapped[int] = mapped_column(Integer, default=1, index=True)
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # Source types that discovered this channel (JSON array of DiscoverySourceType values)
     # e.g., ["FORWARD", "MENTION"] if found via both methods
     source_types: Mapped[list[str]] = mapped_column(JSON, default=list)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Indexes for common queries
@@ -66,6 +66,6 @@ class DiscoveredChannel(Base):
     def increment_reference(self, source_type: str | None = None) -> None:
         """Increment reference count and update last_seen_at."""
         self.reference_count += 1
-        self.last_seen_at = datetime.utcnow()
+        self.last_seen_at = datetime.now(timezone.utc)
         if source_type:
             self.add_source_type(source_type)

@@ -85,12 +85,12 @@ async def sample_channel(db_session):
 @pytest.fixture
 async def sample_message(db_session, sample_channel):
     """Create a sample Telegram message."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     message = TelegramMessage(
         channel_id=sample_channel.id,
         telegram_message_id=12345,
-        date_posted=datetime.utcnow(),
+        date_posted=datetime.now(timezone.utc),
         caption_text="Test message",
     )
     db_session.add(message)

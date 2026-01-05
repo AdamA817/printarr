@@ -91,12 +91,12 @@ async def create_test_message(
     telegram_message_id: int = 1,
 ) -> TelegramMessage:
     """Helper to create a test message."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     message = TelegramMessage(
         channel_id=channel.id,
         telegram_message_id=telegram_message_id,
-        date_posted=datetime.utcnow(),
+        date_posted=datetime.now(timezone.utc),
         caption_text="Test caption",
         has_media=True,
     )

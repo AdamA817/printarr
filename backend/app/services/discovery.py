@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -354,7 +354,7 @@ class DiscoveryService:
             return existing
 
         # Create new record
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         record = DiscoveredChannel(
             telegram_peer_id=info.telegram_peer_id,
             title=info.title,

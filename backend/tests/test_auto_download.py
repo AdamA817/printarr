@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -62,7 +62,7 @@ class TestAutoDownloadCheckAndQueue:
             telegram_peer_id=unique_peer_id(),
             title="Auto New Channel",
             download_mode=DownloadMode.DOWNLOAD_ALL_NEW,
-            download_mode_enabled_at=datetime.utcnow() - timedelta(hours=1),
+            download_mode_enabled_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
         test_session.add(channel)
         await test_session.flush()
@@ -70,7 +70,7 @@ class TestAutoDownloadCheckAndQueue:
         design = Design(
             canonical_title="New Design",
             status=DesignStatus.DISCOVERED,
-            created_at=datetime.utcnow(),  # Created after mode enabled
+            created_at=datetime.now(timezone.utc),  # Created after mode enabled
         )
         test_session.add(design)
         await test_session.flush()
@@ -101,7 +101,7 @@ class TestAutoDownloadCheckAndQueue:
             telegram_peer_id=unique_peer_id(),
             title="Auto New Channel",
             download_mode=DownloadMode.DOWNLOAD_ALL_NEW,
-            download_mode_enabled_at=datetime.utcnow(),  # Just now
+            download_mode_enabled_at=datetime.now(timezone.utc),  # Just now
         )
         test_session.add(channel)
         await test_session.flush()
@@ -109,7 +109,7 @@ class TestAutoDownloadCheckAndQueue:
         design = Design(
             canonical_title="Old Design",
             status=DesignStatus.DISCOVERED,
-            created_at=datetime.utcnow() - timedelta(hours=1),  # Created before mode enabled
+            created_at=datetime.now(timezone.utc) - timedelta(hours=1),  # Created before mode enabled
         )
         test_session.add(design)
         await test_session.flush()
@@ -194,7 +194,7 @@ class TestBulkDownload:
             message = TelegramMessage(
                 channel_id=channel.id,
                 telegram_message_id=1000 + i,
-                date_posted=datetime.utcnow(),
+                date_posted=datetime.now(timezone.utc),
             )
             test_session.add(message)
             await test_session.flush()
@@ -247,7 +247,7 @@ class TestBulkDownload:
             message = TelegramMessage(
                 channel_id=channel.id,
                 telegram_message_id=2000 + i,
-                date_posted=datetime.utcnow(),
+                date_posted=datetime.now(timezone.utc),
             )
             test_session.add(message)
             await test_session.flush()
@@ -313,7 +313,7 @@ class TestUpdateDownloadMode:
             telegram_peer_id=unique_peer_id(),
             title="Mode Change Channel",
             download_mode=DownloadMode.DOWNLOAD_ALL_NEW,
-            download_mode_enabled_at=datetime.utcnow(),
+            download_mode_enabled_at=datetime.now(timezone.utc),
         )
         test_session.add(channel)
         await test_session.commit()
@@ -414,7 +414,7 @@ class TestDownloadModeAPIEndpoints:
         message = TelegramMessage(
             channel_id=channel.id,
             telegram_message_id=3000,
-            date_posted=datetime.utcnow(),
+            date_posted=datetime.now(timezone.utc),
         )
         test_session.add(message)
         await test_session.flush()

@@ -11,7 +11,7 @@ Tests the complete flow of:
 from __future__ import annotations
 
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -631,14 +631,14 @@ class TestImportHistory:
                 source_path="/design1",
                 status=ImportRecordStatus.IMPORTED,
                 detected_title="Design 1",
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(timezone.utc),
             ),
             ImportRecord(
                 import_source_id=source.id,
                 source_path="/design2",
                 status=ImportRecordStatus.PENDING,
                 detected_title="Design 2",
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(timezone.utc),
             ),
         ])
         await db_session.commit()

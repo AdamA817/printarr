@@ -8,7 +8,7 @@ This service implements download mode behaviors per DEC-022:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, select
@@ -237,7 +237,7 @@ class AutoDownloadService:
 
         # Track when mode was enabled (if moving away from MANUAL)
         if old_mode == DownloadMode.MANUAL and new_mode != DownloadMode.MANUAL:
-            channel.download_mode_enabled_at = datetime.utcnow()
+            channel.download_mode_enabled_at = datetime.now(timezone.utc)
 
         # If switching back to MANUAL, clear the enabled_at
         if new_mode == DownloadMode.MANUAL:

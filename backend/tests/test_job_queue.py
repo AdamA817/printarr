@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -549,7 +549,7 @@ class TestHelperMethods:
         await service.dequeue()
 
         # Manually set started_at to be old
-        job.started_at = datetime.utcnow() - timedelta(hours=1)
+        job.started_at = datetime.now(timezone.utc) - timedelta(hours=1)
         await db_session.flush()
 
         # Requeue stale jobs (threshold: 30 minutes)

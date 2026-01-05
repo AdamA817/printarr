@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, select
@@ -123,7 +123,7 @@ class IngestService:
         # Parse message date
         date_posted = self._parse_date(message_data.get("date"))
         if date_posted is None:
-            date_posted = datetime.utcnow()
+            date_posted = datetime.now(timezone.utc)
 
         # Extract caption text
         caption_text = message_data.get("text", "") or ""
@@ -304,7 +304,7 @@ class IngestService:
 
         if split_info:
             # Try to find existing design for this split archive
-            cutoff_time = datetime.utcnow() - SPLIT_ARCHIVE_MATCH_WINDOW
+            cutoff_time = datetime.now(timezone.utc) - SPLIT_ARCHIVE_MATCH_WINDOW
             existing_design = await self._find_matching_split_archive_design(
                 channel.id,
                 split_info.base_name,

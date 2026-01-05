@@ -10,7 +10,7 @@ import asyncio
 import os
 import time
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -296,7 +296,7 @@ class DashboardService:
 
     async def _get_download_stats(self) -> DownloadStats:
         """Get download statistics."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         today_start = datetime.combine(now.date(), datetime.min.time())
         week_start = today_start - timedelta(days=now.weekday())
 

@@ -9,7 +9,7 @@ Per DEC-038, records now reference ImportSourceFolder instead of ImportSource.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String, Text
@@ -100,7 +100,7 @@ class ImportRecord(Base):
     )
 
     # Timestamps
-    detected_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    detected_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     imported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     # Relationships

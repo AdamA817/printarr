@@ -92,12 +92,12 @@ async def sample_design(db_session):
 @pytest.fixture
 async def sample_message(db_session, sample_channel):
     """Create a sample Telegram message."""
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     message = TelegramMessage(
         channel_id=sample_channel.id,
         telegram_message_id=12345,
-        date_posted=datetime.utcnow(),
+        date_posted=datetime.now(timezone.utc),
         caption_text="Test message with STL",
     )
     db_session.add(message)
@@ -373,12 +373,12 @@ class TestDownloadDesign:
         db_session.add(channel)
         await db_session.flush()
 
-        from datetime import datetime
+        from datetime import datetime, timezone
 
         message = TelegramMessage(
             channel_id=channel.id,
             telegram_message_id=999,
-            date_posted=datetime.utcnow(),
+            date_posted=datetime.now(timezone.utc),
             caption_text="Test",
         )
         db_session.add(message)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -245,7 +245,7 @@ class TestSyncServiceUptime:
 
     def test_uptime_when_started(self, sync_service):
         """Test uptime calculation when started."""
-        sync_service._started_at = datetime.utcnow()
+        sync_service._started_at = datetime.now(timezone.utc)
         # Should be 0 or very small
         assert sync_service._uptime_seconds() >= 0
         assert sync_service._uptime_seconds() < 2  # Less than 2 seconds

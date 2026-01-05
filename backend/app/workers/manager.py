@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Type
 
 from app.core.config import settings
@@ -82,7 +82,7 @@ class WorkerManager:
             return
 
         self._running = True
-        self._started_at = datetime.utcnow()
+        self._started_at = datetime.now(timezone.utc)
 
         logger.info(
             "worker_manager_starting",
@@ -218,7 +218,7 @@ class WorkerManager:
     def _uptime_seconds(self) -> int:
         """Calculate manager uptime in seconds."""
         if self._started_at:
-            return int((datetime.utcnow() - self._started_at).total_seconds())
+            return int((datetime.now(timezone.utc) - self._started_at).total_seconds())
         return 0
 
     @property

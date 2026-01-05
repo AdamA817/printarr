@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import and_, func, select, update
@@ -124,7 +124,7 @@ class JobQueueService:
 
         # Claim the job
         job.status = JobStatus.RUNNING
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(timezone.utc)
         job.attempts += 1
 
         await self.db.flush()
@@ -166,7 +166,7 @@ class JobQueueService:
             logger.warning("job_not_found", job_id=job_id)
             return None
 
-        job.finished_at = datetime.utcnow()
+        job.finished_at = datetime.now(timezone.utc)
 
         if success:
             job.status = JobStatus.SUCCESS
@@ -238,7 +238,7 @@ class JobQueueService:
             return None
 
         job.status = JobStatus.CANCELED
-        job.finished_at = datetime.utcnow()
+        job.finished_at = datetime.now(timezone.utc)
 
         # Reset design status to DISCOVERED if this is a design-related job
         if job.design_id and job.type in DESIGN_JOB_TYPES:
@@ -424,7 +424,7 @@ class JobQueueService:
             )
             .values(
                 status=JobStatus.CANCELED,
-                finished_at=datetime.utcnow(),
+                finished_at=datetime.now(timezone.utc),
             )
         )
         await self.db.flush()
@@ -494,10 +494,10 @@ class JobQueueService:
         Returns:
             Number of jobs requeued.
         """
-        stale_threshold = datetime.utcnow()
+        stale_threshold = datetime.now(timezone.utc)
         # Calculate stale threshold manually to avoid timedelta import in query
         from datetime import timedelta
-        stale_threshold = datetime.utcnow() - timedelta(minutes=stale_minutes)
+        stale_threshold = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
 
         result = await self.db.execute(
             update(Job)

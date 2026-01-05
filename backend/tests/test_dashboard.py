@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -127,7 +127,7 @@ class TestDashboardCalendarEndpoint:
         self, client: TestClient, test_session: AsyncSession
     ):
         """Test calendar with designs on different dates."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Get initial count
         initial_response = client.get("/api/v1/stats/dashboard/calendar")
@@ -217,7 +217,7 @@ class TestDashboardQueueEndpoint:
             type=JobType.DOWNLOAD_DESIGN,
             status=JobStatus.RUNNING,
             channel_id=channel.id,
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc),
         )
         test_session.add(running_job)
 
@@ -226,8 +226,8 @@ class TestDashboardQueueEndpoint:
             type=JobType.DOWNLOAD_DESIGN,
             status=JobStatus.SUCCESS,
             channel_id=channel.id,
-            started_at=datetime.utcnow() - timedelta(minutes=5),
-            finished_at=datetime.utcnow() - timedelta(minutes=4),
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            finished_at=datetime.now(timezone.utc) - timedelta(minutes=4),
         )
         test_session.add(completed_job)
 
@@ -236,8 +236,8 @@ class TestDashboardQueueEndpoint:
             type=JobType.DOWNLOAD_DESIGN,
             status=JobStatus.FAILED,
             channel_id=channel.id,
-            started_at=datetime.utcnow() - timedelta(minutes=10),
-            finished_at=datetime.utcnow() - timedelta(minutes=9),
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+            finished_at=datetime.now(timezone.utc) - timedelta(minutes=9),
             last_error="Test error",
         )
         test_session.add(failed_job)
@@ -342,8 +342,8 @@ class TestDashboardServiceUnit:
             type=JobType.DOWNLOAD_DESIGN,
             status=JobStatus.SUCCESS,
             channel_id=channel.id,
-            started_at=datetime.utcnow() - timedelta(minutes=5),
-            finished_at=datetime.utcnow(),
+            started_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            finished_at=datetime.now(timezone.utc),
         )
         test_session.add(job)
         await test_session.commit()

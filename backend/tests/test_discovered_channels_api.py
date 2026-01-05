@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -72,7 +72,7 @@ class TestDiscoveredChannelsListAPI:
     @pytest.mark.asyncio
     async def test_list_sorting(self, client: TestClient, test_session):
         """Test sorting of discovered channels."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         dc1 = DiscoveredChannel(
             username="sorttest1",
             reference_count=1,
@@ -207,7 +207,7 @@ class TestDiscoveredChannelStatsAPI:
     @pytest.mark.asyncio
     async def test_stats_with_channels(self, client: TestClient, test_session):
         """Test stats with discovered channels."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Create channels with different ages
         dc1 = DiscoveredChannel(
