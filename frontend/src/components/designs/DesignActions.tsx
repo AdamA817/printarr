@@ -221,14 +221,19 @@ export function DesignActions({
         <button
           onClick={handleWant}
           disabled={isLoading}
-          className={`${buttonSizeClasses[size]} rounded bg-accent-primary hover:bg-accent-primary/80 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5`}
+          className={`${buttonSizeClasses[size]} rounded bg-accent-primary hover:bg-accent-primary/80 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5 min-w-[90px] justify-center`}
         >
           {isLoading ? (
-            <LoadingSpinner className={sizeClasses[size]} />
+            <>
+              <LoadingSpinner className={sizeClasses[size]} />
+              Marking...
+            </>
           ) : (
-            <HeartIcon className={sizeClasses[size]} />
+            <>
+              <HeartIcon className={sizeClasses[size]} />
+              Want
+            </>
           )}
-          Want
         </button>
       )
 
@@ -250,14 +255,19 @@ export function DesignActions({
         <button
           onClick={handleDownload}
           disabled={isLoading}
-          className={`${buttonSizeClasses[size]} rounded bg-accent-warning hover:bg-accent-warning/80 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5`}
+          className={`${buttonSizeClasses[size]} rounded bg-accent-warning hover:bg-accent-warning/80 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5 min-w-[90px] justify-center`}
         >
           {isLoading ? (
-            <LoadingSpinner className={sizeClasses[size]} />
+            <>
+              <LoadingSpinner className={sizeClasses[size]} />
+              Starting...
+            </>
           ) : (
-            <DownloadIcon className={sizeClasses[size]} />
+            <>
+              <DownloadIcon className={sizeClasses[size]} />
+              Download
+            </>
           )}
-          Download
         </button>
       )
 
@@ -279,14 +289,19 @@ export function DesignActions({
         <button
           onClick={handleCancel}
           disabled={isLoading}
-          className={`${buttonSizeClasses[size]} rounded bg-accent-danger hover:bg-accent-danger/80 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5`}
+          className={`${buttonSizeClasses[size]} rounded bg-accent-danger hover:bg-accent-danger/80 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5 min-w-[90px] justify-center`}
         >
           {isLoading ? (
-            <LoadingSpinner className={sizeClasses[size]} />
+            <>
+              <LoadingSpinner className={sizeClasses[size]} />
+              Cancelling...
+            </>
           ) : (
-            <XIcon className={sizeClasses[size]} />
+            <>
+              <XIcon className={sizeClasses[size]} />
+              Cancel
+            </>
           )}
-          Cancel
         </button>
       )
 
@@ -342,14 +357,19 @@ export function DesignActions({
         <button
           onClick={handleRetry}
           disabled={isLoading}
-          className={`${buttonSizeClasses[size]} rounded bg-accent-danger hover:bg-accent-danger/80 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5`}
+          className={`${buttonSizeClasses[size]} rounded bg-accent-danger hover:bg-accent-danger/80 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5 min-w-[90px] justify-center`}
         >
           {isLoading ? (
-            <LoadingSpinner className={sizeClasses[size]} />
+            <>
+              <LoadingSpinner className={sizeClasses[size]} />
+              Retrying...
+            </>
           ) : (
-            <RefreshIcon className={sizeClasses[size]} />
+            <>
+              <RefreshIcon className={sizeClasses[size]} />
+              Retry
+            </>
           )}
-          Retry
         </button>
       )
 

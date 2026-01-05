@@ -339,14 +339,19 @@ export function HistoryItem({ item }: HistoryItemProps) {
                 <button
                   onClick={handleRetry}
                   disabled={retryJob.isPending}
-                  className="text-xs px-2 py-1 rounded bg-accent-primary/20 text-accent-primary hover:bg-accent-primary/30 transition-colors disabled:opacity-50 flex items-center gap-1"
+                  className="text-xs px-2 py-1 rounded bg-accent-primary/20 text-accent-primary hover:bg-accent-primary/30 transition-colors disabled:opacity-50 flex items-center gap-1 min-w-[70px] justify-center"
                 >
                   {retryJob.isPending ? (
-                    <LoadingSpinner className="w-3 h-3" />
+                    <>
+                      <LoadingSpinner className="w-3 h-3" />
+                      Retrying...
+                    </>
                   ) : (
-                    <RefreshIcon className="w-3 h-3" />
+                    <>
+                      <RefreshIcon className="w-3 h-3" />
+                      Retry
+                    </>
                   )}
-                  Retry
                 </button>
               )}
 
@@ -354,10 +359,19 @@ export function HistoryItem({ item }: HistoryItemProps) {
               <button
                 onClick={handleRemove}
                 disabled={removeActivity.isPending}
-                className="text-xs px-2 py-1 rounded bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors disabled:opacity-50 flex items-center gap-1"
+                className="text-xs px-2 py-1 rounded bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-tertiary/80 transition-colors disabled:opacity-50 flex items-center gap-1 min-w-[80px] justify-center"
               >
-                <TrashIcon className="w-3 h-3" />
-                Remove
+                {removeActivity.isPending ? (
+                  <>
+                    <LoadingSpinner className="w-3 h-3" />
+                    Removing...
+                  </>
+                ) : (
+                  <>
+                    <TrashIcon className="w-3 h-3" />
+                    Remove
+                  </>
+                )}
               </button>
             </div>
           </div>
