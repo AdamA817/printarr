@@ -1,8 +1,13 @@
+import { useState } from 'react'
 import { useQueue, useQueueStats } from '@/hooks/useQueue'
 import { QueueItem } from './QueueItem'
 
+const DEFAULT_PAGE_SIZE = 20
+const MAX_PAGE_SIZE = 100
+
 export function QueueView() {
-  const { data: queueData, isLoading, error } = useQueue()
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const { data: queueData, isLoading, error } = useQueue({ page_size: pageSize })
   const { data: stats } = useQueueStats()
 
   if (isLoading) {
@@ -92,6 +97,23 @@ export function QueueView() {
               <QueueItem key={item.id} item={item} position={index + 1} />
             ))}
           </div>
+          {/* Show more button when there are more items than displayed */}
+          {queueData && queueData.total > queuedItems.length && pageSize < MAX_PAGE_SIZE && (
+            <button
+              onClick={() => setPageSize(MAX_PAGE_SIZE)}
+              className="mt-4 w-full py-2 px-4 text-sm text-text-secondary hover:text-text-primary bg-bg-secondary hover:bg-bg-tertiary rounded-lg transition-colors"
+            >
+              Show all {stats?.queued ?? queueData.total} queued items
+            </button>
+          )}
+          {pageSize > DEFAULT_PAGE_SIZE && (
+            <button
+              onClick={() => setPageSize(DEFAULT_PAGE_SIZE)}
+              className="mt-4 w-full py-2 px-4 text-sm text-text-muted hover:text-text-secondary bg-bg-secondary hover:bg-bg-tertiary rounded-lg transition-colors"
+            >
+              Show fewer
+            </button>
+          )}
         </section>
       )}
     </div>

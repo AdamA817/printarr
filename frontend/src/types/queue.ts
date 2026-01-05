@@ -47,6 +47,9 @@ export interface QueueItemImportSource {
 export interface QueueList {
   items: QueueItem[]
   total: number
+  page: number
+  page_size: number
+  pages: number
 }
 
 // Queue stats from GET /api/v1/queue/stats
@@ -90,6 +93,8 @@ export interface ActivityList {
 
 // Query params
 export interface QueueListParams {
+  page?: number
+  page_size?: number
   status?: string
   job_type?: string
 }
