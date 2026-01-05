@@ -1373,6 +1373,57 @@ Replace SQLite with PostgreSQL as the only supported database, running inside th
 
 ---
 
+### DEC-040: Per-Design Download Jobs
+**Date**: 2026-01-05
+**Status**: Accepted
+
+**Context**
+Current import sync flow is monolithic:
+1. `SYNC_IMPORT_SOURCE` job scans folder, finds 50 designs
+2. Same job downloads all 50 designs sequentially
+3. Queue shows generic "Syncing..." with no visibility into individual designs
+4. Cannot cancel individual downloads
+5. One failure can affect the entire batch
+
+This makes it hard for users to understand what's happening or control the import process.
+
+**Decision**
+Split import into scan + individual download jobs:
+
+1. `SYNC_IMPORT_SOURCE` job:
+   - Scans source folder/Google Drive
+   - Creates `ImportRecord` entries (status=PENDING)
+   - Queues `DOWNLOAD_IMPORT_RECORD` job for each design
+   - Completes quickly (scan only, no downloads)
+
+2. `DOWNLOAD_IMPORT_RECORD` job (new):
+   - Named: "Download: {design_title} from {source_name}"
+   - Downloads files for one ImportRecord
+   - Creates Design record
+   - Queues `IMPORT_TO_LIBRARY` job
+   - Updates ImportRecord status
+
+**Benefits**
+- Queue shows meaningful job names ("Download: Dragon Bust from Wicked STL")
+- Users can cancel individual downloads
+- Parallel downloads possible (configurable concurrency)
+- One failure doesn't block other downloads
+- Better progress tracking per design
+- Cleaner separation of concerns
+
+**Trade-offs**
+- More jobs in queue (N designs = N+1 jobs instead of 1)
+- Slightly more database overhead
+- Need to handle job dependencies (sync must complete before downloads start)
+
+**Implementation**
+- Add `JobType.DOWNLOAD_IMPORT_RECORD`
+- Create `DownloadImportRecordWorker`
+- Refactor `SyncImportSourceWorker` to only scan
+- Add `display_name` field to Job model for custom job names
+
+---
+
 ## Pending Decisions
 
 *No pending decisions at this time.*
