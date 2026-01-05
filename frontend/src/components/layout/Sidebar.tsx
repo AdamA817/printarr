@@ -2,6 +2,8 @@ import { NavLink } from 'react-router-dom'
 import logoFull from '@/assets/logo-full.png'
 import { ActivityStatus } from './ActivityStatus'
 import { SystemHealthIndicator } from './SystemHealthIndicator'
+import { useSSEStatus } from '@/contexts/SSEContext'
+import type { ConnectionStatus } from '@/types/events'
 
 interface SidebarProps {
   isOpen: boolean
@@ -16,6 +18,30 @@ const navItems = [
   { to: '/activity', label: 'Activity', icon: '📥' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ]
+
+// Connection status indicator colors (#222)
+const statusColors: Record<ConnectionStatus, { dot: string; text: string }> = {
+  connected: { dot: 'bg-accent-success', text: 'text-accent-success' },
+  connecting: { dot: 'bg-accent-warning', text: 'text-accent-warning' },
+  reconnecting: { dot: 'bg-accent-warning animate-pulse', text: 'text-accent-warning' },
+  disconnected: { dot: 'bg-accent-danger', text: 'text-accent-danger' },
+}
+
+function ConnectionIndicator() {
+  const status = useSSEStatus()
+
+  if (!status) return null
+
+  const colors = statusColors[status]
+  const label = status === 'connected' ? 'Live' : status === 'reconnecting' ? 'Reconnecting...' : status
+
+  return (
+    <div className="flex items-center gap-2 px-4 py-1 text-xs" title={`Connection: ${status}`}>
+      <span className={`w-2 h-2 rounded-full ${colors.dot}`} />
+      <span className={`${colors.text} capitalize`}>{label}</span>
+    </div>
+  )
+}
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   return (
@@ -39,6 +65,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           ✕
         </button>
       </div>
+      {/* SSE Connection Status (#222) */}
+      <ConnectionIndicator />
       <nav className="flex-1 p-4">
         <ul className="space-y-2">
           {navItems.map((item) => (
