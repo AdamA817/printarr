@@ -1,4 +1,10 @@
-import { LibrarySettings, DownloadSettings } from '@/components/settings'
+import {
+  LibrarySettings,
+  DownloadSettings,
+  TelegramSettings,
+  SyncSettings,
+  PreviewSettings,
+} from '@/components/settings'
 
 export function Settings() {
   return (
@@ -11,6 +17,9 @@ export function Settings() {
       {/* Settings Sections */}
       <LibrarySettings />
       <DownloadSettings />
+      <TelegramSettings />
+      <SyncSettings />
+      <PreviewSettings />
     </div>
   )
 }

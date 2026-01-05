@@ -1,2 +1,5 @@
 export { LibrarySettings } from './LibrarySettings'
 export { DownloadSettings } from './DownloadSettings'
+export { TelegramSettings } from './TelegramSettings'
+export { SyncSettings } from './SyncSettings'
+export { PreviewSettings } from './PreviewSettings'
