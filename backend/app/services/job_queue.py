@@ -441,6 +441,63 @@ class JobQueueService:
 
         return count
 
+    async def cancel_jobs_for_import_source(
+        self,
+        source_id: str,
+    ) -> int:
+        """Cancel all pending/running jobs for an import source (#191).
+
+        Cancels SYNC_IMPORT_SOURCE jobs that have this source_id in their payload.
+        This should be called when deleting an import source.
+
+        Args:
+            source_id: The import source ID.
+
+        Returns:
+            Number of jobs canceled.
+        """
+        # Fetch jobs to check payload (JSON queries differ between SQLite/PostgreSQL)
+        result = await self.db.execute(
+            select(Job).where(
+                Job.type == JobType.SYNC_IMPORT_SOURCE,
+                Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+            )
+        )
+        jobs = result.scalars().all()
+
+        # Filter by source_id in payload
+        job_ids_to_cancel = []
+        for job in jobs:
+            if job.payload_json:
+                try:
+                    payload = json.loads(job.payload_json)
+                    if payload.get("source_id") == source_id:
+                        job_ids_to_cancel.append(job.id)
+                except json.JSONDecodeError:
+                    pass
+
+        if not job_ids_to_cancel:
+            return 0
+
+        # Cancel the matching jobs
+        await self.db.execute(
+            update(Job)
+            .where(Job.id.in_(job_ids_to_cancel))
+            .values(
+                status=JobStatus.CANCELED,
+                finished_at=datetime.now(timezone.utc),
+            )
+        )
+        await self.db.flush()
+
+        logger.info(
+            "jobs_canceled_for_import_source",
+            source_id=source_id,
+            count=len(job_ids_to_cancel),
+        )
+
+        return len(job_ids_to_cancel)
+
     async def recover_orphaned_jobs(self) -> int:
         """Recover jobs that were running when the container stopped.
 

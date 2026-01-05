@@ -480,8 +480,20 @@ async def delete_import_source(
 
     By default, keeps the imported designs but removes the source reference.
     Set keep_designs=false to delete imported designs as well.
+
+    Cancels any pending sync jobs for this source (#191).
     """
     source = await _get_source_or_404(db, source_id)
+
+    # Cancel pending sync jobs for this source (#191)
+    queue = JobQueueService(db)
+    canceled_count = await queue.cancel_jobs_for_import_source(source_id)
+    if canceled_count > 0:
+        logger.info(
+            "import_source_jobs_canceled",
+            source_id=source_id,
+            canceled_count=canceled_count,
+        )
 
     # Note: ImportRecords will be deleted via cascade
     # Designs have SET NULL on delete, so they'll keep their data

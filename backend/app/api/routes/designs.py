@@ -1276,8 +1276,11 @@ async def delete_design(
     - DesignTag records
     - Jobs associated with the design
 
+    Always deletes:
+    - Staging directory (partial downloads) (#191)
+    - Cancels pending/running jobs before deletion (#191)
+
     If delete_files=True, also deletes:
-    - Staging directory files
     - Library files
     """
     import shutil
@@ -1285,23 +1288,36 @@ async def delete_design(
 
     from app.db.models import DesignFile, DesignSource, Job
     from app.db.models.external_metadata_source import ExternalMetadataSource
+    from app.services.job_queue import JobQueueService
 
     # Get design
     design = await db.get(Design, design_id)
     if design is None:
         raise HTTPException(status_code=404, detail="Design not found")
 
+    # Cancel pending/running jobs before deletion (#191)
+    # This prevents workers from processing deleted designs
+    queue = JobQueueService(db)
+    canceled_count = await queue.cancel_jobs_for_design(design_id)
+    if canceled_count > 0:
+        logger.info(
+            "design_jobs_canceled",
+            design_id=design_id,
+            canceled_count=canceled_count,
+        )
+
     # Delete preview assets and their files
     preview_service = PreviewService(db)
     await preview_service.delete_design_previews(design_id)
 
-    # Optionally delete staging/library files
+    # Always delete staging directory (partial downloads) (#191)
+    staging_dir = settings.staging_path / design_id
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+        logger.info("staging_deleted", design_id=design_id)
+
+    # Optionally delete library files
     if delete_files:
-        # Delete staging directory
-        staging_dir = settings.staging_path / design_id
-        if staging_dir.exists():
-            shutil.rmtree(staging_dir)
-            logger.info("staging_deleted", design_id=design_id)
 
         # Delete library files (get paths before deleting records)
         files_result = await db.execute(
@@ -1358,17 +1374,23 @@ async def bulk_delete_designs(
 
             from app.db.models import DesignFile, DesignSource, Job
             from app.db.models.external_metadata_source import ExternalMetadataSource
+            from app.services.job_queue import JobQueueService
+
+            # Cancel pending/running jobs before deletion (#191)
+            queue = JobQueueService(db)
+            await queue.cancel_jobs_for_design(design_id)
 
             # Delete preview assets and their files
             preview_service = PreviewService(db)
             await preview_service.delete_design_previews(design_id)
 
-            # Optionally delete staging/library files
-            if delete_files:
-                staging_dir = settings.staging_path / design_id
-                if staging_dir.exists():
-                    shutil.rmtree(staging_dir)
+            # Always delete staging directory (partial downloads) (#191)
+            staging_dir = settings.staging_path / design_id
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir)
 
+            # Optionally delete library files
+            if delete_files:
                 files_result = await db.execute(
                     select(DesignFile).where(DesignFile.design_id == design_id)
                 )
