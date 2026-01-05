@@ -395,6 +395,113 @@ class DuplicateService:
 
         return candidate
 
+    async def split_design(
+        self, design_id: str, source_id: str
+    ) -> Design:
+        """Split a design by moving a source to a new independent design.
+
+        This allows users to undo auto-merge by extracting one source
+        into its own design.
+
+        Args:
+            design_id: The design to split from.
+            source_id: The DesignSource to move to the new design.
+
+        Returns:
+            The newly created Design.
+
+        Raises:
+            ValueError: If design or source not found, or design has only one source.
+        """
+        from app.db.models import Attachment, TelegramMessage
+
+        # Get the design with sources
+        design = await self.db.get(Design, design_id)
+        if not design:
+            raise ValueError(f"Design not found: {design_id}")
+
+        # Get all sources for this design
+        result = await self.db.execute(
+            select(DesignSource)
+            .options(selectinload(DesignSource.message))
+            .where(DesignSource.design_id == design_id)
+        )
+        sources = list(result.scalars().all())
+
+        if len(sources) <= 1:
+            raise ValueError("Cannot split design with only one source")
+
+        # Find the source to split
+        source_to_split = None
+        for s in sources:
+            if s.id == source_id:
+                source_to_split = s
+                break
+
+        if not source_to_split:
+            raise ValueError(f"Source {source_id} not found in design {design_id}")
+
+        # Get the message for metadata
+        message = source_to_split.message
+
+        # Create new design with metadata from the source
+        new_design = Design(
+            canonical_title=message.caption[:200] if message and message.caption else design.canonical_title,
+            canonical_designer=design.canonical_designer,  # Keep same designer
+            status=DesignStatus.DISCOVERED,  # Reset status
+        )
+        self.db.add(new_design)
+        await self.db.flush()
+
+        # Get attachments from the source's message
+        attachment_ids = []
+        if message:
+            result = await self.db.execute(
+                select(Attachment.id).where(Attachment.message_id == message.id)
+            )
+            attachment_ids = [row[0] for row in result]
+
+        # Move files associated with those attachments to the new design
+        if attachment_ids:
+            result = await self.db.execute(
+                select(DesignFile).where(
+                    DesignFile.design_id == design_id,
+                    DesignFile.source_attachment_id.in_(attachment_ids),
+                )
+            )
+            files_to_move = result.scalars().all()
+
+            total_size = 0
+            for f in files_to_move:
+                f.design_id = new_design.id
+                total_size += f.size_bytes or 0
+
+            new_design.total_size_bytes = total_size
+
+        # Move the source to the new design
+        source_to_split.design_id = new_design.id
+        source_to_split.is_preferred = True  # Make it preferred in new design
+
+        # Update is_preferred on remaining sources if needed
+        remaining_preferred = any(s.is_preferred for s in sources if s.id != source_id)
+        if not remaining_preferred and sources:
+            for s in sources:
+                if s.id != source_id:
+                    s.is_preferred = True
+                    break
+
+        # Recalculate original design size
+        await self._recalculate_size(design)
+
+        logger.info(
+            "design_split",
+            original_design_id=design_id,
+            new_design_id=new_design.id,
+            source_id=source_id,
+        )
+
+        return new_design
+
     # ==================== Private Helper Methods ====================
 
     def _already_matched(

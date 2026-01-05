@@ -1727,3 +1727,68 @@ async def check_duplicate(
         should_skip_download=should_skip,
         message=message,
     )
+
+
+# ==================== Design Split/Unmerge Endpoints ====================
+
+
+class SplitDesignRequest(BaseModel):
+    """Request body for design split."""
+
+    source_id: str
+
+
+class SplitDesignResponse(BaseModel):
+    """Response for design split."""
+
+    new_design_id: str
+    new_design_title: str | None
+    original_design_id: str
+    message: str
+
+
+@router.post("/{design_id}/split", response_model=SplitDesignResponse)
+async def split_design(
+    design_id: str,
+    request: SplitDesignRequest,
+    db: AsyncSession = Depends(get_db),
+) -> SplitDesignResponse:
+    """Split a design by extracting a source into a new independent design (DEC-041).
+
+    Allows users to undo auto-merge by splitting out one source.
+    The new design will be in DISCOVERED status and may need re-downloading.
+
+    Args:
+        design_id: The design to split from.
+        request: Contains the source_id to split out.
+
+    Returns:
+        Information about the newly created design.
+    """
+    from app.services.duplicate import DuplicateService
+
+    duplicate_service = DuplicateService(db)
+
+    try:
+        new_design = await duplicate_service.split_design(
+            design_id=design_id,
+            source_id=request.source_id,
+        )
+        await db.commit()
+
+        logger.info(
+            "design_split_api",
+            original_design_id=design_id,
+            new_design_id=new_design.id,
+            source_id=request.source_id,
+        )
+
+        return SplitDesignResponse(
+            new_design_id=new_design.id,
+            new_design_title=new_design.canonical_title,
+            original_design_id=design_id,
+            message=f"Successfully split source into new design '{new_design.canonical_title}'",
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
