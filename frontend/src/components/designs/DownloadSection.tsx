@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { DesignStatus } from '@/types/design'
 import { useWantDesign, useDownloadDesign, useCancelDownload, useUpdateDesign } from '@/hooks/useDesigns'
+import { designsApi } from '@/services/api'
 
 interface DownloadSectionProps {
   designId: string
@@ -159,6 +160,25 @@ function RefreshIcon({ className }: { className?: string }) {
       <path d="M21 3v5h-5" />
       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
       <path d="M8 16H3v5" />
+    </svg>
+  )
+}
+
+function SaveFileIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
     </svg>
   )
 }
@@ -416,13 +436,15 @@ export function DownloadSection({ designId, status, onError }: DownloadSectionPr
               This design has been organized into your library.
             </p>
 
-            {/* Library location placeholder */}
-            <div className="bg-bg-tertiary rounded p-3 space-y-1">
-              <p className="text-xs text-text-muted">Library location:</p>
-              <p className="text-sm text-text-primary font-mono truncate">
-                /library/designs/
-              </p>
-            </div>
+            {/* Download All as ZIP button */}
+            <a
+              href={designsApi.getDownloadAllUrl(designId)}
+              download
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-accent-primary hover:bg-accent-primary/80 text-white font-medium transition-colors"
+            >
+              <SaveFileIcon className="w-5 h-5" />
+              Download All (ZIP)
+            </a>
 
             <div className="space-y-2 pt-3 border-t border-bg-tertiary">
               <button
@@ -435,7 +457,7 @@ export function DownloadSection({ designId, status, onError }: DownloadSectionPr
                 ) : (
                   <RefreshIcon className="w-4 h-4" />
                 )}
-                Re-download
+                Re-download from Telegram
               </button>
             </div>
           </div>

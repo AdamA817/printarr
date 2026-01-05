@@ -228,6 +228,11 @@ export const designsApi = {
 
   cancelDownload: (id: string) =>
     api.post<CancelDownloadResponse>(`/designs/${id}/cancel`).then((r) => r.data),
+
+  // File download URLs (#172)
+  getDownloadAllUrl: (id: string) => `/api/v1/designs/${id}/download`,
+  getFileDownloadUrl: (designId: string, fileId: string) =>
+    `/api/v1/designs/${designId}/files/${fileId}/download`,
 }
 
 export interface ThangsSearchParams {
