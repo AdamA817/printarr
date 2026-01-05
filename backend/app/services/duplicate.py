@@ -273,7 +273,8 @@ class DuplicateService:
         title: str,
         designer: str,
         files: list[dict],
-    ) -> Design | None:
+        thangs_id: str | None = None,
+    ) -> tuple[Design | None, DuplicateMatchType | None, float]:
         """Check for duplicates before download using heuristics.
 
         Used in the pre-download phase to avoid downloading known duplicates.
@@ -282,11 +283,24 @@ class DuplicateService:
             title: The design title.
             designer: The designer name.
             files: List of file info dicts with 'filename' and 'size'.
+            thangs_id: Optional Thangs model ID for exact matching.
 
         Returns:
-            Existing Design if likely duplicate found, None otherwise.
+            Tuple of (matched_design, match_type, confidence).
+            All None values if no match found.
         """
-        # Try title + designer match first
+        # Try Thangs ID match first (highest confidence)
+        if thangs_id:
+            match = await self._find_by_thangs_id(thangs_id)
+            if match:
+                logger.info(
+                    "pre_download_match_thangs_id",
+                    thangs_id=thangs_id,
+                    match_design_id=match.id,
+                )
+                return match, DuplicateMatchType.THANGS_ID, 1.0
+
+        # Try title + designer match
         match = await self._find_by_title_designer(title, designer)
         if match:
             logger.info(
@@ -295,7 +309,7 @@ class DuplicateService:
                 designer=designer,
                 match_design_id=match.id,
             )
-            return match
+            return match, DuplicateMatchType.TITLE_DESIGNER, 0.7
 
         # Try filename + size match
         for file_info in files:
@@ -311,9 +325,22 @@ class DuplicateService:
                         size=size,
                         match_design_id=match.id,
                     )
-                    return match
+                    return match, DuplicateMatchType.FILENAME_SIZE, 0.5
 
-        return None
+        return None, None, 0.0
+
+    async def _find_by_thangs_id(self, thangs_id: str) -> Design | None:
+        """Find a design by Thangs external ID."""
+        result = await self.db.execute(
+            select(Design)
+            .join(ExternalMetadataSource)
+            .where(
+                ExternalMetadataSource.external_id == thangs_id,
+                ExternalMetadataSource.source_type == "THANGS",
+                Design.status != DesignStatus.DELETED,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_pending_candidates(
         self, design_id: str | None = None

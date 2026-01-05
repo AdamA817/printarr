@@ -1622,3 +1622,108 @@ async def download_single_file(
         filename=design_file.filename,
         media_type="application/octet-stream",
     )
+
+
+# ==================== Duplicate Checking Endpoints ====================
+
+
+class FileInfo(BaseModel):
+    """File info for pre-download duplicate check."""
+
+    filename: str
+    size: int
+
+
+class CheckDuplicateRequest(BaseModel):
+    """Request body for pre-download duplicate check."""
+
+    title: str
+    designer: str
+    files: list[FileInfo] = []
+    thangs_id: str | None = None
+
+
+class CheckDuplicateResponse(BaseModel):
+    """Response for pre-download duplicate check."""
+
+    has_duplicate: bool
+    match_design_id: str | None = None
+    match_design_title: str | None = None
+    match_design_designer: str | None = None
+    match_type: str | None = None
+    confidence: float = 0.0
+    should_skip_download: bool = False
+    message: str
+
+
+@router.post("/check-duplicate", response_model=CheckDuplicateResponse)
+async def check_duplicate(
+    request: CheckDuplicateRequest,
+    dry_run: bool = Query(False, description="If true, only report matches without taking action"),
+    db: AsyncSession = Depends(get_db),
+) -> CheckDuplicateResponse:
+    """Check for potential duplicates before download (DEC-041).
+
+    Uses heuristic matching (title, designer, filename/size, Thangs ID)
+    to detect likely duplicates without needing file hashes.
+
+    Args:
+        request: Contains title, designer, file info, and optional Thangs ID.
+        dry_run: If true, only report what would match without taking action.
+
+    Returns:
+        Duplicate check result with confidence score and recommendation.
+    """
+    from app.services.duplicate import DuplicateService
+
+    duplicate_service = DuplicateService(db)
+
+    # Convert FileInfo to dict format
+    files = [{"filename": f.filename, "size": f.size} for f in request.files]
+
+    # Check for duplicates
+    match, match_type, confidence = await duplicate_service.check_pre_download(
+        title=request.title,
+        designer=request.designer,
+        files=files,
+        thangs_id=request.thangs_id,
+    )
+
+    if match is None:
+        return CheckDuplicateResponse(
+            has_duplicate=False,
+            confidence=0.0,
+            should_skip_download=False,
+            message="No duplicate found. Safe to download.",
+        )
+
+    # Determine if download should be skipped (confidence >= 0.8)
+    should_skip = confidence >= 0.8 and not dry_run
+
+    message = f"Potential duplicate found: '{match.canonical_title}' by {match.canonical_designer}"
+    if should_skip:
+        message += f" (confidence: {confidence:.0%}). Download will be skipped."
+    else:
+        message += f" (confidence: {confidence:.0%}). Recommend manual review."
+
+    logger.info(
+        "duplicate_check_result",
+        title=request.title,
+        designer=request.designer,
+        match_design_id=match.id,
+        match_type=match_type.value if match_type else None,
+        confidence=confidence,
+        should_skip=should_skip,
+        dry_run=dry_run,
+    )
+
+    return CheckDuplicateResponse(
+        has_duplicate=True,
+        match_design_id=match.id,
+        match_design_title=match.canonical_title,
+        match_design_designer=match.canonical_designer,
+        match_type=match_type.value if match_type else None,
+        confidence=confidence,
+        should_skip_download=should_skip,
+        message=message,
+    )
