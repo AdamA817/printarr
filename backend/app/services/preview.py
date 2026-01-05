@@ -32,14 +32,15 @@ from app.db.session import async_session_maker
 
 logger = get_logger(__name__)
 
-# Source priority for auto-selecting primary preview (per DEC-032)
+# Source priority for auto-selecting primary preview (#167)
 # Lower number = higher priority
+# Designer-provided images should be preferred over auto-generated ones
 SOURCE_PRIORITY = {
-    PreviewSource.RENDERED: 1,
-    PreviewSource.EMBEDDED_3MF: 2,
-    PreviewSource.ARCHIVE: 3,
-    PreviewSource.THANGS: 4,
-    PreviewSource.TELEGRAM: 5,
+    PreviewSource.TELEGRAM: 1,      # User's Telegram posts - highest quality renders
+    PreviewSource.THANGS: 2,        # Thangs listings - authoritative external source
+    PreviewSource.ARCHIVE: 3,       # Designer-provided images from imported archives
+    PreviewSource.EMBEDDED_3MF: 4,  # 3MF embedded thumbnails - often low-res plate views
+    PreviewSource.RENDERED: 5,      # Auto-generated STL renders - lowest priority
 }
 
 
@@ -374,12 +375,12 @@ class PreviewService:
     async def auto_select_primary(self, design_id: str) -> str | None:
         """Auto-select the best preview as primary based on source priority.
 
-        Per DEC-032, priority order:
-        1. RENDERED (we generated it)
-        2. EMBEDDED_3MF (designer's intended preview)
-        3. ARCHIVE (designer included it)
-        4. THANGS (authoritative external source)
-        5. TELEGRAM (channel post image)
+        Priority order (per #167):
+        1. TELEGRAM (designer's high-quality renders in posts)
+        2. THANGS (authoritative external source)
+        3. ARCHIVE (designer-provided images from archives)
+        4. EMBEDDED_3MF (often low-res auto-generated plate views)
+        5. RENDERED (our auto-generated STL renders)
 
         Args:
             design_id: The design to select primary for
