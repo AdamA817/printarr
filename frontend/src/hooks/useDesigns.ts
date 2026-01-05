@@ -258,3 +258,35 @@ export function useCancelDownload() {
     },
   })
 }
+
+// Delete a single design (#171)
+export function useDeleteDesign() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, deleteFiles }: { id: string; deleteFiles: boolean }) =>
+      designsApi.delete(id, deleteFiles),
+    onSuccess: (_data, { id }) => {
+      // Remove from cache
+      queryClient.removeQueries({ queryKey: ['design', id] })
+      queryClient.invalidateQueries({ queryKey: ['designs'] })
+    },
+  })
+}
+
+// Bulk delete designs (#171)
+export function useBulkDeleteDesigns() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ designIds, deleteFiles }: { designIds: string[]; deleteFiles: boolean }) =>
+      designsApi.bulkDelete(designIds, deleteFiles),
+    onSuccess: (data) => {
+      // Remove deleted designs from cache
+      data.deleted_ids.forEach((id) => {
+        queryClient.removeQueries({ queryKey: ['design', id] })
+      })
+      queryClient.invalidateQueries({ queryKey: ['designs'] })
+    },
+  })
+}

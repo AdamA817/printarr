@@ -26,6 +26,7 @@ import type {
   WantDesignResponse,
   DownloadDesignResponse,
   CancelDownloadResponse,
+  BulkDeleteResponse,
   // v0.7 Preview & Tag types
   PreviewListResponse,
   UpdatePreviewRequest,
@@ -233,6 +234,16 @@ export const designsApi = {
   getDownloadAllUrl: (id: string) => `/api/v1/designs/${id}/download`,
   getFileDownloadUrl: (designId: string, fileId: string) =>
     `/api/v1/designs/${designId}/files/${fileId}/download`,
+
+  // Delete operations (#171)
+  delete: (id: string, deleteFiles = false) =>
+    api.delete(`/designs/${id}`, { params: { delete_files: deleteFiles } }),
+
+  bulkDelete: (designIds: string[], deleteFiles = false) =>
+    api.delete<BulkDeleteResponse>('/designs/bulk', {
+      params: { delete_files: deleteFiles },
+      data: { design_ids: designIds },
+    }).then((r) => r.data),
 }
 
 export interface ThangsSearchParams {

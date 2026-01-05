@@ -264,6 +264,12 @@ export interface CancelDownloadResponse {
   cancelled_job_id: string | null
 }
 
+// Delete operations (#171)
+export interface BulkDeleteResponse {
+  deleted_count: number
+  deleted_ids: string[]
+}
+
 // =============================================================================
 // Preview API types (v0.7)
 // =============================================================================
