@@ -1339,6 +1339,43 @@ For `UPLOAD` type sources, we don't need folders - uploads create designs direct
 
 ---
 
+### DEC-039: PostgreSQL Support for Concurrent Workloads
+**Date**: 2026-01-04
+**Status**: Accepted (supersedes DEC-005 partially)
+
+**Context**
+SQLite with WAL mode, busy_timeout, non-blocking progress updates, and session-per-operation pattern (DEC-019) still exhibits locking issues during heavy concurrent operations:
+- Multiple workers updating job progress
+- Import sync scanning large folders while API serves requests
+- "database is locked" errors causing transaction rollbacks
+
+These are fundamental SQLite limitations - single-writer architecture cannot be fully worked around.
+
+**Options Considered**
+1. **More SQLite optimizations** - Diminishing returns, already implemented best practices
+2. **PostgreSQL required** - Better concurrency but forces all users to run extra container
+3. **PostgreSQL optional** - Default SQLite for simple use, PostgreSQL for heavy users
+
+**Decision**
+Option 3: Add PostgreSQL as optional backend.
+
+- `DATABASE_URL` environment variable configures backend
+- Default: SQLite (simple deployments, single-user, small libraries)
+- Optional: PostgreSQL (concurrent syncs, large libraries, heavy usage)
+- SQLAlchemy abstracts differences; same codebase supports both
+
+**Implementation**
+- Issue #168: Backend database configuration
+- Issue #169: Docker PostgreSQL container
+
+**Consequences**
+- Users hitting SQLite limits have an escape hatch
+- Simple deployments remain simple (no extra container)
+- Must test migrations and queries against both backends
+- Documentation needed to explain when to switch
+
+---
+
 ## Pending Decisions
 
 *No pending decisions at this time.*
