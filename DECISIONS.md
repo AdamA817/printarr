@@ -1339,9 +1339,9 @@ For `UPLOAD` type sources, we don't need folders - uploads create designs direct
 
 ---
 
-### DEC-039: PostgreSQL Support for Concurrent Workloads
+### DEC-039: Replace SQLite with PostgreSQL
 **Date**: 2026-01-04
-**Status**: Accepted (supersedes DEC-005 partially)
+**Status**: Accepted (supersedes DEC-005)
 
 **Context**
 SQLite with WAL mode, busy_timeout, non-blocking progress updates, and session-per-operation pattern (DEC-019) still exhibits locking issues during heavy concurrent operations:
@@ -1351,28 +1351,25 @@ SQLite with WAL mode, busy_timeout, non-blocking progress updates, and session-p
 
 These are fundamental SQLite limitations - single-writer architecture cannot be fully worked around.
 
-**Options Considered**
-1. **More SQLite optimizations** - Diminishing returns, already implemented best practices
-2. **PostgreSQL required** - Better concurrency but forces all users to run extra container
-3. **PostgreSQL optional** - Default SQLite for simple use, PostgreSQL for heavy users
-
 **Decision**
-Option 3: Add PostgreSQL as optional backend.
+Replace SQLite with PostgreSQL as the only supported database, running inside the same container.
 
-- `DATABASE_URL` environment variable configures backend
-- Default: SQLite (simple deployments, single-user, small libraries)
-- Optional: PostgreSQL (concurrent syncs, large libraries, heavy usage)
-- SQLAlchemy abstracts differences; same codebase supports both
+- PostgreSQL runs inside Printarr container (supervisord manages both)
+- `DATABASE_URL` points to local PostgreSQL socket
+- Remove SQLite-specific code (pragmas, workarounds)
+- MVCC provides true concurrent writes - no more locking issues
+- Single container deployment preserved (Unraid-friendly)
 
 **Implementation**
 - Issue #168: Backend database configuration
-- Issue #169: Docker PostgreSQL container
+- Issue #169: Docker container with embedded PostgreSQL
 
 **Consequences**
-- Users hitting SQLite limits have an escape hatch
-- Simple deployments remain simple (no extra container)
-- Must test migrations and queries against both backends
-- Documentation needed to explain when to switch
+- No more "database is locked" errors
+- Simpler codebase (remove SQLite workarounds)
+- Single container maintained (no separate postgres container)
+- Slightly larger container image (~50MB for PostgreSQL)
+- Existing SQLite databases need migration path
 
 ---
 
