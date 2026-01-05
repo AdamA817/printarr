@@ -40,6 +40,9 @@ class Job(Base):
         String(36), ForeignKey("designs.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Display name for Activity UI (DEC-040: custom job names like "Download: Dragon Bust")
+    display_name: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
     # Job payload (JSON stored as text for SQLite compatibility)
     payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 

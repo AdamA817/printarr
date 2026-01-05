@@ -82,6 +82,7 @@ JOB_CATEGORY_MAP: dict[JobType, tuple[str, str]] = {
     JobType.SYNC_IMPORT_SOURCE: ("sync", "imports_syncing"),
     # Downloads
     JobType.DOWNLOAD_DESIGN: ("downloads", "active"),
+    JobType.DOWNLOAD_IMPORT_RECORD: ("downloads", "active"),  # DEC-040: Per-design downloads
     # Images
     JobType.DOWNLOAD_TELEGRAM_IMAGES: ("images", "telegram_downloading"),
     JobType.GENERATE_RENDER: ("images", "previews_generating"),

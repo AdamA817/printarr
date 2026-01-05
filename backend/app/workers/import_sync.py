@@ -400,9 +400,11 @@ class SyncImportSourceWorker(BaseWorker):
         source: ImportSource,
         conflict_resolution: ConflictResolution,
     ) -> tuple[int, list[str]]:
-        """Import all pending Google Drive designs.
+        """Queue download jobs for pending Google Drive designs (DEC-040).
 
-        Downloads files from Google Drive and creates Design/DesignFile records.
+        Instead of downloading inline, this method queues individual
+        DOWNLOAD_IMPORT_RECORD jobs for each pending design. This enables
+        per-design progress tracking in the Activity UI.
 
         Args:
             db: Database session.
@@ -410,7 +412,7 @@ class SyncImportSourceWorker(BaseWorker):
             conflict_resolution: How to handle conflicts.
 
         Returns:
-            Tuple of (imported_count, errors).
+            Tuple of (queued_count, errors).
         """
         # Get pending records
         result = await db.execute(
@@ -422,56 +424,67 @@ class SyncImportSourceWorker(BaseWorker):
         records = list(result.scalars().all())
 
         logger.info(
-            "gdrive_auto_import_starting",
+            "gdrive_auto_import_queueing",
             source_id=source.id,
             pending_count=len(records),
         )
 
-        imported = 0
+        queued = 0
         errors: list[str] = []
+        queue = JobQueueService(db)
 
         for i, record in enumerate(records):
             try:
-                design = await self._import_google_drive_record(
-                    db, source, record, conflict_resolution
-                )
-                if design:
-                    imported += 1
-                    # Commit after each successful import to avoid long-running transactions
-                    # and SQLite database locking issues
-                    await db.commit()
-                    logger.info(
-                        "gdrive_design_imported",
-                        record_id=record.id,
-                        design_id=design.id,
-                        title=design.canonical_title,
-                    )
+                # Check for conflicts before queuing
+                if conflict_resolution == ConflictResolution.SKIP:
+                    existing = await self._find_existing_design(db, record, source)
+                    if existing:
+                        record.status = ImportRecordStatus.SKIPPED
+                        record.design_id = existing.id
+                        logger.info(
+                            "gdrive_import_skipped_duplicate",
+                            record_id=record.id,
+                            existing_design_id=existing.id,
+                        )
+                        continue
 
-                # Update progress during import
-                progress = 50 + int((i + 1) / len(records) * 45)  # 50-95% for imports
+                # Queue DOWNLOAD_IMPORT_RECORD job with display name
+                display_name = f"Download: {record.detected_title or record.source_path.split('/')[-1]} from {source.name}"
+                await queue.enqueue(
+                    JobType.DOWNLOAD_IMPORT_RECORD,
+                    payload={
+                        "import_record_id": record.id,
+                    },
+                    priority=5,
+                    display_name=display_name,
+                )
+                queued += 1
+
+                # Update progress
+                progress = 50 + int((i + 1) / len(records) * 45)  # 50-95% for queueing
                 await self.update_progress(progress, 100)
 
             except Exception as e:
-                error_msg = f"Failed to import {record.source_path}: {e}"
+                error_msg = f"Failed to queue {record.source_path}: {e}"
                 errors.append(error_msg)
-                record.status = ImportRecordStatus.ERROR
-                record.error_message = str(e)
-                await db.commit()  # Commit the error status too
                 logger.error(
-                    "gdrive_import_failed",
+                    "gdrive_queue_failed",
                     record_id=record.id,
                     source_path=record.source_path,
                     error=str(e),
                 )
 
+        # Commit all queued jobs
+        await db.commit()
+
         logger.info(
-            "gdrive_auto_import_complete",
+            "gdrive_auto_import_queued",
             source_id=source.id,
-            imported=imported,
+            queued=queued,
             errors=len(errors),
         )
 
-        return imported, errors
+        return queued, errors
 
     async def _import_google_drive_record(
         self,
@@ -1059,7 +1072,10 @@ class SyncImportSourceWorker(BaseWorker):
         folder: ImportSourceFolder,
         conflict_resolution: ConflictResolution,
     ) -> tuple[int, list[str]]:
-        """Import all pending records for a folder.
+        """Queue download jobs for pending records in a folder (DEC-040).
+
+        Instead of downloading inline, this method queues individual
+        DOWNLOAD_IMPORT_RECORD jobs for each pending design.
 
         Args:
             db: Database session.
@@ -1068,7 +1084,7 @@ class SyncImportSourceWorker(BaseWorker):
             conflict_resolution: How to handle conflicts.
 
         Returns:
-            Tuple of (imported_count, errors).
+            Tuple of (queued_count, errors).
         """
         # Get pending records for this folder
         result = await db.execute(
@@ -1080,54 +1096,68 @@ class SyncImportSourceWorker(BaseWorker):
         records = list(result.scalars().all())
 
         logger.info(
-            "folder_auto_import_starting",
+            "folder_auto_import_queueing",
             folder_id=folder.id,
             pending_count=len(records),
         )
 
-        imported = 0
+        queued = 0
         errors: list[str] = []
-
-        # Get effective designer
-        effective_designer = folder.default_designer or source.default_designer
+        queue = JobQueueService(db)
 
         for record in records:
             try:
-                if source.source_type == ImportSourceType.GOOGLE_DRIVE:
-                    design = await self._import_google_drive_record(
-                        db, source, record, conflict_resolution
-                    )
-                else:
-                    # For bulk folder, use existing bulk import service
+                # Only Google Drive folders support per-design downloads for now
+                if source.source_type != ImportSourceType.GOOGLE_DRIVE:
                     continue  # TODO: Implement folder-based bulk import
 
-                if design:
-                    imported += 1
-                    # Update folder stats
-                    folder.items_imported = (folder.items_imported or 0) + 1
-                    logger.info(
-                        "folder_design_imported",
-                        folder_id=folder.id,
-                        record_id=record.id,
-                        design_id=design.id,
-                    )
+                # Check for conflicts before queuing
+                if conflict_resolution == ConflictResolution.SKIP:
+                    existing = await self._find_existing_design(db, record, source)
+                    if existing:
+                        record.status = ImportRecordStatus.SKIPPED
+                        record.design_id = existing.id
+                        logger.info(
+                            "folder_import_skipped_duplicate",
+                            folder_id=folder.id,
+                            record_id=record.id,
+                            existing_design_id=existing.id,
+                        )
+                        continue
+
+                # Queue DOWNLOAD_IMPORT_RECORD job with display name
+                display_name = f"Download: {record.detected_title or record.source_path.split('/')[-1]} from {folder.display_name}"
+                await queue.enqueue(
+                    JobType.DOWNLOAD_IMPORT_RECORD,
+                    payload={
+                        "import_record_id": record.id,
+                    },
+                    priority=5,
+                    display_name=display_name,
+                )
+                queued += 1
+
+                # Update folder stats
+                folder.items_imported = (folder.items_imported or 0) + 1
+
             except Exception as e:
-                error_msg = f"Failed to import {record.source_path}: {e}"
+                error_msg = f"Failed to queue {record.source_path}: {e}"
                 errors.append(error_msg)
-                record.status = ImportRecordStatus.ERROR
-                record.error_message = str(e)
                 logger.error(
-                    "folder_import_failed",
+                    "folder_queue_failed",
                     folder_id=folder.id,
                     record_id=record.id,
                     error=str(e),
                 )
 
+        # Commit all queued jobs
+        await db.commit()
+
         logger.info(
-            "folder_auto_import_complete",
+            "folder_auto_import_queued",
             folder_id=folder.id,
-            imported=imported,
+            queued=queued,
             errors=len(errors),
         )
 
-        return imported, errors
+        return queued, errors

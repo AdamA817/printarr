@@ -138,6 +138,7 @@ async def list_queue(
                 job_type=job.type,
                 status=job.status,
                 priority=job.priority,
+                display_name=job.display_name,
                 progress=job.progress_percent,
                 progress_message=_get_progress_message(job),
                 design=design_summary,
@@ -255,6 +256,7 @@ async def update_job_priority(
         job_type=job.type,
         status=job.status,
         priority=job.priority,
+        display_name=job.display_name,
         progress=job.progress_percent,
         progress_message=_get_progress_message(job),
         design=design_summary,
@@ -366,6 +368,29 @@ def _get_progress_message(job: Job) -> str | None:
             if job.progress_percent is not None:
                 return f"Syncing... {job.progress_percent:.0f}%"
             return "Syncing..."
+
+        elif job.type == JobType.DOWNLOAD_IMPORT_RECORD:
+            # DEC-040: Per-design download jobs
+            # Use display_name if available, otherwise generic message
+            if job.display_name:
+                # Extract just the design name from "Download: Dragon Bust from Wicked STL"
+                parts = []
+                if current_file:
+                    display_file = current_file[:30] + "..." if len(current_file) > 30 else current_file
+                    parts.append(f"Downloading {display_file}")
+                else:
+                    parts.append(job.display_name.split(" from ")[0])  # "Download: Dragon Bust"
+
+                # Show byte progress for current file
+                if current_file_bytes is not None and current_file_total:
+                    parts.append(f" ({_format_bytes(current_file_bytes)} / {_format_bytes(current_file_total)})")
+
+                # Show file count progress
+                if job.progress_current is not None and job.progress_total:
+                    parts.append(f" [{job.progress_current}/{job.progress_total}]")
+
+                return "".join(parts)
+            return "Downloading..."
 
         else:
             return "Processing..."

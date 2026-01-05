@@ -1310,8 +1310,8 @@ async def bulk_delete_designs(
                 )
                 design_files = files_result.scalars().all()
                 for df in design_files:
-                    if df.file_path:
-                        file_path = settings.library_path / df.file_path
+                    if df.relative_path:
+                        file_path = settings.library_path / df.relative_path
                         if file_path.exists():
                             file_path.unlink()
 
@@ -1411,8 +1411,8 @@ async def delete_design(
         )
         design_files = files_result.scalars().all()
         for df in design_files:
-            if df.file_path:
-                file_path = settings.library_path / df.file_path
+            if df.relative_path:
+                file_path = settings.library_path / df.relative_path
                 if file_path.exists():
                     file_path.unlink()
                     logger.debug("library_file_deleted", path=str(file_path))

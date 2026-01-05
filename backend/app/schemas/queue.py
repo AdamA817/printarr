@@ -38,6 +38,9 @@ class QueueItemResponse(BaseModel):
     status: JobStatus
     priority: int
 
+    # Display name for user-friendly job identification (DEC-040)
+    display_name: str | None = None
+
     # Progress
     progress: float | None = None
     progress_message: str | None = None
@@ -94,6 +97,9 @@ class ActivityItemResponse(BaseModel):
     id: str
     job_type: JobType
     status: JobStatus
+
+    # Display name for user-friendly job identification (DEC-040)
+    display_name: str | None = None
 
     # Related design
     design: DesignSummary | None = None

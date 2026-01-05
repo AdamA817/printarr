@@ -262,6 +262,7 @@ async def start_workers() -> None:
     # and to allow workers to be added incrementally
 
     from app.workers.download import DownloadWorker
+    from app.workers.download_import_record import DownloadImportRecordWorker
     from app.workers.extract import ExtractArchiveWorker
     from app.workers.image import ImageWorker
     from app.workers.import_sync import SyncImportSourceWorker
@@ -288,6 +289,9 @@ async def start_workers() -> None:
 
     # Register import sync workers (v0.8: async import source syncing)
     manager.register_worker(SyncImportSourceWorker, count=1)
+
+    # Register per-design download workers (DEC-040)
+    manager.register_worker(DownloadImportRecordWorker, count=1)
 
     logger.info("starting_workers", worker_count=manager.worker_count)
     await manager.start()

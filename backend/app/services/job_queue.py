@@ -47,6 +47,7 @@ class JobQueueService:
         payload: dict[str, Any] | None = None,
         priority: int = 0,
         max_attempts: int = 3,
+        display_name: str | None = None,
     ) -> Job:
         """Add a new job to the queue.
 
@@ -57,6 +58,7 @@ class JobQueueService:
             payload: Optional JSON payload with job-specific data.
             priority: Job priority (higher = more urgent). Default 0.
             max_attempts: Maximum retry attempts. Default 3.
+            display_name: Optional custom name for Activity UI (DEC-040).
 
         Returns:
             The created Job instance.
@@ -69,6 +71,7 @@ class JobQueueService:
             channel_id=channel_id,
             payload_json=json.dumps(payload) if payload else None,
             max_attempts=max_attempts,
+            display_name=display_name,
         )
         self.db.add(job)
         await self.db.flush()
@@ -80,6 +83,7 @@ class JobQueueService:
             priority=priority,
             design_id=design_id,
             channel_id=channel_id,
+            display_name=display_name,
         )
 
         return job

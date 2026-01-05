@@ -486,6 +486,13 @@ async def delete_import_source(
 
     Cancels any pending sync jobs for this source (#191).
     """
+    import shutil
+    from sqlalchemy import delete as sql_delete
+
+    from app.db.models import Design, DesignFile, DesignSource, DesignTag, Job
+    from app.db.models.external_metadata_source import ExternalMetadataSource
+    from app.services.preview import PreviewService
+
     source = await _get_source_or_404(db, source_id)
 
     # Cancel pending sync jobs for this source (#191)
@@ -498,8 +505,60 @@ async def delete_import_source(
             canceled_count=canceled_count,
         )
 
+    # If not keeping designs, delete all designs imported from this source (#195)
+    if not keep_designs:
+        # Find all designs linked to this import source
+        designs_result = await db.execute(
+            select(Design).where(Design.import_source_id == source_id)
+        )
+        designs = designs_result.scalars().all()
+
+        preview_service = PreviewService(db)
+        deleted_design_count = 0
+
+        for design in designs:
+            # Cancel any pending jobs for this design
+            await queue.cancel_jobs_for_design(design.id)
+
+            # Delete preview assets and their files
+            await preview_service.delete_design_previews(design.id)
+
+            # Delete staging directory
+            staging_dir = settings.staging_path / design.id
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir)
+
+            # Delete library files
+            files_result = await db.execute(
+                select(DesignFile).where(DesignFile.design_id == design.id)
+            )
+            design_files = files_result.scalars().all()
+            for df in design_files:
+                if df.relative_path:
+                    file_path = settings.library_path / df.relative_path
+                    if file_path.exists():
+                        file_path.unlink()
+
+            # Delete related records
+            await db.execute(sql_delete(DesignFile).where(DesignFile.design_id == design.id))
+            await db.execute(sql_delete(DesignSource).where(DesignSource.design_id == design.id))
+            await db.execute(sql_delete(ExternalMetadataSource).where(ExternalMetadataSource.design_id == design.id))
+            await db.execute(sql_delete(DesignTag).where(DesignTag.design_id == design.id))
+            await db.execute(sql_delete(Job).where(Job.design_id == design.id))
+
+            # Delete the design itself
+            await db.delete(design)
+            deleted_design_count += 1
+
+        if deleted_design_count > 0:
+            logger.info(
+                "import_source_designs_deleted",
+                source_id=source_id,
+                deleted_count=deleted_design_count,
+            )
+
     # Note: ImportRecords will be deleted via cascade
-    # Designs have SET NULL on delete, so they'll keep their data
+    # If keep_designs=True, designs have SET NULL on delete, so they'll keep their data
 
     await db.delete(source)
     await db.commit()

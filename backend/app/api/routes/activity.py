@@ -151,6 +151,7 @@ async def list_activity(
                 id=job.id,
                 job_type=job.type,
                 status=job.status,
+                display_name=job.display_name,
                 design=design_summary,
                 import_source=import_source_summary,
                 created_at=job.created_at,

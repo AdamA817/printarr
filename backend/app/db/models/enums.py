@@ -144,6 +144,7 @@ class JobType(str, enum.Enum):
     IMPORT_TO_LIBRARY = "IMPORT_TO_LIBRARY"
     DEDUPE_RECONCILE = "DEDUPE_RECONCILE"
     SYNC_IMPORT_SOURCE = "SYNC_IMPORT_SOURCE"  # v0.8: Async import source sync
+    DOWNLOAD_IMPORT_RECORD = "DOWNLOAD_IMPORT_RECORD"  # v0.8: Per-design import download (DEC-040)
 
 
 class JobStatus(str, enum.Enum):
