@@ -473,7 +473,6 @@ function OrganizedSection({
 
   // Group files by kind
   const modelFiles = files?.filter((f) => f.file_kind === 'MODEL') || []
-  const otherFiles = files?.filter((f) => f.file_kind !== 'MODEL') || []
   const totalSize = files?.reduce((acc, f) => acc + (f.size_bytes || 0), 0) || 0
 
   // Show max 5 files by default
