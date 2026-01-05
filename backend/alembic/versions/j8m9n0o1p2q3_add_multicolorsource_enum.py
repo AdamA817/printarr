@@ -12,6 +12,11 @@ because development used SQLite (which doesn't require explicit enum types).
 Enums added:
 - multicolorsource: Used in designs.multicolor_source (DEC-029)
 - previewsource: Used in preview_assets.source (DEC-027)
+- dedupeevidencetype: For deduplication tracking
+- discoverysourcetype: For channel discovery tracking
+- importsourcetype: For import source types (v0.8)
+- importsourcestatus: For import source status (v0.8)
+- conflictresolution: For import conflict handling (DEC-037)
 
 See issue #180 for details.
 """
@@ -29,9 +34,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # Enum definitions that need to be created for PostgreSQL
+# These enums were created in SQLite development but missing from PostgreSQL migrations
 MISSING_ENUMS = {
     'multicolorsource': ['HEURISTIC', '3MF_ANALYSIS', 'USER_OVERRIDE'],
     'previewsource': ['TELEGRAM', 'THANGS', 'EMBEDDED_3MF', 'RENDERED', 'ARCHIVE'],
+    'dedupeevidencetype': ['HASH_MATCH', 'FILENAME_SIZE_MATCH', 'CAPTION_SIMILARITY', 'MANUAL_MERGE'],
+    'discoverysourcetype': ['FORWARD', 'MENTION', 'CAPTION_LINK', 'TEXT_LINK'],
+    'importsourcetype': ['GOOGLE_DRIVE', 'UPLOAD', 'BULK_FOLDER'],
+    'importsourcestatus': ['ACTIVE', 'PAUSED', 'ERROR', 'PENDING', 'RATE_LIMITED'],
+    'conflictresolution': ['SKIP', 'REPLACE', 'ASK'],
 }
 
 
