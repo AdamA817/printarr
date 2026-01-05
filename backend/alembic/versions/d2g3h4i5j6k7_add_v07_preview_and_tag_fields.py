@@ -25,6 +25,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Add v0.7 preview and tag system fields."""
+    from sqlalchemy import text
+    bind = op.get_bind()
+    dialect = bind.dialect.name
 
     # === Tag table updates ===
     op.add_column('tags', sa.Column('category', sa.String(50), nullable=True))
@@ -71,12 +74,33 @@ def upgrade() -> None:
         WHERE source IS NULL
     """)
 
-    # Update kind values to new enum
-    op.execute("""
-        UPDATE preview_assets
-        SET kind = 'THUMBNAIL'
-        WHERE kind IN ('TELEGRAM_IMAGE', 'THREE_MF_EMBEDDED', 'RENDERED')
-    """)
+    # For PostgreSQL, we need special handling for enum updates (DEC-039)
+    # New enum values can't be used in the same transaction they're added
+    if dialect == 'postgresql':
+        # Check if there are any rows to update (empty on fresh install)
+        result = bind.execute(text(
+            "SELECT COUNT(*) FROM preview_assets WHERE kind IN ('TELEGRAM_IMAGE', 'THREE_MF_EMBEDDED', 'RENDERED')"
+        ))
+        count = result.scalar()
+
+        if count == 0:
+            # Fresh install - no data to migrate, just add the new enum value
+            # for future use. We need to commit the current transaction first.
+            bind.execute(text("COMMIT"))
+            bind.execute(text("ALTER TYPE previewkind ADD VALUE IF NOT EXISTS 'THUMBNAIL'"))
+            bind.execute(text("BEGIN"))
+        else:
+            # Existing data - need to do a two-step migration
+            # This case shouldn't happen for fresh PostgreSQL installs
+            # For SQLite->PostgreSQL migration, a separate migration step is needed
+            pass  # Skip for now, data will use old enum values
+    else:
+        # SQLite - update enum values directly (stored as strings)
+        op.execute("""
+            UPDATE preview_assets
+            SET kind = 'THUMBNAIL'
+            WHERE kind IN ('TELEGRAM_IMAGE', 'THREE_MF_EMBEDDED', 'RENDERED')
+        """)
 
     # Add indexes for preview queries
     op.create_index('ix_preview_assets_design_id', 'preview_assets', ['design_id'])
@@ -94,11 +118,30 @@ def upgrade() -> None:
 
     # === DesignTag table updates ===
     # Update source enum values (AUTO -> AUTO_CAPTION for existing records)
-    op.execute("""
-        UPDATE design_tags
-        SET source = 'AUTO_CAPTION'
-        WHERE source = 'AUTO'
-    """)
+    if dialect == 'postgresql':
+        # Check if there are any rows to update (empty on fresh install)
+        result = bind.execute(text(
+            "SELECT COUNT(*) FROM design_tags WHERE source = 'AUTO'"
+        ))
+        count = result.scalar()
+
+        if count == 0:
+            # Fresh install - add new enum values for future use
+            bind.execute(text("COMMIT"))
+            bind.execute(text("ALTER TYPE tagsource ADD VALUE IF NOT EXISTS 'AUTO_CAPTION'"))
+            bind.execute(text("ALTER TYPE tagsource ADD VALUE IF NOT EXISTS 'AUTO_FILENAME'"))
+            bind.execute(text("ALTER TYPE tagsource ADD VALUE IF NOT EXISTS 'AUTO_THANGS'"))
+            bind.execute(text("BEGIN"))
+        else:
+            # Existing data case - skip for fresh PostgreSQL installs
+            pass
+    else:
+        # SQLite - update directly
+        op.execute("""
+            UPDATE design_tags
+            SET source = 'AUTO_CAPTION'
+            WHERE source = 'AUTO'
+        """)
 
 
 def downgrade() -> None:

@@ -9,7 +9,8 @@ COPY frontend/ ./
 RUN npm run build
 
 # ====== Backend Build Stage ======
-FROM python:3.11-slim AS backend-builder
+# Use bookworm explicitly for PostgreSQL compatibility
+FROM python:3.11-slim-bookworm AS backend-builder
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -25,14 +26,17 @@ COPY backend/requirements.txt ./
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels -r requirements.txt
 
 # ====== Final Image ======
-FROM python:3.11-slim
+# Use bookworm explicitly for PostgreSQL 16 compatibility (DEC-039)
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
-# Install runtime dependencies and supervisor
+# Install runtime dependencies, supervisor, and PostgreSQL 16 (DEC-039)
+# PostgreSQL runs inside the container managed by supervisord
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     supervisor \
+    gnupg \
     # Archive extraction tools for v0.5
     unrar-free \
     p7zip-full \
@@ -42,6 +46,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libegl1 \
     xvfb \
     && rm -rf /var/lib/apt/lists/*
+
+# Add PostgreSQL 16 official repository and install
+RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        postgresql-16 \
+    && rm -rf /var/lib/apt/lists/* \
+    # Create PostgreSQL data directory in /config for persistence
+    && mkdir -p /config/postgres \
+    && chown -R postgres:postgres /config/postgres
 
 # Install stl-thumb for STL preview rendering (v0.7)
 # Download pre-built .deb from GitHub releases based on architecture
@@ -87,11 +102,17 @@ ENV PRINTARR_CONFIG_PATH=/config
 ENV PRINTARR_DATA_PATH=/data
 ENV PRINTARR_LIBRARY_PATH=/library
 ENV PRINTARR_CACHE_PATH=/cache
-ENV PRINTARR_DATABASE_URL=sqlite+aiosqlite:////config/printarr.db
+# PostgreSQL embedded in container (DEC-039)
+ENV PRINTARR_DATABASE_URL=postgresql+asyncpg://printarr:printarr@localhost:5432/printarr
+# PostgreSQL paths
+ENV PGDATA=/config/postgres
+ENV PGUSER=postgres
 
 EXPOSE 3333
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+# Health check verifies both API and PostgreSQL connectivity (DEC-039)
+# Increased start-period for PostgreSQL initialization on first run
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:3333/api/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
