@@ -1260,6 +1260,92 @@ class BulkDeleteResponse(BaseModel):
     deleted_ids: list[str]
 
 
+@router.delete("/bulk", response_model=BulkDeleteResponse)
+async def bulk_delete_designs(
+    request: BulkDeleteRequest,
+    delete_files: bool = Query(False, description="Also delete library files from disk"),
+    db: AsyncSession = Depends(get_db),
+) -> BulkDeleteResponse:
+    """Delete multiple designs at once.
+
+    Returns list of successfully deleted design IDs.
+    Designs that don't exist are silently skipped.
+
+    Note: This endpoint must be defined BEFORE /{design_id} to prevent
+    FastAPI from matching "bulk" as a design_id (#193).
+    """
+    deleted_ids = []
+
+    for design_id in request.design_ids:
+        design = await db.get(Design, design_id)
+        if design is None:
+            continue
+
+        try:
+            # Reuse the single delete logic but without committing
+            import shutil
+            from sqlalchemy import delete as sql_delete
+
+            from app.db.models import DesignFile, DesignSource, Job
+            from app.db.models.external_metadata_source import ExternalMetadataSource
+            from app.services.job_queue import JobQueueService
+
+            # Cancel pending/running jobs before deletion (#191)
+            queue = JobQueueService(db)
+            await queue.cancel_jobs_for_design(design_id)
+
+            # Delete preview assets and their files
+            preview_service = PreviewService(db)
+            await preview_service.delete_design_previews(design_id)
+
+            # Always delete staging directory (partial downloads) (#191)
+            staging_dir = settings.staging_path / design_id
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir)
+
+            # Optionally delete library files
+            if delete_files:
+                files_result = await db.execute(
+                    select(DesignFile).where(DesignFile.design_id == design_id)
+                )
+                design_files = files_result.scalars().all()
+                for df in design_files:
+                    if df.file_path:
+                        file_path = settings.library_path / df.file_path
+                        if file_path.exists():
+                            file_path.unlink()
+
+            # Delete related records
+            await db.execute(sql_delete(DesignFile).where(DesignFile.design_id == design_id))
+            await db.execute(sql_delete(DesignSource).where(DesignSource.design_id == design_id))
+            await db.execute(sql_delete(ExternalMetadataSource).where(ExternalMetadataSource.design_id == design_id))
+            await db.execute(sql_delete(DesignTag).where(DesignTag.design_id == design_id))
+            await db.execute(sql_delete(Job).where(Job.design_id == design_id))
+
+            await db.delete(design)
+            deleted_ids.append(design_id)
+
+        except Exception as e:
+            logger.warning(
+                "bulk_delete_failed_for_design",
+                design_id=design_id,
+                error=str(e),
+            )
+
+    await db.commit()
+
+    logger.info(
+        "designs_bulk_deleted",
+        count=len(deleted_ids),
+        delete_files=delete_files,
+    )
+
+    return BulkDeleteResponse(
+        deleted_count=len(deleted_ids),
+        deleted_ids=deleted_ids,
+    )
+
+
 @router.delete("/{design_id}", status_code=204)
 async def delete_design(
     design_id: str,
@@ -1346,89 +1432,6 @@ async def delete_design(
         "design_deleted",
         design_id=design_id,
         delete_files=delete_files,
-    )
-
-
-@router.delete("/bulk", response_model=BulkDeleteResponse)
-async def bulk_delete_designs(
-    request: BulkDeleteRequest,
-    delete_files: bool = Query(False, description="Also delete library files from disk"),
-    db: AsyncSession = Depends(get_db),
-) -> BulkDeleteResponse:
-    """Delete multiple designs at once.
-
-    Returns list of successfully deleted design IDs.
-    Designs that don't exist are silently skipped.
-    """
-    deleted_ids = []
-
-    for design_id in request.design_ids:
-        design = await db.get(Design, design_id)
-        if design is None:
-            continue
-
-        try:
-            # Reuse the single delete logic but without committing
-            import shutil
-            from sqlalchemy import delete as sql_delete
-
-            from app.db.models import DesignFile, DesignSource, Job
-            from app.db.models.external_metadata_source import ExternalMetadataSource
-            from app.services.job_queue import JobQueueService
-
-            # Cancel pending/running jobs before deletion (#191)
-            queue = JobQueueService(db)
-            await queue.cancel_jobs_for_design(design_id)
-
-            # Delete preview assets and their files
-            preview_service = PreviewService(db)
-            await preview_service.delete_design_previews(design_id)
-
-            # Always delete staging directory (partial downloads) (#191)
-            staging_dir = settings.staging_path / design_id
-            if staging_dir.exists():
-                shutil.rmtree(staging_dir)
-
-            # Optionally delete library files
-            if delete_files:
-                files_result = await db.execute(
-                    select(DesignFile).where(DesignFile.design_id == design_id)
-                )
-                design_files = files_result.scalars().all()
-                for df in design_files:
-                    if df.file_path:
-                        file_path = settings.library_path / df.file_path
-                        if file_path.exists():
-                            file_path.unlink()
-
-            # Delete related records
-            await db.execute(sql_delete(DesignFile).where(DesignFile.design_id == design_id))
-            await db.execute(sql_delete(DesignSource).where(DesignSource.design_id == design_id))
-            await db.execute(sql_delete(ExternalMetadataSource).where(ExternalMetadataSource.design_id == design_id))
-            await db.execute(sql_delete(DesignTag).where(DesignTag.design_id == design_id))
-            await db.execute(sql_delete(Job).where(Job.design_id == design_id))
-
-            await db.delete(design)
-            deleted_ids.append(design_id)
-
-        except Exception as e:
-            logger.warning(
-                "bulk_delete_failed_for_design",
-                design_id=design_id,
-                error=str(e),
-            )
-
-    await db.commit()
-
-    logger.info(
-        "designs_bulk_deleted",
-        count=len(deleted_ids),
-        delete_files=delete_files,
-    )
-
-    return BulkDeleteResponse(
-        deleted_count=len(deleted_ids),
-        deleted_ids=deleted_ids,
     )
 
 
