@@ -36,14 +36,14 @@ class TelegramMessage(Base):
     telegram_message_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
     # Message metadata
-    date_posted: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    date_posted: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     author_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     caption_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     caption_text_normalized: Mapped[str | None] = mapped_column(Text, nullable=True)
     has_media: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     channel: Mapped[Channel] = relationship("Channel", back_populates="messages")

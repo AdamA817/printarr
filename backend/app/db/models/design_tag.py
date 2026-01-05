@@ -33,7 +33,7 @@ class DesignTag(Base):
     source: Mapped[TagSource] = mapped_column(Enum(TagSource), default=TagSource.USER)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     design: Mapped[Design] = relationship("Design", back_populates="design_tags")

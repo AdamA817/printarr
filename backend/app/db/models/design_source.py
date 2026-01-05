@@ -44,7 +44,7 @@ class DesignSource(Base):
     caption_snapshot: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     design: Mapped[Design] = relationship("Design", back_populates="sources")

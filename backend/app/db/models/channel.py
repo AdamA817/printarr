@@ -45,7 +45,7 @@ class Channel(Base):
         Enum(DownloadMode), default=DownloadMode.MANUAL
     )
     download_mode_enabled_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, doc="When download mode was changed from MANUAL"
+        DateTime(timezone=True), nullable=True, doc="When download mode was changed from MANUAL"
     )
     library_template_override: Mapped[str | None] = mapped_column(String(512), nullable=True)
     title_source_override: Mapped[TitleSource | None] = mapped_column(
@@ -58,12 +58,12 @@ class Channel(Base):
     # Sync state
     last_ingested_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_backfill_checkpoint: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships

@@ -64,7 +64,7 @@ class ImportRecord(Base):
         Integer, nullable=True, doc="File size in bytes"
     )
     file_mtime: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, doc="File modification time for change detection"
+        DateTime(timezone=True), nullable=True, doc="File modification time for change detection"
     )
 
     # Import status
@@ -100,8 +100,8 @@ class ImportRecord(Base):
     )
 
     # Timestamps
-    detected_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
-    imported_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     import_source_folder: Mapped[ImportSourceFolder | None] = relationship(

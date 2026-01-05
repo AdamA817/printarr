@@ -56,7 +56,7 @@ class Attachment(Base):
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships

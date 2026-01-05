@@ -76,7 +76,7 @@ class ImportSourceFolder(Base):
     enabled: Mapped[bool] = mapped_column(
         Boolean, default=True, doc="Whether this folder is enabled for sync"
     )
-    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sync_cursor: Mapped[str | None] = mapped_column(
         String(512), nullable=True, doc="Cursor for incremental sync (page token, etc.)"
     )
@@ -93,7 +93,7 @@ class ImportSourceFolder(Base):
     )
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     import_source: Mapped[ImportSource] = relationship(

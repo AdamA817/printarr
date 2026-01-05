@@ -69,7 +69,7 @@ class PreviewAsset(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     design: Mapped[Design] = relationship("Design", back_populates="preview_assets")
