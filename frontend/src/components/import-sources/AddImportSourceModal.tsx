@@ -157,16 +157,6 @@ export function AddImportSourceModal({
                 disabled={!oauthStatus?.configured && !oauthStatus?.api_key_configured}
                 disabledReason={!oauthStatus?.configured && !oauthStatus?.api_key_configured ? 'Not configured' : undefined}
               />
-              <SourceTypeOption
-                type="UPLOAD"
-                icon={<UploadIcon className="w-8 h-8" />}
-                title="Direct Upload"
-                description="Upload files directly via browser"
-                selected={formData.source_type === 'UPLOAD'}
-                onClick={() => handleTypeSelect('UPLOAD')}
-                disabled
-                disabledReason="Coming soon"
-              />
             </div>
           )}
 
@@ -496,19 +486,6 @@ function GoogleDriveIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor">
       <path d="M7.71 3.5L1.15 15l3.43 5.95L11.15 9.5 7.71 3.5zm2.85 0l6.57 11.43H22.7L16.14 3.5H10.56zm4.01 12.15L11.15 21h11.55l3.43-5.35H14.57z" />
-    </svg>
-  )
-}
-
-function UploadIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-      />
     </svg>
   )
 }
