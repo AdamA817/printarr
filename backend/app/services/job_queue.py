@@ -409,6 +409,43 @@ class JobQueueService:
 
         return count
 
+    async def recover_orphaned_jobs(self) -> int:
+        """Recover jobs that were running when the container stopped.
+
+        On application startup, any job in RUNNING status was interrupted
+        by a restart. This resets them to QUEUED for retry.
+
+        Returns:
+            Number of jobs recovered.
+        """
+        result = await self.db.execute(
+            update(Job)
+            .where(Job.status == JobStatus.RUNNING)
+            .values(
+                status=JobStatus.QUEUED,
+                started_at=None,
+                last_error="Job interrupted by container restart - auto-recovered",
+            )
+            .returning(Job.id, Job.type)
+        )
+        recovered = result.all()
+
+        if recovered:
+            for job_id, job_type in recovered:
+                logger.info(
+                    "orphaned_job_recovered",
+                    job_id=job_id,
+                    job_type=job_type.value if hasattr(job_type, 'value') else job_type,
+                )
+
+            logger.warning(
+                "orphaned_jobs_recovered_on_startup",
+                count=len(recovered),
+            )
+
+        await self.db.flush()
+        return len(recovered)
+
     async def requeue_stale_jobs(
         self,
         stale_minutes: int = 30,

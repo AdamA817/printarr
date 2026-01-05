@@ -43,9 +43,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await preview_service.ensure_directories()
     logger.info("preview_directories_initialized")
 
-    # Seed predefined tags
+    # Seed predefined tags and recover orphaned jobs
     from app.db.session import async_session_maker
+    from app.services.job_queue import JobQueueService
     from app.services.tag import TagService
+
+    # Recover orphaned jobs from previous container restart (#163)
+    async with async_session_maker() as db:
+        job_service = JobQueueService(db)
+        recovered = await job_service.recover_orphaned_jobs()
+        await db.commit()
+        if recovered > 0:
+            logger.info("orphaned_jobs_recovered", count=recovered)
     async with async_session_maker() as db:
         tag_service = TagService(db)
         tags_created = await tag_service.seed_predefined_tags()
