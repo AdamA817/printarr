@@ -103,6 +103,20 @@ class Settings(BaseSettings):
         description="Telegram API Hash from my.telegram.org",
     )
 
+    # Telegram rate limiting (DEC-042)
+    telegram_rate_limit_rpm: int = Field(
+        default=30,
+        ge=10,
+        le=100,
+        description="Maximum Telegram requests per minute (10-100, default 30)",
+    )
+    telegram_channel_spacing: float = Field(
+        default=2.0,
+        ge=0.5,
+        le=10.0,
+        description="Minimum seconds between requests to the same channel (0.5-10)",
+    )
+
     # FlareSolverr (optional, for bypassing Cloudflare on Thangs)
     flaresolverr_url: str | None = Field(
         default=None,
