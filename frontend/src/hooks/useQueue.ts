@@ -7,7 +7,7 @@ export function useQueue(params?: QueueListParams) {
   return useQuery({
     queryKey: ['queue', params],
     queryFn: () => queueApi.list(params),
-    refetchInterval: 5000, // Auto-refresh every 5 seconds
+    refetchInterval: 10000, // Poll every 10 seconds to reduce SQLite contention
   })
 }
 
@@ -15,7 +15,7 @@ export function useQueueStats() {
   return useQuery({
     queryKey: ['queueStats'],
     queryFn: () => queueApi.stats(),
-    refetchInterval: 5000,
+    refetchInterval: 10000, // Poll every 10 seconds to reduce SQLite contention
   })
 }
 

@@ -28,6 +28,8 @@ services:
       - PRINTARR_PORT=3333
       - PRINTARR_LOG_LEVEL=INFO
       - PRINTARR_DEBUG=false
+      # Database (PostgreSQL embedded in container per DEC-039)
+      - PRINTARR_DATABASE_URL=postgresql+asyncpg://printarr:printarr@localhost:5432/printarr
       # Telegram API credentials (required for v0.2+)
       # Get these from https://my.telegram.org
       - PRINTARR_TELEGRAM_API_ID=${TELEGRAM_API_ID}
@@ -40,10 +42,12 @@ services:
       # - PRINTARR_SYNC_BATCH_SIZE=100
       # Google Drive Integration (v0.8+) - for private folder access
       # Get credentials from https://console.cloud.google.com/apis/credentials
-      # - PRINTARR_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      # - PRINTARR_GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - PRINTARR_GOOGLE_CLIENT_ID=${PRINTARR_GOOGLE_CLIENT_ID}
+      - PRINTARR_GOOGLE_CLIENT_SECRET=${PRINTARR_GOOGLE_CLIENT_SECRET}
       # For public folders only, you can use an API key instead:
       - PRINTARR_GOOGLE_API_KEY=${PRINTARR_GOOGLE_API_KEY}
+      # Encryption key for storing OAuth tokens (must be persistent!)
+      - PRINTARR_ENCRYPTION_KEY=${PRINTARR_ENCRYPTION_KEY}
       # Upload settings (v0.8+)
       # - PRINTARR_UPLOAD_MAX_SIZE_MB=500
       # - PRINTARR_UPLOAD_RETENTION_HOURS=24

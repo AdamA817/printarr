@@ -1,10 +1,9 @@
-"""Alembic migration environment configuration."""
+"""Alembic migration environment configuration for PostgreSQL."""
 
 from __future__ import annotations
 
 import asyncio
 from logging.config import fileConfig
-from pathlib import Path
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -30,6 +29,7 @@ from app.db.models import (  # noqa: F401
     Tag,
     TelegramMessage,
 )
+from app.core.config import settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -47,16 +47,9 @@ target_metadata = Base.metadata
 def get_database_url() -> str:
     """Get the database URL for migrations.
 
-    For migrations, we use synchronous SQLite driver.
-    Uses the same path as the application settings.
+    Uses the application settings for PostgreSQL connection.
     """
-    import os
-
-    # Use environment variable if set, otherwise default to /config for Docker
-    config_path = Path(os.environ.get("PRINTARR_CONFIG_PATH", "/config"))
-    config_path.mkdir(parents=True, exist_ok=True)
-    db_path = config_path / "printarr.db"
-    return f"sqlite+aiosqlite:///{db_path}"
+    return settings.database_url
 
 
 def run_migrations_offline() -> None:
@@ -76,7 +69,6 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        render_as_batch=True,  # Required for SQLite ALTER TABLE support
     )
 
     with context.begin_transaction():
@@ -88,7 +80,6 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        render_as_batch=True,  # Required for SQLite ALTER TABLE support
     )
 
     with context.begin_transaction():

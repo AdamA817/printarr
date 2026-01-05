@@ -44,6 +44,7 @@ from app.services.auto_render import auto_queue_render_for_design
 from app.services.bulk_import import BulkImportError, BulkImportPathError, BulkImportService
 from app.services.google_drive import GoogleDriveError, GoogleDriveService, GoogleRateLimitError
 from app.services.import_profile import ImportProfileService
+from app.services.job_queue import JobQueueService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
 # File extensions for 3D model files
@@ -429,24 +430,33 @@ class SyncImportSourceWorker(BaseWorker):
         imported = 0
         errors: list[str] = []
 
-        for record in records:
+        for i, record in enumerate(records):
             try:
                 design = await self._import_google_drive_record(
                     db, source, record, conflict_resolution
                 )
                 if design:
                     imported += 1
+                    # Commit after each successful import to avoid long-running transactions
+                    # and SQLite database locking issues
+                    await db.commit()
                     logger.info(
                         "gdrive_design_imported",
                         record_id=record.id,
                         design_id=design.id,
                         title=design.canonical_title,
                     )
+
+                # Update progress during import
+                progress = 50 + int((i + 1) / len(records) * 45)  # 50-95% for imports
+                await self.update_progress(progress, 100)
+
             except Exception as e:
                 error_msg = f"Failed to import {record.source_path}: {e}"
                 errors.append(error_msg)
                 record.status = ImportRecordStatus.ERROR
                 record.error_message = str(e)
+                await db.commit()  # Commit the error status too
                 logger.error(
                     "gdrive_import_failed",
                     record_id=record.id,
@@ -511,10 +521,16 @@ class SyncImportSourceWorker(BaseWorker):
         try:
             # Download files from Google Drive
             gdrive_service = GoogleDriveService(db)
+
+            # Get credentials if source has OAuth configured
+            credentials = None
+            if source.google_credentials_id:
+                credentials = await gdrive_service.get_credentials(source.google_credentials_id)
+
             downloaded_files = await gdrive_service.download_folder(
                 record.google_folder_id,
                 staging_dir,
-                credentials=None,  # Public folder access
+                credentials=credentials,
             )
 
             if not downloaded_files:
@@ -544,7 +560,7 @@ class SyncImportSourceWorker(BaseWorker):
                 if ext in MODEL_EXTENSIONS:
                     file_kind = FileKind.MODEL
                 elif ext in PREVIEW_EXTENSIONS:
-                    file_kind = FileKind.PREVIEW
+                    file_kind = FileKind.IMAGE
                     has_previews = True
                 else:
                     file_kind = FileKind.OTHER
@@ -568,6 +584,26 @@ class SyncImportSourceWorker(BaseWorker):
             if not has_previews:
                 await auto_queue_render_for_design(db, design.id)
 
+            # Rename staging directory from gdrive_{record.id} to {design.id}
+            # so IMPORT_TO_LIBRARY worker can find it
+            new_staging_dir = settings.staging_path / design.id
+            if staging_dir != new_staging_dir:
+                staging_dir.rename(new_staging_dir)
+                logger.debug(
+                    "staging_dir_renamed",
+                    old=str(staging_dir),
+                    new=str(new_staging_dir),
+                )
+
+            # Queue IMPORT_TO_LIBRARY job to move files from staging to library
+            # This also creates Preview records from image files
+            queue = JobQueueService(db)
+            await queue.enqueue(
+                JobType.IMPORT_TO_LIBRARY,
+                design_id=design.id,
+                priority=5,
+            )
+
             # Update import record
             record.status = ImportRecordStatus.IMPORTED
             record.design_id = design.id
@@ -580,10 +616,14 @@ class SyncImportSourceWorker(BaseWorker):
             return design
 
         except Exception as e:
-            # Clean up staging directory on failure
+            # Clean up staging directory on failure (may be original or renamed)
             import shutil
             if staging_dir.exists():
                 shutil.rmtree(staging_dir, ignore_errors=True)
+            # Also clean up renamed path if it exists
+            design_staging = settings.staging_path / design.id if 'design' in dir() else None
+            if design_staging and design_staging.exists():
+                shutil.rmtree(design_staging, ignore_errors=True)
             raise
 
     async def _find_existing_design(

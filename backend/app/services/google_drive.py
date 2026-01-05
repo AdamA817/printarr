@@ -117,6 +117,7 @@ def get_request_pacer() -> RequestPacer:
 SCOPES = [
     "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
+    "openid",  # Google auto-adds this with userinfo.email
 ]
 
 # Regex for parsing Google Drive URLs
@@ -1122,7 +1123,8 @@ class GoogleDriveService:
             return self._encryption_key
 
         if settings.encryption_key:
-            self._encryption_key = base64.b64decode(settings.encryption_key)
+            # Fernet expects the key as base64-encoded bytes (not decoded)
+            self._encryption_key = settings.encryption_key.encode()
         else:
             # Generate a new key if not set (will only persist in memory)
             from cryptography.fernet import Fernet

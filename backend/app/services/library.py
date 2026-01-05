@@ -27,6 +27,7 @@ from app.db.models import (
     DesignFile,
     DesignSource,
     DesignStatus,
+    FileKind,
     TelegramMessage,
 )
 from app.db.models.enums import (
@@ -204,8 +205,12 @@ class LibraryImportService:
         # PHASE 5: Extract 3MF thumbnails (NO database session held during I/O)
         threemf_thumbnails = await self._extract_3mf_thumbnails(design_id, library_path)
 
+        # PHASE 5.5: Create preview assets from imported image files
+        image_previews = await self._create_image_previews(design_id, library_path)
+        total_previews = threemf_thumbnails + image_previews
+
         # PHASE 6: Auto-select primary preview if we extracted any thumbnails
-        if threemf_thumbnails > 0:
+        if total_previews > 0:
             async with async_session_maker() as db:
                 preview_service = PreviewService(db)
                 await preview_service.auto_select_primary(design_id)
@@ -516,6 +521,78 @@ class LibraryImportService:
 
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, _do_extract)
+
+    async def _create_image_previews(self, design_id: str, library_path: Path) -> int:
+        """Create preview assets from imported image files.
+
+        Finds JPG/PNG files in the library folder and creates PreviewAsset
+        records for them so they can be used as design previews.
+
+        Args:
+            design_id: The design ID.
+            library_path: Path to the design's library folder.
+
+        Returns:
+            Number of preview assets created.
+        """
+        # Find image files in the library folder
+        image_extensions = {".jpg", ".jpeg", ".png", ".webp"}
+        image_files: list[Path] = []
+
+        for ext in image_extensions:
+            image_files.extend(library_path.rglob(f"*{ext}"))
+            image_files.extend(library_path.rglob(f"*{ext.upper()}"))
+
+        if not image_files:
+            return 0
+
+        created_count = 0
+        async with async_session_maker() as db:
+            preview_service = PreviewService(db)
+
+            for image_path in image_files:
+                try:
+                    # Read image data
+                    image_data = image_path.read_bytes()
+                    if len(image_data) < 1000:  # Skip tiny files
+                        continue
+
+                    # Get relative path from library for storage
+                    relative_path = image_path.relative_to(library_path)
+
+                    # Create preview asset
+                    await preview_service.save_preview(
+                        design_id=design_id,
+                        image_data=image_data,
+                        source=PreviewSource.ARCHIVE,
+                        kind=PreviewKind.GALLERY,  # Use GALLERY kind for imported images
+                        filename=image_path.name,
+                    )
+                    created_count += 1
+
+                    logger.debug(
+                        "image_preview_created",
+                        design_id=design_id,
+                        file=str(relative_path),
+                    )
+
+                except Exception as e:
+                    logger.warning(
+                        "image_preview_creation_failed",
+                        design_id=design_id,
+                        file=str(image_path),
+                        error=str(e),
+                    )
+
+            if created_count > 0:
+                await db.commit()
+                logger.info(
+                    "image_previews_created",
+                    design_id=design_id,
+                    count=created_count,
+                )
+
+        return created_count
 
     async def _analyze_3mf_multicolor(self, design_id: str, library_path: Path) -> bool:
         """Analyze 3MF files for multicolor detection.

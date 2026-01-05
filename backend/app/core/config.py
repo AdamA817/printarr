@@ -81,10 +81,10 @@ class Settings(BaseSettings):
         description="Global template for library folder structure",
     )
 
-    # Database
+    # Database (PostgreSQL embedded in container per DEC-039)
     database_url: str = Field(
-        default="sqlite+aiosqlite:///./config/printarr.db",
-        description="Database connection URL",
+        default="postgresql+asyncpg://printarr:printarr@localhost:5432/printarr",
+        description="PostgreSQL connection URL",
     )
 
     # CORS
@@ -123,8 +123,8 @@ class Settings(BaseSettings):
         description="Google API Key for public folder access (no OAuth)",
     )
     google_redirect_uri: str = Field(
-        default="http://localhost:3333/api/v1/google/oauth/callback",
-        description="OAuth redirect URI",
+        default="http://localhost:3333/oauth/google/callback",
+        description="OAuth redirect URI (must match Google Cloud Console)",
     )
 
     # Google API rate limiting settings
@@ -191,11 +191,6 @@ class Settings(BaseSettings):
     def telegram_configured(self) -> bool:
         """Check if Telegram API credentials are configured."""
         return self.telegram_api_id is not None and self.telegram_api_hash is not None
-
-    @property
-    def db_path(self) -> Path:
-        """Get the SQLite database file path."""
-        return self.config_path / "printarr.db"
 
     @property
     def google_oauth_configured(self) -> bool:
