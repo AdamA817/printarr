@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "Printarr"
-    version: str = "0.8.0"
+    version: str = "0.9.0"
     debug: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
