@@ -8,6 +8,7 @@ from app.db.models.design_file import DesignFile
 from app.db.models.design_source import DesignSource
 from app.db.models.design_tag import DesignTag
 from app.db.models.discovered_channel import DiscoveredChannel
+from app.db.models.duplicate_candidate import DuplicateCandidate
 from app.db.models.enums import (
     AttachmentDownloadStatus,
     BackfillMode,
@@ -17,6 +18,8 @@ from app.db.models.enums import (
     DesignStatus,
     DiscoverySourceType,
     DownloadMode,
+    DuplicateCandidateStatus,
+    DuplicateMatchType,
     ExternalSourceType,
     FileKind,
     ImportRecordStatus,
@@ -56,6 +59,7 @@ __all__ = [
     "DesignSource",
     "DesignTag",
     "DiscoveredChannel",
+    "DuplicateCandidate",
     "ExternalMetadataSource",
     "GoogleCredentials",
     "ImportProfile",
@@ -75,6 +79,8 @@ __all__ = [
     "DesignStatus",
     "DiscoverySourceType",
     "DownloadMode",
+    "DuplicateCandidateStatus",
+    "DuplicateMatchType",
     "ExternalSourceType",
     "FileKind",
     "ImportRecordStatus",

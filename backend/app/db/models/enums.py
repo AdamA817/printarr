@@ -235,3 +235,20 @@ class ConflictResolution(str, enum.Enum):
     SKIP = "SKIP"  # Keep existing, ignore new (default)
     REPLACE = "REPLACE"  # Delete existing, import new
     ASK = "ASK"  # Prompt user for each conflict
+
+
+class DuplicateMatchType(str, enum.Enum):
+    """Type of duplicate match detected (DEC-041)."""
+
+    HASH = "HASH"  # SHA-256 hash exact match (confidence: 1.0)
+    THANGS_ID = "THANGS_ID"  # Same Thangs external ID (confidence: 1.0)
+    TITLE_DESIGNER = "TITLE_DESIGNER"  # Fuzzy title + designer match (confidence: 0.7)
+    FILENAME_SIZE = "FILENAME_SIZE"  # Filename + size heuristic (confidence: 0.5)
+
+
+class DuplicateCandidateStatus(str, enum.Enum):
+    """Status of a duplicate candidate (DEC-041)."""
+
+    PENDING = "PENDING"  # Awaiting review/auto-merge
+    MERGED = "MERGED"  # Designs were merged
+    REJECTED = "REJECTED"  # User rejected the match
