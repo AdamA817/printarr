@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useActivity, useRemoveActivity } from '@/hooks/useQueue'
+import { useActivity, useRemoveActivity, useClearFailedActivity } from '@/hooks/useQueue'
 import { HistoryItem } from './HistoryItem'
 import type { ActivityListParams } from '@/types/queue'
 
@@ -13,6 +13,7 @@ export function HistoryView() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
   const [page, setPage] = useState(1)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [showClearFailedConfirm, setShowClearFailedConfirm] = useState(false)
 
   // Build query params
   const params: ActivityListParams = {
@@ -30,6 +31,7 @@ export function HistoryView() {
 
   const { data, isLoading, error } = useActivity(params)
   const removeActivity = useRemoveActivity()
+  const clearFailed = useClearFailedActivity()
 
   // Handle clear all
   const handleClearAll = async () => {
@@ -43,6 +45,16 @@ export function HistoryView() {
       setShowClearConfirm(false)
     } catch (error) {
       console.error('Failed to clear history:', error)
+    }
+  }
+
+  // DEC-042: Handle clear all failed
+  const handleClearFailed = async () => {
+    try {
+      await clearFailed.mutateAsync()
+      setShowClearFailedConfirm(false)
+    } catch (error) {
+      console.error('Failed to clear failed jobs:', error)
     }
   }
 
@@ -146,16 +158,52 @@ export function HistoryView() {
             </select>
           </div>
 
-          {/* Clear all button */}
-          {items.length > 0 && (
-            <button
-              onClick={() => setShowClearConfirm(true)}
-              className="ml-auto text-sm px-3 py-1.5 rounded bg-accent-danger/20 text-accent-danger hover:bg-accent-danger/30 transition-colors"
-            >
-              Clear History
-            </button>
-          )}
+          {/* Action buttons */}
+          <div className="ml-auto flex items-center gap-2">
+            {/* DEC-042: Clear All Failed button */}
+            {failedCount > 0 && (
+              <button
+                onClick={() => setShowClearFailedConfirm(true)}
+                className="text-sm px-3 py-1.5 rounded bg-accent-warning/20 text-accent-warning hover:bg-accent-warning/30 transition-colors"
+              >
+                Clear Failed ({failedCount})
+              </button>
+            )}
+            {/* Clear all button */}
+            {items.length > 0 && (
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="text-sm px-3 py-1.5 rounded bg-accent-danger/20 text-accent-danger hover:bg-accent-danger/30 transition-colors"
+              >
+                Clear History
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* DEC-042: Clear Failed confirmation */}
+        {showClearFailedConfirm && (
+          <div className="mt-4 p-3 bg-bg-tertiary rounded-lg">
+            <p className="text-sm text-text-primary mb-3">
+              Clear all {failedCount} failed job{failedCount !== 1 ? 's' : ''} from history? This cannot be undone.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleClearFailed}
+                disabled={clearFailed.isPending}
+                className="text-xs px-3 py-1.5 rounded bg-accent-warning text-white hover:bg-accent-warning/80 transition-colors disabled:opacity-50"
+              >
+                {clearFailed.isPending ? 'Clearing...' : 'Yes, Clear Failed'}
+              </button>
+              <button
+                onClick={() => setShowClearFailedConfirm(false)}
+                className="text-xs px-3 py-1.5 rounded bg-bg-secondary text-text-secondary hover:text-text-primary transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Clear confirmation */}
         {showClearConfirm && (

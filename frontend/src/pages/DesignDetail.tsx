@@ -678,7 +678,7 @@ export function DesignDetail() {
             </dl>
           </section>
 
-          {/* Source Info */}
+          {/* Source Info - DEC-042: Improved sources display */}
           {preferredSource && (
             <section className="bg-bg-secondary rounded-lg p-6">
               <div className="flex items-center justify-between mb-4">
@@ -692,14 +692,20 @@ export function DesignDetail() {
                 )}
               </div>
               <div className="space-y-4">
-                <div>
-                  <dt className="text-sm text-text-muted">Channel</dt>
-                  <dd className="text-text-primary mt-1">
-                    {preferredSource.channel.title}
-                  </dd>
+                <div className="flex items-center gap-3">
+                  <TelegramIcon className="w-5 h-5 text-blue-400" />
+                  <div>
+                    <dt className="text-sm text-text-muted">Source</dt>
+                    <dd className="text-text-primary mt-0.5 flex items-center gap-2">
+                      <span>{preferredSource.channel.title}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 font-medium">
+                        Telegram
+                      </span>
+                    </dd>
+                  </div>
                 </div>
                 <div>
-                  <dt className="text-sm text-text-muted">Posted</dt>
+                  <dt className="text-sm text-text-muted">Discovered</dt>
                   <dd className="text-text-primary mt-1">
                     {formatDate(preferredSource.created_at)}
                   </dd>
@@ -716,29 +722,22 @@ export function DesignDetail() {
             </section>
           )}
 
-          {/* Additional Sources */}
+          {/* Additional Sources - DEC-042: Expandable with split buttons */}
           {design.sources.length > 1 && (
-            <section className="bg-bg-secondary rounded-lg p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-medium text-text-primary">
-                  Other Sources ({design.sources.length - 1})
-                </h2>
-                {selectedSourceIds.size > 0 && (
-                  <button
-                    onClick={() => setShowUnmergeConfirm(true)}
-                    className="text-sm px-3 py-1.5 rounded bg-accent-warning/20 text-accent-warning hover:bg-accent-warning/30 transition-colors"
-                  >
-                    Split Off Selected ({selectedSourceIds.size})
-                  </button>
-                )}
-              </div>
+            <SourcesSection
+              sources={design.sources}
+              preferredSourceId={preferredSource?.id}
+              selectedSourceIds={selectedSourceIds}
+              onToggleSelection={toggleSourceSelection}
+              onSplitSelected={() => setShowUnmergeConfirm(true)}
+            >
               <div className="space-y-3">
                 {design.sources
                   .filter((s) => s.id !== preferredSource?.id)
                   .map((source) => (
                     <div
                       key={source.id}
-                      className="flex items-center gap-3 py-2 border-b border-bg-tertiary last:border-0"
+                      className="flex items-center gap-3 py-3 border-b border-bg-tertiary last:border-0"
                     >
                       <input
                         type="checkbox"
@@ -746,19 +745,39 @@ export function DesignDetail() {
                         onChange={() => toggleSourceSelection(source.id)}
                         className="w-4 h-4 rounded border-text-muted text-accent-primary focus:ring-accent-primary focus:ring-offset-0 focus:ring-offset-bg-secondary bg-bg-tertiary"
                       />
+                      <TelegramIcon className="w-4 h-4 text-blue-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <span className="text-text-primary text-sm">
-                          {source.channel.title}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-text-primary text-sm font-medium">
+                            {source.channel.title}
+                          </span>
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                            Telegram
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-text-muted">
+                            Discovered {formatRelativeDate(source.created_at)}
+                          </span>
+                        </div>
                         {source.caption_snapshot && (
-                          <p className="text-xs text-text-muted mt-0.5 truncate max-w-xs">
-                            {source.caption_snapshot.slice(0, 80)}...
+                          <p className="text-xs text-text-muted mt-1 truncate max-w-md">
+                            {source.caption_snapshot.slice(0, 100)}...
                           </p>
                         )}
                       </div>
-                      <span className="text-sm text-text-muted">
-                        {formatRelativeDate(source.created_at)}
-                      </span>
+                      {/* DEC-042: Individual split button per source */}
+                      <button
+                        onClick={() => {
+                          setSelectedSourceIds(new Set([source.id]))
+                          setShowUnmergeConfirm(true)
+                        }}
+                        className="text-xs px-2 py-1 rounded bg-bg-tertiary text-text-muted hover:text-accent-warning hover:bg-accent-warning/10 transition-colors flex items-center gap-1"
+                        title="Split this source into a new design"
+                      >
+                        <SplitIcon className="w-3.5 h-3.5" />
+                        Split
+                      </button>
                     </div>
                   ))}
               </div>
@@ -795,7 +814,7 @@ export function DesignDetail() {
                   </div>
                 </div>
               )}
-            </section>
+            </SourcesSection>
           )}
         </div>
 
@@ -905,7 +924,111 @@ export function DesignDetail() {
   )
 }
 
+// SourcesSection - Expandable container for duplicate sources (DEC-042)
+interface SourcesSectionProps {
+  sources: { id: string }[]
+  preferredSourceId: string | undefined
+  selectedSourceIds: Set<string>
+  onToggleSelection: (id: string) => void
+  onSplitSelected: () => void
+  children: React.ReactNode
+}
+
+function SourcesSection({
+  sources,
+  preferredSourceId,
+  selectedSourceIds,
+  onSplitSelected,
+  children,
+}: SourcesSectionProps) {
+  const [isExpanded, setIsExpanded] = useState(true)
+  const otherSourcesCount = sources.filter((s) => s.id !== preferredSourceId).length
+
+  return (
+    <section className="bg-bg-secondary rounded-lg p-6">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center justify-between mb-4"
+      >
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-medium text-text-primary">
+            Other Sources
+          </h2>
+          <span className="text-xs px-2 py-0.5 rounded bg-accent-primary/20 text-accent-primary font-medium">
+            {otherSourcesCount}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {selectedSourceIds.size > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onSplitSelected()
+              }}
+              className="text-sm px-3 py-1.5 rounded bg-accent-warning/20 text-accent-warning hover:bg-accent-warning/30 transition-colors"
+            >
+              Split Off Selected ({selectedSourceIds.size})
+            </button>
+          )}
+          <ChevronDownIcon
+            className={`w-5 h-5 text-text-muted transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+          />
+        </div>
+      </button>
+      {isExpanded && children}
+    </section>
+  )
+}
+
 // Icon Components
+
+function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M19 9l-7 7-7-7"
+      />
+    </svg>
+  )
+}
+
+function TelegramIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+    >
+      <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
+    </svg>
+  )
+}
+
+function SplitIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8 7h12M8 17h12M3 12h18M3 12l4-4M3 12l4 4"
+      />
+    </svg>
+  )
+}
 
 function BackIcon({ className }: { className?: string }) {
   return (

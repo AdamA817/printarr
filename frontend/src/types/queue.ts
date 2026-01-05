@@ -26,6 +26,10 @@ export interface QueueItem {
   completed_at: string | null
   design: QueueItemDesign | null
   import_source: QueueItemImportSource | null
+  // DEC-042: Retry info
+  attempts: number | null
+  max_attempts: number | null
+  last_error: string | null
 }
 
 // Simplified design info for queue display

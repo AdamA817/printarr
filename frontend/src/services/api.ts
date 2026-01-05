@@ -169,9 +169,13 @@ export const channelsApi = {
     api.post<DownloadModeResponse>(`/channels/${id}/download-mode`, request).then((r) => r.data),
 }
 
+import type { DetailedHealthResponse } from '@/types/health'
+
 export const healthApi = {
   // Health endpoint is at /api/health (not under /v1)
   check: () => axios.get<{ status: string; version: string }>('/api/health').then((r) => r.data),
+  // DEC-042: Detailed health check with subsystem status
+  detailed: () => axios.get<DetailedHealthResponse>('/api/health/detailed').then((r) => r.data),
 }
 
 export const telegramApi = {
@@ -279,6 +283,10 @@ export const queueApi = {
 
   cancel: (jobId: string) =>
     api.delete(`/queue/${jobId}`).then((r) => r.data),
+
+  // DEC-042: Retry a failed/canceled job
+  retry: (jobId: string) =>
+    api.post(`/queue/${jobId}/retry`).then((r) => r.data),
 }
 
 // Activity API (v0.5)
@@ -288,6 +296,10 @@ export const activityApi = {
 
   remove: (jobId: string) =>
     api.delete(`/activity/${jobId}`).then((r) => r.data),
+
+  // DEC-042: Bulk remove failed jobs
+  clearFailed: () =>
+    api.delete('/activity/failed').then((r) => r.data),
 }
 
 // Settings API (v0.5)

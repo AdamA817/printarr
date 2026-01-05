@@ -44,6 +44,21 @@ export function useCancelJob() {
   })
 }
 
+// DEC-042: Retry a failed/canceled job
+export function useRetryJob() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (jobId: string) => queueApi.retry(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queue'] })
+      queryClient.invalidateQueries({ queryKey: ['queueStats'] })
+      queryClient.invalidateQueries({ queryKey: ['activity'] })
+      queryClient.invalidateQueries({ queryKey: ['designs'] })
+    },
+  })
+}
+
 // Activity hooks
 export function useActivity(params?: ActivityListParams) {
   return useQuery({
@@ -57,6 +72,18 @@ export function useRemoveActivity() {
 
   return useMutation({
     mutationFn: (jobId: string) => activityApi.remove(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['activity'] })
+    },
+  })
+}
+
+// DEC-042: Clear all failed jobs from history
+export function useClearFailedActivity() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: () => activityApi.clearFailed(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['activity'] })
     },

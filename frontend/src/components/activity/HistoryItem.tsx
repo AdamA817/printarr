@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { ActivityItem, JobStatus } from '@/types/queue'
-import { useRemoveActivity } from '@/hooks/useQueue'
-import { useDownloadDesign } from '@/hooks/useDesigns'
+import { useRemoveActivity, useRetryJob } from '@/hooks/useQueue'
 
 interface HistoryItemProps {
   item: ActivityItem
@@ -177,22 +176,27 @@ function LoadingSpinner({ className }: { className?: string }) {
 
 export function HistoryItem({ item }: HistoryItemProps) {
   const [isExpanded, setIsExpanded] = useState(false)
-  const [isRetrying, setIsRetrying] = useState(false)
 
   const removeActivity = useRemoveActivity()
-  const downloadDesign = useDownloadDesign()
+  const retryJob = useRetryJob()
 
   const isFailed = item.status === 'FAILED'
+  const isCancelled = item.status === 'CANCELLED'
+  const canRetry = isFailed || isCancelled
+
+  // Get error message (prefer last_error over error_message)
+  const errorMessage = item.last_error || item.error_message
+
+  // Format retry info
+  const retryInfo = item.attempts !== null && item.max_attempts !== null
+    ? `Attempt ${item.attempts}/${item.max_attempts}`
+    : null
 
   const handleRetry = async () => {
-    if (!item.design) return
-    setIsRetrying(true)
     try {
-      await downloadDesign.mutateAsync(item.design.id)
+      await retryJob.mutateAsync(item.id)
     } catch (error) {
-      console.error('Failed to retry download:', error)
-    } finally {
-      setIsRetrying(false)
+      console.error('Failed to retry job:', error)
     }
   }
 
@@ -240,10 +244,16 @@ export function HistoryItem({ item }: HistoryItemProps) {
               </div>
 
               {/* Status badge */}
-              <span className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${statusColors[item.status]}`}>
-                <span>{statusIcons[item.status]}</span>
-                {item.status === 'SUCCESS' ? 'Completed' : item.status === 'FAILED' ? 'Failed' : item.status}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${statusColors[item.status]}`}>
+                  <span>{statusIcons[item.status]}</span>
+                  {item.status === 'SUCCESS' ? 'Completed' : item.status === 'FAILED' ? 'Failed' : item.status}
+                </span>
+                {/* DEC-042: Show retry info for failed jobs */}
+                {isFailed && retryInfo && (
+                  <span className="text-xs text-text-muted">{retryInfo}</span>
+                )}
+              </div>
             </div>
 
             {/* Meta info */}
@@ -312,7 +322,7 @@ export function HistoryItem({ item }: HistoryItemProps) {
             </div>
 
             {/* Error preview (for failed jobs) */}
-            {isFailed && item.error_message && (
+            {isFailed && errorMessage && (
               <button
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="mt-2 flex items-center gap-1 text-xs text-accent-danger hover:text-accent-danger/80 transition-colors"
@@ -324,14 +334,14 @@ export function HistoryItem({ item }: HistoryItemProps) {
 
             {/* Actions row */}
             <div className="mt-3 flex items-center gap-2">
-              {/* Retry button (for failed jobs) */}
-              {isFailed && item.design && (
+              {/* Retry button (for failed/cancelled jobs) - DEC-042 */}
+              {canRetry && (
                 <button
                   onClick={handleRetry}
-                  disabled={isRetrying}
+                  disabled={retryJob.isPending}
                   className="text-xs px-2 py-1 rounded bg-accent-primary/20 text-accent-primary hover:bg-accent-primary/30 transition-colors disabled:opacity-50 flex items-center gap-1"
                 >
-                  {isRetrying ? (
+                  {retryJob.isPending ? (
                     <LoadingSpinner className="w-3 h-3" />
                   ) : (
                     <RefreshIcon className="w-3 h-3" />
@@ -355,11 +365,11 @@ export function HistoryItem({ item }: HistoryItemProps) {
       </div>
 
       {/* Expanded error details */}
-      {isExpanded && isFailed && item.error_message && (
+      {isExpanded && isFailed && errorMessage && (
         <div className="px-4 pb-4">
           <div className="bg-accent-danger/10 border border-accent-danger/20 rounded p-3">
             <p className="text-sm text-accent-danger font-mono whitespace-pre-wrap">
-              {item.error_message}
+              {errorMessage}
             </p>
           </div>
         </div>

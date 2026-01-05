@@ -175,6 +175,34 @@ async def list_activity(
     )
 
 
+@router.delete("/failed", status_code=200)
+async def delete_failed_jobs(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Remove all failed jobs from activity history (DEC-042).
+
+    Bulk operation to clear all jobs with FAILED status.
+    """
+    # Get count first
+    count_query = select(func.count()).where(Job.status == JobStatus.FAILED)
+    count_result = await db.execute(count_query)
+    count = count_result.scalar() or 0
+
+    if count == 0:
+        return {"deleted_count": 0}
+
+    # Delete all failed jobs
+    from sqlalchemy import delete
+
+    delete_query = delete(Job).where(Job.status == JobStatus.FAILED)
+    await db.execute(delete_query)
+    await db.commit()
+
+    logger.info("failed_jobs_cleared", count=count)
+
+    return {"deleted_count": count}
+
+
 @router.delete("/{job_id}", status_code=204)
 async def delete_activity_item(
     job_id: str,

@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import logoFull from '@/assets/logo-full.png'
 import { ActivityStatus } from './ActivityStatus'
+import { SystemHealthIndicator } from './SystemHealthIndicator'
 
 interface SidebarProps {
   isOpen: boolean
@@ -62,6 +63,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       </nav>
       {/* Activity Status Indicator */}
       <ActivityStatus />
+      {/* DEC-042: System Health Indicator */}
+      <SystemHealthIndicator />
     </aside>
   )
 }
