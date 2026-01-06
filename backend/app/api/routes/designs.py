@@ -231,7 +231,7 @@ async def list_designs(
 
     # Get total count (before pagination) - optimized (#219)
     # Use approximate count for unfiltered queries on large tables
-    has_filters = any([status, channel_id, multicolor, has_files, import_source_id, tags, q])
+    has_filters = any([status, channel_id, multicolor, file_type, designer, has_thangs_link, tags, q])
     is_approximate = False
 
     if not has_filters:
