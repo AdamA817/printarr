@@ -653,6 +653,7 @@ class DownloadImportRecordWorker(BaseWorker):
         Returns:
             List of (path, size) tuples for extracted files.
         """
+        import os
         import shutil
         import zipfile
 
@@ -671,12 +672,7 @@ class DownloadImportRecordWorker(BaseWorker):
                     with zipfile.ZipFile(file_path, "r") as zf:
                         zf.extractall(extract_dir)
 
-                    # Walk extracted files
-                    for root, _, files in extract_dir.iterdir() if extract_dir.is_dir() else []:
-                        pass
-
                     # Use os.walk for recursive directory traversal
-                    import os
                     for root, _, files in os.walk(extract_dir):
                         for filename in files:
                             extracted_path = Path(root) / filename
@@ -701,7 +697,6 @@ class DownloadImportRecordWorker(BaseWorker):
                     with rarfile.RarFile(file_path, "r") as rf:
                         rf.extractall(extract_dir)
 
-                    import os
                     for root, _, files in os.walk(extract_dir):
                         for filename in files:
                             extracted_path = Path(root) / filename
@@ -727,7 +722,6 @@ class DownloadImportRecordWorker(BaseWorker):
                     with py7zr.SevenZipFile(file_path, "r") as sz:
                         sz.extractall(extract_dir)
 
-                    import os
                     for root, _, files in os.walk(extract_dir):
                         for filename in files:
                             extracted_path = Path(root) / filename
