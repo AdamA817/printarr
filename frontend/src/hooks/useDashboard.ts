@@ -1,12 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { dashboardApi } from '@/services/api'
+import { useSSEStatus } from '@/contexts/SSEContext'
 
 export function useDashboardStats() {
+  const sseStatus = useSSEStatus()
+  const isSSEConnected = sseStatus === 'connected'
+
   return useQuery({
     queryKey: ['dashboard', 'stats'],
     queryFn: () => dashboardApi.stats(),
     staleTime: 30000, // 30 seconds
-    refetchInterval: 30000, // Refresh every 30 seconds
+    // Reduce polling when SSE is connected - SSE triggers invalidation on changes
+    refetchInterval: isSSEConnected ? 60000 : 30000,
   })
 }
 
@@ -20,11 +25,15 @@ export function useDashboardCalendar(days = 14) {
 }
 
 export function useDashboardQueue() {
+  const sseStatus = useSSEStatus()
+  const isSSEConnected = sseStatus === 'connected'
+
   return useQuery({
     queryKey: ['dashboard', 'queue'],
     queryFn: () => dashboardApi.queue(),
     staleTime: 5000, // 5 seconds
-    refetchInterval: 5000, // Refresh every 5 seconds for near-realtime
+    // Only poll as fallback when SSE is disconnected - SSE handles real-time updates
+    refetchInterval: isSSEConnected ? false : 5000,
   })
 }
 

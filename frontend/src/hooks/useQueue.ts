@@ -1,21 +1,30 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queueApi, activityApi } from '@/services/api'
+import { useSSEStatus } from '@/contexts/SSEContext'
 import type { QueueListParams, ActivityListParams, QueueList, ActivityList } from '@/types/queue'
 
 // Queue hooks
 export function useQueue(params?: QueueListParams) {
+  const sseStatus = useSSEStatus()
+  const isSSEConnected = sseStatus === 'connected'
+
   return useQuery({
     queryKey: ['queue', params],
     queryFn: () => queueApi.list(params),
-    refetchInterval: 10000, // Poll every 10 seconds to reduce SQLite contention
+    // Only poll as fallback when SSE is disconnected - SSE handles real-time updates
+    refetchInterval: isSSEConnected ? false : 10000,
   })
 }
 
 export function useQueueStats() {
+  const sseStatus = useSSEStatus()
+  const isSSEConnected = sseStatus === 'connected'
+
   return useQuery({
     queryKey: ['queueStats'],
     queryFn: () => queueApi.stats(),
-    refetchInterval: 10000, // Poll every 10 seconds to reduce SQLite contention
+    // Only poll as fallback when SSE is disconnected - SSE handles real-time updates
+    refetchInterval: isSSEConnected ? false : 10000,
   })
 }
 
