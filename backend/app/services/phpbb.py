@@ -247,43 +247,80 @@ class PhpbbService:
 
             await self._rate_limit()
 
-            # Submit login form
+            # Submit login form (don't follow redirects so we can check the response)
             post_url = f"{base_url}/ucp.php?mode=login"
-            response = await client.post(
-                post_url,
-                data=form_data,
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Referer": login_url,
-                },
-            )
 
-            # Check for successful login
-            # phpBB typically redirects on success, or shows error message
-            if "incorrect" in response.text.lower() or "invalid" in response.text.lower():
-                raise PhpbbAuthError("Invalid username or password")
+            # Use a client that doesn't follow redirects for the login POST
+            async with httpx.AsyncClient(follow_redirects=False, timeout=30.0) as login_client:
+                # Copy cookies from the first client
+                login_client.cookies = client.cookies
 
-            if "You have been successfully logged in" not in response.text:
-                # Check cookies for session indicator
-                if not any(c.name.endswith("_sid") or c.name.endswith("_u") for c in client.cookies.jar):
-                    # Try to find error message in response
-                    soup = BeautifulSoup(response.text, "lxml")
-                    error_div = soup.find("div", class_="error")
-                    if error_div:
-                        raise PhpbbAuthError(f"Login failed: {error_div.get_text(strip=True)}")
-                    # Still might be successful, continue
+                response = await login_client.post(
+                    post_url,
+                    data=form_data,
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Referer": login_url,
+                    },
+                )
 
-            # Extract cookies
-            cookies = {c.name: c.value for c in client.cookies.jar}
+                # Check for successful login
+                # phpBB returns 302 redirect on successful login
+                if response.status_code == 302:
+                    # Redirect means success - extract cookies
+                    cookies = {c.name: c.value for c in login_client.cookies.jar}
 
-            logger.info(
-                "phpbb_login_success",
-                base_url=base_url,
-                username=username,
-                cookies_count=len(cookies),
-            )
+                    # Verify we got session cookies
+                    has_session = any(
+                        "_sid" in name or "_u" in name
+                        for name in cookies.keys()
+                    )
 
-            return cookies
+                    if has_session or len(cookies) > 0:
+                        logger.info(
+                            "phpbb_login_success",
+                            base_url=base_url,
+                            username=username,
+                            cookies_count=len(cookies),
+                        )
+                        return cookies
+
+                # If we didn't get a redirect, check for error messages
+                # Only check for errors in the actual response (not redirected page)
+                response_lower = response.text.lower()
+
+                # Look for specific phpBB error patterns
+                if "login_error_attempts" in response_lower:
+                    raise PhpbbAuthError("Too many login attempts. Please try again later.")
+
+                if "login_error_password" in response_lower or "incorrect password" in response_lower:
+                    raise PhpbbAuthError("Invalid password")
+
+                if "login_error_username" in response_lower or "incorrect username" in response_lower:
+                    raise PhpbbAuthError("Invalid username")
+
+                # Check for generic error div
+                soup = BeautifulSoup(response.text, "lxml")
+                error_div = soup.find("div", class_="error")
+                if error_div:
+                    error_text = error_div.get_text(strip=True)
+                    if error_text:
+                        raise PhpbbAuthError(f"Login failed: {error_text}")
+
+                # If we got here with a 200, it might still have worked
+                # Check for session cookies
+                cookies = {c.name: c.value for c in login_client.cookies.jar}
+                if cookies:
+                    logger.info(
+                        "phpbb_login_success_no_redirect",
+                        base_url=base_url,
+                        username=username,
+                        cookies_count=len(cookies),
+                    )
+                    return cookies
+
+                # No redirect and no cookies - something went wrong
+                raise PhpbbAuthError("Login failed: No session cookies received")
 
     async def validate_session(
         self,
