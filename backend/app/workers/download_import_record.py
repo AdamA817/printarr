@@ -38,7 +38,7 @@ from app.services.duplicate import DuplicateService
 from app.services.google_drive import GoogleDriveError, GoogleDriveService, GoogleRateLimitError
 from app.services.job_queue import JobQueueService
 from app.utils import compute_file_hash
-from app.workers.base import BaseWorker, NonRetryableError, RetryableError
+from app.workers.base import BaseWorker, CancellationError, NonRetryableError, RetryableError
 
 # Auto-merge threshold for pre-download duplicate check (DEC-041 / #216)
 AUTO_MERGE_THRESHOLD = 0.9
@@ -151,6 +151,26 @@ class DownloadImportRecordWorker(BaseWorker):
                         "record_id": import_record_id,
                         "status": "skipped",
                     }
+
+            except CancellationError:
+                # Job was cancelled (bug #235) - abort cleanly without error
+                record.status = ImportRecordStatus.PENDING  # Reset to pending for potential retry
+                await db.commit()
+
+                # Clean up any partial downloads in staging
+                import shutil
+                staging_dir = settings.staging_path / f"gdrive_{record.id}"
+                if staging_dir.exists():
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+
+                logger.info(
+                    "import_record_download_cancelled",
+                    record_id=import_record_id,
+                )
+                return {
+                    "record_id": import_record_id,
+                    "status": "cancelled",
+                }
 
             except GoogleRateLimitError as e:
                 # Rate limited - should retry

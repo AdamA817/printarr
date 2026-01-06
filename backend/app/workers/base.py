@@ -214,6 +214,46 @@ class BaseWorker(ABC):
                 # Commit the transaction
                 await db.commit()
 
+    async def check_cancellation(self) -> None:
+        """Check if the current job has been cancelled and raise if so.
+
+        This method queries the database to check if the job status has
+        been changed to CANCELED. If so, it raises CancellationError.
+
+        Workers performing long-running operations should call this
+        periodically (e.g., between file downloads) to detect cancellation
+        requests and abort early. This prevents deleted sources from
+        blocking on active downloads (bug #235).
+
+        Raises:
+            CancellationError: If the job has been cancelled.
+        """
+        if self._current_job is None:
+            return
+
+        try:
+            async with async_session_maker() as db:
+                queue = JobQueueService(db)
+                job = await queue.get_job(self._current_job.id)
+                if job and job.status == JobStatus.CANCELED:
+                    logger.info(
+                        "job_cancellation_detected",
+                        job_id=self._current_job.id,
+                        worker_id=self.worker_id,
+                    )
+                    raise CancellationError(
+                        f"Job {self._current_job.id} was cancelled"
+                    )
+        except CancellationError:
+            raise
+        except Exception as e:
+            # Don't fail the job just because we couldn't check cancellation
+            logger.debug(
+                "cancellation_check_failed",
+                job_id=self._current_job.id,
+                error=str(e),
+            )
+
     async def update_progress(
         self,
         current: int,
@@ -223,6 +263,7 @@ class BaseWorker(ABC):
         current_file: str | None = None,
         current_file_bytes: int | None = None,
         current_file_total: int | None = None,
+        check_cancel: bool = True,
     ) -> None:
         """Update progress for the current job.
 
@@ -240,6 +281,10 @@ class BaseWorker(ABC):
             current_file: Name of file currently being processed (#188).
             current_file_bytes: Bytes downloaded for current file.
             current_file_total: Total size of current file.
+            check_cancel: If True, also check for cancellation (default True).
+
+        Raises:
+            CancellationError: If check_cancel=True and job was cancelled.
         """
         if self._current_job is None:
             return
@@ -254,6 +299,20 @@ class BaseWorker(ABC):
         try:
             async with async_session_maker() as db:
                 queue = JobQueueService(db)
+
+                # Check cancellation status if requested (bug #235)
+                if check_cancel:
+                    job = await queue.get_job(self._current_job.id)
+                    if job and job.status == JobStatus.CANCELED:
+                        logger.info(
+                            "job_cancellation_detected_on_progress",
+                            job_id=self._current_job.id,
+                            worker_id=self.worker_id,
+                        )
+                        raise CancellationError(
+                            f"Job {self._current_job.id} was cancelled"
+                        )
+
                 await queue.update_progress(
                     self._current_job.id,
                     current,
@@ -264,6 +323,8 @@ class BaseWorker(ABC):
                 )
                 await db.commit()
             self._last_progress_update = now
+        except CancellationError:
+            raise
         except Exception as e:
             # Progress updates are non-fatal - log and continue
             # This prevents SQLite locking issues from causing job failures
@@ -345,6 +406,16 @@ class NonRetryableError(Exception):
 
     The job will be marked as failed immediately without using
     remaining retry attempts.
+    """
+
+    pass
+
+
+class CancellationError(Exception):
+    """Exception raised when a job has been cancelled.
+
+    This is raised by check_cancellation() when the job status is CANCELED.
+    Workers should catch this and abort cleanly.
     """
 
     pass
