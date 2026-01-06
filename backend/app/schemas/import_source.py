@@ -31,6 +31,9 @@ class ImportSourceFolderCreate(BaseModel):
     folder_path: str | None = Field(
         None, max_length=1024, description="Local folder path"
     )
+    phpbb_forum_url: str | None = Field(
+        None, max_length=1024, description="phpBB forum page URL (viewforum.php?f=X)"
+    )
 
     # Per-folder overrides (optional - inherit from source if not set)
     import_profile_id: str | None = Field(
@@ -71,6 +74,7 @@ class ImportSourceFolderSummary(BaseModel):
     google_drive_url: str | None = None
     google_folder_id: str | None = None
     folder_path: str | None = None
+    phpbb_forum_url: str | None = None
     enabled: bool = True
     items_detected: int = 0
     items_imported: int = 0
@@ -91,6 +95,7 @@ class ImportSourceFolderResponse(BaseModel):
     google_drive_url: str | None = None
     google_folder_id: str | None = None
     folder_path: str | None = None
+    phpbb_forum_url: str | None = None
 
     # Overrides (null = inherit from source)
     import_profile_id: str | None = None

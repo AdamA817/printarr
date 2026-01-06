@@ -1099,6 +1099,10 @@ class SyncImportSourceWorker(BaseWorker):
                     result = await self._sync_folder_google_drive(
                         db, source, folder, auto_import, conflict_resolution
                     )
+                elif source.source_type == ImportSourceType.PHPBB_FORUM:
+                    result = await self._sync_folder_phpbb(
+                        db, source, folder, auto_import, conflict_resolution
+                    )
                 else:
                     logger.warning(
                         "unsupported_source_type_for_folder",
@@ -1389,6 +1393,124 @@ class SyncImportSourceWorker(BaseWorker):
             "imported": imported,
             "errors": errors,
         }
+
+    async def _sync_folder_phpbb(
+        self,
+        db,
+        source: ImportSource,
+        folder: ImportSourceFolder,
+        auto_import: bool,
+        conflict_resolution: ConflictResolution,
+    ) -> dict[str, Any]:
+        """Sync a single phpBB forum folder (issue #242).
+
+        Args:
+            db: Database session.
+            source: The import source.
+            folder: The folder to sync (contains phpbb_forum_url).
+            auto_import: Whether to auto-import detected designs.
+            conflict_resolution: How to handle conflicts.
+
+        Returns:
+            Dict with detected and imported counts.
+        """
+        if not folder.phpbb_forum_url:
+            raise NonRetryableError(f"Folder {folder.id} missing phpbb_forum_url")
+
+        if not source.phpbb_credentials_id:
+            raise NonRetryableError(f"Source {source.id} missing phpbb_credentials_id")
+
+        # Get effective settings (folder override or source default)
+        effective_designer = folder.default_designer or source.default_designer
+
+        # Get phpBB credentials and session
+        phpbb_service = PhpbbService(db)
+        credentials = await phpbb_service.get_credentials(source.phpbb_credentials_id)
+        if not credentials:
+            raise NonRetryableError(f"phpBB credentials {source.phpbb_credentials_id} not found")
+
+        try:
+            # Get session cookies (login if needed)
+            cookies = await phpbb_service.get_session_cookies(credentials)
+
+            # Scan forum for designs (topics with ZIP attachments)
+            detected_designs = await phpbb_service.scan_forum_for_designs(
+                credentials.base_url,
+                folder.phpbb_forum_url,
+                cookies,
+            )
+            detected = len(detected_designs)
+
+            # Create import records for detected designs
+            import json as json_module
+            for design in detected_designs:
+                # Check if record already exists
+                existing = await db.execute(
+                    select(ImportRecord).where(
+                        ImportRecord.import_source_folder_id == folder.id,
+                        ImportRecord.source_path == design.relative_path,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    continue
+
+                # Store attachment info in payload
+                attachments_data = [
+                    {
+                        "file_id": a.file_id,
+                        "filename": a.filename,
+                        "size_bytes": a.size_bytes,
+                        "download_url": a.download_url,
+                    }
+                    for a in design.attachments
+                ]
+
+                record = ImportRecord(
+                    import_source_folder_id=folder.id,
+                    import_source_id=source.id,  # Keep for backward compatibility
+                    source_path=design.relative_path,
+                    file_size=design.total_size,
+                    status=ImportRecordStatus.PENDING,
+                    detected_title=design.title,
+                    detected_designer=design.author or effective_designer,
+                    model_file_count=len(design.attachments),  # Each attachment is a ZIP
+                    preview_file_count=0,
+                    detected_at=datetime.now(timezone.utc),
+                    payload_json=json_module.dumps({
+                        "topic_id": design.topic_id,
+                        "forum_id": design.forum_id,
+                        "topic_title": design.topic_title,
+                        "attachments": attachments_data,
+                    }),
+                )
+                db.add(record)
+
+            # Commit records to release locks before potentially long import operations
+            await db.commit()
+
+            imported = 0
+            errors: list[str] = []
+
+            if auto_import:
+                imported, errors = await self._import_folder_pending(
+                    db, source, folder, conflict_resolution
+                )
+
+            return {
+                "detected": detected,
+                "imported": imported,
+                "errors": errors,
+            }
+
+        except PhpbbAuthError as e:
+            folder.last_sync_error = f"phpBB authentication failed: {e}"
+            await db.commit()
+            raise NonRetryableError(str(e))
+
+        except PhpbbError as e:
+            folder.last_sync_error = str(e)
+            await db.commit()
+            raise RetryableError(str(e))
 
     async def _import_folder_pending(
         self,

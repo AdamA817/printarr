@@ -60,6 +60,11 @@ class ImportSourceFolder(Base):
         String(1024), nullable=True, doc="Local filesystem path"
     )
 
+    # phpBB forum location (for PHPBB_FORUM type - issue #242)
+    phpbb_forum_url: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True, doc="phpBB forum page URL (viewforum.php?f=X)"
+    )
+
     # Per-folder overrides (null = inherit from parent source)
     import_profile_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("import_profiles.id"), nullable=True,
@@ -124,4 +129,9 @@ class ImportSourceFolder(Base):
         if self.google_drive_url:
             # Extract folder name from URL or use folder ID
             return self.google_folder_id or "Google Drive Folder"
+        if self.phpbb_forum_url:
+            # Extract forum ID from URL for display
+            import re
+            match = re.search(r"f=(\d+)", self.phpbb_forum_url)
+            return f"Forum {match.group(1)}" if match else "phpBB Forum"
         return "Unnamed Folder"

@@ -140,6 +140,7 @@ def _build_folder_summary(folder: ImportSourceFolder) -> ImportSourceFolderSumma
         google_drive_url=folder.google_drive_url,
         google_folder_id=folder.google_folder_id,
         folder_path=folder.folder_path,
+        phpbb_forum_url=folder.phpbb_forum_url,
         enabled=folder.enabled,
         items_detected=folder.items_detected or 0,
         items_imported=folder.items_imported or 0,
@@ -182,6 +183,7 @@ async def _build_folder_response(
         google_drive_url=folder.google_drive_url,
         google_folder_id=folder.google_folder_id,
         folder_path=folder.folder_path,
+        phpbb_forum_url=folder.phpbb_forum_url,
         import_profile_id=folder.import_profile_id,
         default_designer=folder.default_designer,
         default_tags=folder_tags,
@@ -916,6 +918,7 @@ async def add_folder(
     Validates the location based on source type:
     - GOOGLE_DRIVE: Requires google_drive_url
     - BULK_FOLDER: Requires folder_path
+    - PHPBB_FORUM: Requires phpbb_forum_url
     """
     source = await _get_source_or_404(db, source_id)
 
@@ -939,6 +942,12 @@ async def add_folder(
                 status_code=400,
                 detail="folder_path is required for BULK_FOLDER sources",
             )
+    elif source.source_type == ImportSourceType.PHPBB_FORUM:
+        if not data.phpbb_forum_url:
+            raise HTTPException(
+                status_code=400,
+                detail="phpbb_forum_url is required for PHPBB_FORUM sources",
+            )
 
     # Validate profile exists if specified
     if data.import_profile_id:
@@ -953,6 +962,7 @@ async def add_folder(
         google_drive_url=data.google_drive_url,
         google_folder_id=google_folder_id,
         folder_path=data.folder_path,
+        phpbb_forum_url=data.phpbb_forum_url,
         import_profile_id=data.import_profile_id,
         default_designer=data.default_designer,
         default_tags_json=json.dumps(data.default_tags) if data.default_tags else None,
