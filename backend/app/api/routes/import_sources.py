@@ -529,14 +529,23 @@ async def delete_import_source(
     import_record_ids = [row[0] for row in records_result.fetchall()]
 
     # Cancel pending jobs for this source (#191) - includes SYNC and DOWNLOAD jobs
+    # IMPORTANT: We commit the cancellation separately so workers can see the
+    # CANCELED status immediately. If we wait until the final commit, workers
+    # can't detect cancellation because our transaction isn't visible to them
+    # yet - and the final commit blocks on the worker's lock. (bug #235)
     queue = JobQueueService(db)
     canceled_count = await queue.cancel_jobs_for_import_source(source_id, import_record_ids)
     if canceled_count > 0:
+        await db.commit()  # Commit cancellation immediately so workers see it
         logger.info(
             "import_source_jobs_canceled",
             source_id=source_id,
             canceled_count=canceled_count,
         )
+        # Give workers time to detect cancellation and release locks.
+        # Workers check for cancellation on each file download completion.
+        # A typical file downloads in <5s, so 5s should be enough for most cases.
+        await asyncio.sleep(5)
 
     # If not keeping designs, delete all designs imported from this source (#195)
     if not keep_designs:
