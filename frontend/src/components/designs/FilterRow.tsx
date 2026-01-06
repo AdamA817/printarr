@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   type FilterCondition,
   type FilterField,
@@ -87,7 +87,7 @@ export function FilterRow({ condition, onChange, onRemove, canRemove }: FilterRo
 
   // Render value input based on field type
   const renderValueInput = () => {
-    const { field, operator, value } = condition
+    const { field, value } = condition
 
     // Boolean fields use the operator itself (is_true/is_false)
     if (fieldConfig.valueType === 'boolean') {

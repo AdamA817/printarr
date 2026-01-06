@@ -8,7 +8,7 @@
  * - Syncing sources
  */
 import { useState, useEffect } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link } from 'react-router-dom'
 import { useQueue } from '@/hooks/useQueue'
 import type { QueueItem, JobType } from '@/types/queue'
 

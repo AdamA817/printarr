@@ -6,7 +6,7 @@ import {
   flattenInfiniteDesigns,
   getInfiniteDesignsTotal,
 } from '@/hooks/useInfiniteDesigns'
-import { useSavedFilters, PREDEFINED_FILTERS } from '@/hooks/useSavedFilters'
+import { useSavedFilters } from '@/hooks/useSavedFilters'
 import {
   DesignToolbar,
   CustomFilterModal,

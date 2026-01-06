@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect, RefObject } from 'react'
+import { useRef, useCallback, useState, useEffect, type RefObject } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { DesignCard, DesignCardSkeleton } from './DesignCard'
 import { DesignList, DesignListSkeleton } from './DesignList'
@@ -114,7 +114,7 @@ export function InfiniteDesignGrid({
             ))}
           </div>
         ) : (
-          <DesignListSkeleton count={8} />
+          <DesignListSkeleton />
         )}
       </div>
     )
