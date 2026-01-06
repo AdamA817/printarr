@@ -291,28 +291,23 @@ class BaseWorker(ABC):
 
         # Throttle progress updates to reduce DB contention
         now = datetime.now(timezone.utc)
-        if not force and self._last_progress_update:
+        should_update_progress = force or not self._last_progress_update
+        if not should_update_progress:
             elapsed = (now - self._last_progress_update).total_seconds()
-            if elapsed < self._progress_update_interval:
-                return  # Skip this update
+            should_update_progress = elapsed >= self._progress_update_interval
+
+        # Always check for cancellation, even when progress is throttled (bug #235)
+        # This ensures we detect cancellation within ~1 second of it being requested
+        if check_cancel:
+            await self.check_cancellation()
+
+        # Only update progress if not throttled
+        if not should_update_progress:
+            return
 
         try:
             async with async_session_maker() as db:
                 queue = JobQueueService(db)
-
-                # Check cancellation status if requested (bug #235)
-                if check_cancel:
-                    job = await queue.get_job(self._current_job.id)
-                    if job and job.status == JobStatus.CANCELED:
-                        logger.info(
-                            "job_cancellation_detected_on_progress",
-                            job_id=self._current_job.id,
-                            worker_id=self.worker_id,
-                        )
-                        raise CancellationError(
-                            f"Job {self._current_job.id} was cancelled"
-                        )
-
                 await queue.update_progress(
                     self._current_job.id,
                     current,
@@ -323,8 +318,6 @@ class BaseWorker(ABC):
                 )
                 await db.commit()
             self._last_progress_update = now
-        except CancellationError:
-            raise
         except Exception as e:
             # Progress updates are non-fatal - log and continue
             # This prevents SQLite locking issues from causing job failures
