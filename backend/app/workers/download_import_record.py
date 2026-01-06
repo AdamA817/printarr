@@ -302,9 +302,11 @@ class DownloadImportRecordWorker(BaseWorker):
             record.design_id = design.id
             record.imported_at = datetime.now(timezone.utc)
 
-            # Update source stats
-            source.items_imported = (source.items_imported or 0) + 1
-            source.last_sync_at = datetime.now(timezone.utc)
+            # NOTE: We do NOT update source.items_imported here because:
+            # 1. It creates a write lock on ImportSource during long downloads
+            # 2. This blocks delete operations (bug #235)
+            # 3. The sync job handles source-level stats appropriately
+            # Items imported can be calculated from ImportRecord counts instead.
 
             logger.info(
                 "import_record_downloaded",

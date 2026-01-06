@@ -486,13 +486,24 @@ async def delete_import_source(
     Set keep_designs=false to delete imported designs as well.
 
     Cancels any pending sync jobs for this source (#191).
+
+    Note: If downloads are actively running for this source, the delete may
+    need to wait briefly for the current transaction to complete. A timeout
+    is in place to prevent indefinite hangs (bug #235).
     """
+    import asyncio
     import shutil
+
+    from fastapi import HTTPException
     from sqlalchemy import delete as sql_delete
 
     from app.db.models import Design, DesignFile, DesignSource, DesignTag, Job
     from app.db.models.external_metadata_source import ExternalMetadataSource
     from app.services.preview import PreviewService
+
+    # Delete timeout in seconds - if we can't delete within this time,
+    # there's likely an active download holding locks
+    DELETE_TIMEOUT_SECONDS = 30
 
     source = await _get_source_or_404(db, source_id)
 
@@ -582,8 +593,30 @@ async def delete_import_source(
     # Note: ImportRecords will be deleted via cascade
     # If keep_designs=True, designs have SET NULL on delete, so they'll keep their data
 
-    await db.delete(source)
-    await db.commit()
+    # Wrap the delete in a timeout to handle cases where downloads are holding locks
+    # This addresses bug #235 where active downloads could block deletion indefinitely
+    try:
+        async def perform_delete():
+            await db.delete(source)
+            await db.commit()
+
+        await asyncio.wait_for(perform_delete(), timeout=DELETE_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        # Rollback any pending changes
+        await db.rollback()
+        logger.error(
+            "import_source_delete_timeout",
+            source_id=source_id,
+            timeout_seconds=DELETE_TIMEOUT_SECONDS,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Delete operation timed out. This usually means downloads are "
+                "actively running for this source. Please wait for downloads to "
+                "complete or cancel them from the Activity page, then try again."
+            ),
+        )
 
     logger.info(
         "import_source_deleted",
