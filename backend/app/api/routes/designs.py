@@ -17,7 +17,7 @@ from app.db import get_db
 from app.services.count_cache import get_approximate_count, count_cache
 from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType, ImportSource
 from app.db.models.design_tag import DesignTag
-from app.db.models.enums import DesignStatus, MatchMethod, MetadataAuthority, MulticolorStatus
+from app.db.models.enums import DesignStatus, JobType, MatchMethod, MetadataAuthority, MulticolorStatus
 from app.db.models.preview_asset import PreviewAsset
 from app.db.models.tag import Tag
 from app.schemas.design import (
@@ -1119,19 +1119,54 @@ async def want_design(
     """Mark a design as wanted and queue download.
 
     Changes status to WANTED and creates a DOWNLOAD_DESIGN job.
+    For import source designs that already have files downloaded,
+    this will queue IMPORT_TO_LIBRARY instead (retry after failed import).
     """
     from app.services.download import DownloadError, DownloadService
+    from app.services.job_queue import JobQueueService
 
-    # Get design
-    design = await db.get(Design, design_id)
+    # Get design with files relationship to check if already downloaded
+    result = await db.execute(
+        select(Design)
+        .options(selectinload(Design.files))
+        .where(Design.id == design_id)
+    )
+    design = result.scalar_one_or_none()
     if design is None:
         raise HTTPException(status_code=404, detail="Design not found")
 
-    # Check if already downloading or downloaded
+    # Check if already downloading or downloaded (but not failed)
     if design.status in (DesignStatus.DOWNLOADING, DesignStatus.DOWNLOADED, DesignStatus.ORGANIZED):
         raise HTTPException(
             status_code=400,
             detail=f"Design already has status {design.status.value}",
+        )
+
+    # Check if this design has files downloaded but failed during import
+    # If so, retry import instead of re-downloading
+    if design.files and design.status == DesignStatus.FAILED:
+        # Re-queue IMPORT_TO_LIBRARY instead of re-downloading
+        queue = JobQueueService(db)
+        job = await queue.enqueue(
+            JobType.IMPORT_TO_LIBRARY,
+            design_id=design_id,
+            priority=max(priority, 50),  # Ensure reasonable priority for retry
+        )
+        design.status = DesignStatus.DOWNLOADED
+        await db.commit()
+
+        logger.info(
+            "design_retry_import",
+            design_id=design_id,
+            job_id=job.id,
+            message="Re-queued import for design with existing files",
+        )
+
+        return WantResponse(
+            design_id=design_id,
+            job_id=job.id,
+            status="DOWNLOADED",
+            message="Re-queued import to library",
         )
 
     try:
@@ -1165,13 +1200,48 @@ async def force_download(
     """Force immediate download with high priority.
 
     Creates a high-priority DOWNLOAD_DESIGN job (priority=100).
+    For import source designs that already have files downloaded,
+    this will queue IMPORT_TO_LIBRARY instead (retry after failed import).
     """
     from app.services.download import DownloadError, DownloadService
+    from app.services.job_queue import JobQueueService
 
-    # Get design
-    design = await db.get(Design, design_id)
+    # Get design with files relationship to check if already downloaded
+    result = await db.execute(
+        select(Design)
+        .options(selectinload(Design.files))
+        .where(Design.id == design_id)
+    )
+    design = result.scalar_one_or_none()
     if design is None:
         raise HTTPException(status_code=404, detail="Design not found")
+
+    # Check if this design has files downloaded but failed during import
+    # If so, retry import instead of re-downloading
+    if design.files and design.status == DesignStatus.FAILED:
+        # Re-queue IMPORT_TO_LIBRARY instead of re-downloading
+        queue = JobQueueService(db)
+        job = await queue.enqueue(
+            JobType.IMPORT_TO_LIBRARY,
+            design_id=design_id,
+            priority=100,
+        )
+        design.status = DesignStatus.DOWNLOADED
+        await db.commit()
+
+        logger.info(
+            "design_retry_import",
+            design_id=design_id,
+            job_id=job.id,
+            message="Re-queued import for design with existing files",
+        )
+
+        return WantResponse(
+            design_id=design_id,
+            job_id=job.id,
+            status="DOWNLOADED",
+            message="Re-queued import to library",
+        )
 
     try:
         service = DownloadService(db)

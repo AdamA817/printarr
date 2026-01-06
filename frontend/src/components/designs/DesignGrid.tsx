@@ -12,7 +12,7 @@ interface DesignGridProps {
 // Constants for grid layout
 const GAP = 16 // gap-4 = 16px
 const CARD_MIN_WIDTH = 180 // Minimum card width for responsive calculation
-const CARD_ASPECT_RATIO = 1.35 // Height/width ratio for cards (image + info)
+const CARD_CONTENT_HEIGHT = 100 // Fixed height for card info area (title, designer, tags, status)
 
 // Breakpoint column counts matching Tailwind's grid-cols-* classes
 function getColumnCount(containerWidth: number): number {
@@ -51,7 +51,8 @@ export function DesignGrid({ designs, selectedIds, onToggleSelect }: DesignGridP
   // Calculate columns and row height based on container width
   const columns = getColumnCount(containerWidth)
   const cardWidth = containerWidth > 0 ? (containerWidth - GAP * (columns - 1)) / columns : CARD_MIN_WIDTH
-  const rowHeight = Math.round(cardWidth * CARD_ASPECT_RATIO) + GAP
+  // Card height = square image (cardWidth) + fixed content area + gap
+  const rowHeight = Math.round(cardWidth + CARD_CONTENT_HEIGHT) + GAP
 
   // Group designs into rows
   const rowCount = Math.ceil(designs.length / columns)
@@ -75,7 +76,7 @@ export function DesignGrid({ designs, selectedIds, onToggleSelect }: DesignGridP
   return (
     <div
       ref={parentRef}
-      className="w-full h-[calc(100vh-320px)] overflow-auto"
+      className="w-full h-[calc(100vh-200px)] min-h-[400px] overflow-auto"
       style={{ contain: 'strict' }}
     >
       <div
