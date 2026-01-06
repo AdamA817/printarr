@@ -67,19 +67,18 @@ export function ImportProfiles() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Action bar */}
       <div className="flex justify-between items-center">
-        <div>
+        <div className="flex items-center gap-4">
           <Link
             to="/import-sources"
-            className="text-sm text-text-secondary hover:text-accent-primary transition-colors flex items-center gap-1 mb-1"
+            className="text-sm text-text-secondary hover:text-accent-primary transition-colors flex items-center gap-1"
           >
             <ArrowLeftIcon className="w-4 h-4" />
             <span>Back to Sources</span>
           </Link>
-          <h1 className="text-xl font-bold text-text-primary">Import Profiles</h1>
           {data && (
-            <p className="text-sm text-text-secondary mt-1">
+            <p className="text-sm text-text-secondary">
               {data.total} profile{data.total !== 1 ? 's' : ''} available
             </p>
           )}

@@ -8,11 +8,6 @@ export function Activity() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-text-primary">Activity</h1>
-      </div>
-
       {/* Tabs */}
       <div className="border-b border-bg-tertiary">
         <nav className="-mb-px flex gap-4">

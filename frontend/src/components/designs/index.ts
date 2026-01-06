@@ -14,3 +14,10 @@ export { DeleteConfirmModal } from './DeleteConfirmModal'
 // v0.7 additions
 export { PreviewGallery, PreviewGallerySkeleton } from './PreviewGallery'
 export { TagManager, TagList } from './TagManager'
+// v1.0 additions - Radarr-style filter UI
+export { DesignToolbar } from './DesignToolbar'
+export { FilterDropdown } from './FilterDropdown'
+export { CustomFilterModal } from './CustomFilterModal'
+export { FilterRow } from './FilterRow'
+export { InfiniteDesignGrid } from './InfiniteDesignGrid'
+export { ScrollToTopButton } from './ScrollToTopButton'

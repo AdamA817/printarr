@@ -116,16 +116,14 @@ export function ImportSources() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Action bar */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Import Sources</h1>
-          {data && (
-            <p className="text-sm text-text-secondary mt-1">
-              {data.total} source{data.total !== 1 ? 's' : ''} configured
-            </p>
-          )}
-        </div>
+        {data && (
+          <p className="text-sm text-text-secondary">
+            {data.total} source{data.total !== 1 ? 's' : ''} configured
+          </p>
+        )}
+        {!data && <div />}
         <div className="flex items-center gap-3">
           <Link
             to="/import-profiles"

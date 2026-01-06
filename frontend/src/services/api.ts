@@ -38,6 +38,9 @@ import type {
   AddTagsRequest,
   AddTagsResponse,
   RemoveTagResponse,
+  // v1.0 Designer autocomplete & folder filter types
+  DesignerSuggestionsResponse,
+  AllFoldersResponse,
 } from '@/types/design'
 import type {
   UploadResponse,
@@ -257,6 +260,12 @@ export const designsApi = {
     api.delete<BulkDeleteResponse>('/designs/bulk', {
       params: { delete_files: deleteFiles },
       data: { design_ids: designIds },
+    }).then((r) => r.data),
+
+  // v1.0 Designer autocomplete
+  getDesigners: (q?: string, limit = 20) =>
+    api.get<DesignerSuggestionsResponse>('/designs/designers', {
+      params: { q, limit },
     }).then((r) => r.data),
 }
 
@@ -479,6 +488,12 @@ export const importSourcesApi = {
   // Trigger sync for a specific folder
   syncFolder: (sourceId: string, folderId: string, request?: SyncTriggerRequest) =>
     api.post<SyncTriggerResponse>(`/import-sources/${sourceId}/folders/${folderId}/sync`, request).then((r) => r.data),
+
+  // v1.0 List all folders across all sources (for filter dropdowns)
+  listAllFolders: (sourceId?: string) =>
+    api.get<AllFoldersResponse>('/import-sources/all-folders', {
+      params: sourceId ? { source_id: sourceId } : undefined,
+    }).then((r) => r.data),
 }
 
 // =============================================================================

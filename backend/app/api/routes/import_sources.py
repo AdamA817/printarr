@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -275,6 +276,60 @@ async def list_import_sources(
 
     items = [await _build_source_response(db, s) for s in sources]
     return ImportSourceList(items=items, total=len(items))
+
+
+class AllFoldersItem(BaseModel):
+    """Folder item for all-folders endpoint."""
+
+    id: str
+    name: str | None
+    source_id: str
+    source_name: str
+    google_drive_url: str | None
+    items_imported: int
+
+
+class AllFoldersResponse(BaseModel):
+    """Response for all-folders endpoint."""
+
+    items: list[AllFoldersItem]
+
+
+@router.get("/all-folders", response_model=AllFoldersResponse)
+async def list_all_folders(
+    source_id: str | None = Query(None, description="Filter by import source ID"),
+    db: AsyncSession = Depends(get_db),
+) -> AllFoldersResponse:
+    """List all import source folders across all sources.
+
+    Returns a flat list of all folders, useful for filter dropdowns.
+    Optionally filters by a specific source.
+    """
+    query = (
+        select(ImportSourceFolder)
+        .options(selectinload(ImportSourceFolder.import_source))
+        .order_by(ImportSourceFolder.created_at.desc())
+    )
+
+    if source_id:
+        query = query.where(ImportSourceFolder.import_source_id == source_id)
+
+    result = await db.execute(query)
+    folders = result.scalars().all()
+
+    items = [
+        AllFoldersItem(
+            id=f.id,
+            name=f.name,
+            source_id=f.import_source_id,
+            source_name=f.import_source.name if f.import_source else "Unknown",
+            google_drive_url=f.google_drive_url,
+            items_imported=f.items_imported or 0,
+        )
+        for f in folders
+    ]
+
+    return AllFoldersResponse(items=items)
 
 
 @router.post("/", response_model=ImportSourceResponse, status_code=201)

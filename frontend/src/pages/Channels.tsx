@@ -74,15 +74,14 @@ export function Channels() {
 
   return (
     <div className="space-y-6">
+      {/* Action bar */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary">Channels</h1>
-          {activeTab === 'monitored' && data && (
-            <p className="text-sm text-text-secondary mt-1">
-              {data.total} channel{data.total !== 1 ? 's' : ''} monitored
-            </p>
-          )}
-        </div>
+        {activeTab === 'monitored' && data && (
+          <p className="text-sm text-text-secondary">
+            {data.total} channel{data.total !== 1 ? 's' : ''} monitored
+          </p>
+        )}
+        {activeTab === 'discovered' && <div />}
         {activeTab === 'monitored' && (
           <button
             onClick={() => setIsAddModalOpen(true)}

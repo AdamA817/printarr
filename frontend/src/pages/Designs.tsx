@@ -1,22 +1,23 @@
-import { useState, useCallback } from 'react'
-import { useDesigns, useMergeDesigns, useBulkDeleteDesigns } from '@/hooks/useDesigns'
+import { useState, useCallback, useRef } from 'react'
+import { useMergeDesigns, useBulkDeleteDesigns } from '@/hooks/useDesigns'
 import { useDesignFilters } from '@/hooks/useDesignFilters'
-import { useChannels } from '@/hooks/useChannels'
 import {
-  DesignGrid,
-  DesignGridSkeleton,
-  DesignList,
-  DesignListSkeleton,
-  ViewToggle,
-  FilterSidebar,
-  ActiveFilters,
-  SearchBox,
-  SortControls,
+  useInfiniteDesigns,
+  flattenInfiniteDesigns,
+  getInfiniteDesignsTotal,
+} from '@/hooks/useInfiniteDesigns'
+import { useSavedFilters, PREDEFINED_FILTERS } from '@/hooks/useSavedFilters'
+import {
+  DesignToolbar,
+  CustomFilterModal,
+  InfiniteDesignGrid,
+  ScrollToTopButton,
   type ViewMode,
 } from '@/components/designs'
-import type { SortField, SortOrder, DesignListItem } from '@/types/design'
+import type { SortField, SortOrder, DesignListItem, DesignListParams } from '@/types/design'
 
 const VIEW_STORAGE_KEY = 'printarr-designs-view'
+const ACTIVE_FILTER_KEY = 'printarr-active-filter'
 
 function getStoredView(): ViewMode {
   try {
@@ -27,7 +28,7 @@ function getStoredView(): ViewMode {
   } catch {
     // localStorage not available
   }
-  return 'grid' // Default to grid view
+  return 'grid'
 }
 
 function setStoredView(view: ViewMode) {
@@ -38,74 +39,121 @@ function setStoredView(view: ViewMode) {
   }
 }
 
+function getStoredActiveFilter(): string {
+  try {
+    return localStorage.getItem(ACTIVE_FILTER_KEY) || 'all'
+  } catch {
+    return 'all'
+  }
+}
+
+function setStoredActiveFilter(id: string) {
+  try {
+    localStorage.setItem(ACTIVE_FILTER_KEY, id)
+  } catch {
+    // localStorage not available
+  }
+}
+
 export function Designs() {
+  const scrollRef = useRef<HTMLDivElement>(null)
   const [view, setView] = useState<ViewMode>(getStoredView)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [activeFilterId, setActiveFilterId] = useState<string | null>(getStoredActiveFilter)
+  const [showCustomFilterModal, setShowCustomFilterModal] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
   const [bulkDeleteWithFiles, setBulkDeleteWithFiles] = useState(false)
 
-  // Page size based on view
-  const pageSize = view === 'grid' ? 24 : 20
+  // Saved filters management
+  const { savedFilters, saveFilter, deleteFilter } = useSavedFilters()
 
   // Get filters from URL params
-  const { filters, setFilters, removeFilter, clearFilters, setPage } = useDesignFilters(pageSize)
+  const { filters, setFilters, clearFilters } = useDesignFilters()
 
-  // Merge mutation
+  // Build query params without pagination (infinite scroll handles that)
+  const queryParams: Omit<DesignListParams, 'page'> = {
+    page_size: 48, // Load more items per page for infinite scroll
+    status: filters.status,
+    channel_id: filters.channel_id,
+    file_type: filters.file_type,
+    multicolor: filters.multicolor,
+    has_thangs_link: filters.has_thangs_link,
+    designer: filters.designer,
+    q: filters.q,
+    sort_by: filters.sort_by || 'created_at',
+    sort_order: filters.sort_order || 'DESC',
+    tags: filters.tags,
+    import_source_id: filters.import_source_id,
+    import_source_folder_id: filters.import_source_folder_id,
+  }
+
+  // Infinite query for designs
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteDesigns(queryParams)
+
+  // Mutations
   const mergeMutation = useMergeDesigns()
   const bulkDeleteMutation = useBulkDeleteDesigns()
 
-  // Merge page_size with filters
-  const effectiveFilters = { ...filters, page_size: pageSize }
+  // Flatten infinite query pages into single array
+  const designs = flattenInfiniteDesigns(data)
+  const totalCount = getInfiniteDesignsTotal(data)
 
-  // Fetch designs with current filters
-  const { data, isLoading, error } = useDesigns(effectiveFilters)
-
-  // Fetch channels for filter dropdown and active filter display
-  const { data: channelsData } = useChannels({ page_size: 100 })
-
-  // Get channel name for active filter display
-  const selectedChannelName = filters.channel_id && channelsData?.items
-    ? channelsData.items.find(c => c.id === filters.channel_id)?.title
-    : undefined
-
+  // Event handlers
   const handleViewChange = useCallback((newView: ViewMode) => {
     setView(newView)
     setStoredView(newView)
-    setPage(1) // Reset to first page when view changes
-  }, [setPage])
-
-  const handlePageChange = useCallback((newPage: number) => {
-    setPage(newPage)
-  }, [setPage])
+  }, [])
 
   const handleSearchChange = useCallback((q: string) => {
-    setFilters({ q: q || undefined, page: 1 })
-  }, [setFilters])
+    setFilters({ q: q || undefined })
+    // Reset to custom filter when searching
+    setActiveFilterId(q ? null : activeFilterId)
+  }, [setFilters, activeFilterId])
 
   const handleSortChange = useCallback((sortBy: SortField, sortOrder: SortOrder) => {
-    setFilters({ sort_by: sortBy, sort_order: sortOrder, page: 1 })
+    setFilters({ sort_by: sortBy, sort_order: sortOrder })
   }, [setFilters])
 
-  const handleColumnSort = useCallback((field: SortField) => {
-    // Toggle direction if same field, otherwise use default direction
-    if (field === filters.sort_by) {
-      const newOrder = filters.sort_order === 'ASC' ? 'DESC' : 'ASC'
-      setFilters({ sort_order: newOrder, page: 1 })
-    } else {
-      const defaultOrder = field === 'created_at' || field === 'total_size_bytes' ? 'DESC' : 'ASC'
-      setFilters({ sort_by: field, sort_order: defaultOrder, page: 1 })
+  const handleSelectFilter = useCallback((filterId: string, filterParams: Partial<DesignListParams>) => {
+    setActiveFilterId(filterId)
+    setStoredActiveFilter(filterId)
+    // Clear existing filters and apply new ones
+    clearFilters()
+    if (Object.keys(filterParams).length > 0) {
+      setFilters(filterParams)
     }
-  }, [filters.sort_by, filters.sort_order, setFilters])
+  }, [clearFilters, setFilters])
 
-  const toggleSidebar = useCallback(() => {
-    setSidebarOpen(prev => !prev)
-  }, [])
+  const handleApplyCustomFilter = useCallback((filterParams: Partial<DesignListParams>) => {
+    setActiveFilterId(null)
+    clearFilters()
+    setFilters(filterParams)
+  }, [clearFilters, setFilters])
 
-  const closeSidebar = useCallback(() => {
-    setSidebarOpen(false)
-  }, [])
+  const handleSaveCustomFilter = useCallback((label: string, filterParams: Partial<DesignListParams>) => {
+    const saved = saveFilter(label, filterParams)
+    setActiveFilterId(saved.id)
+    setStoredActiveFilter(saved.id)
+    clearFilters()
+    setFilters(filterParams)
+  }, [saveFilter, clearFilters, setFilters])
+
+  const handleDeleteSavedFilter = useCallback((id: string) => {
+    deleteFilter(id)
+    if (activeFilterId === id) {
+      setActiveFilterId('all')
+      setStoredActiveFilter('all')
+      clearFilters()
+    }
+  }, [deleteFilter, activeFilterId, clearFilters])
 
   const toggleSelection = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -123,178 +171,98 @@ export function Designs() {
     setSelectedIds(new Set())
   }, [])
 
-  // Get selected designs from current data
-  const selectedDesigns = data?.items.filter((d) => selectedIds.has(d.id)) || []
+  // Get selected designs from loaded data
+  const selectedDesigns = designs.filter((d) => selectedIds.has(d.id))
 
   return (
-    <div className="flex h-full -m-6">
-      {/* Filter Sidebar */}
-      <FilterSidebar
-        filters={filters}
-        onChange={setFilters}
-        onClearAll={clearFilters}
-        isOpen={sidebarOpen}
-        onClose={closeSidebar}
-      />
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className="p-6 space-y-4 overflow-y-auto flex-1">
-          {/* Header Row 1: Title and View Toggle */}
-          <div className="flex justify-between items-center gap-4">
-            <div className="flex items-center gap-4">
-              {/* Mobile filter toggle */}
-              <button
-                onClick={toggleSidebar}
-                className="lg:hidden p-2 rounded bg-bg-secondary text-text-secondary hover:text-text-primary"
-                aria-label="Toggle filters"
-              >
-                <FilterIcon />
-              </button>
-              <div>
-                <h1 className="text-xl font-bold text-text-primary">Designs</h1>
-                {data && (
-                  <p className="text-sm text-text-secondary mt-1">
-                    {data.total} design{data.total !== 1 ? 's' : ''}
-                  </p>
-                )}
-              </div>
-            </div>
-            <ViewToggle view={view} onChange={handleViewChange} />
-          </div>
-
-          {/* Header Row 2: Search and Sort */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 max-w-md">
-              <SearchBox
-                value={filters.q || ''}
-                onChange={handleSearchChange}
-                placeholder="Search designs..."
-              />
-            </div>
-            <SortControls
-              sortBy={filters.sort_by || 'created_at'}
-              sortOrder={filters.sort_order || 'DESC'}
-              onSortChange={handleSortChange}
-            />
-          </div>
-
-          {/* Active Filters Pills */}
-          <ActiveFilters
-            filters={filters}
-            channelName={selectedChannelName}
-            onRemove={removeFilter}
+    <div className="h-full flex flex-col -m-6">
+      {/* Main scrollable container */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-auto"
+      >
+        {/* Sticky Toolbar */}
+        <div className="sticky top-0 z-20 bg-bg-primary px-4 pt-4 pb-2">
+          <DesignToolbar
+            searchQuery={filters.q || ''}
+            onSearchChange={handleSearchChange}
+            sortBy={filters.sort_by || 'created_at'}
+            sortOrder={filters.sort_order || 'DESC'}
+            onSortChange={handleSortChange}
+            view={view}
+            onViewChange={handleViewChange}
+            activeFilterId={activeFilterId}
+            savedFilters={savedFilters}
+            onSelectFilter={handleSelectFilter}
+            onOpenCustomFilter={() => setShowCustomFilterModal(true)}
+            onDeleteSavedFilter={handleDeleteSavedFilter}
+            totalCount={totalCount}
           />
-
-          {/* Loading state */}
-          {isLoading && (
-            view === 'grid' ? <DesignGridSkeleton /> : <DesignListSkeleton />
-          )}
-
-          {/* Error state */}
-          {error && (
-            <div className="bg-accent-danger/20 border border-accent-danger/50 rounded-lg p-4">
-              <p className="text-accent-danger">
-                Failed to load designs: {(error as Error).message}
-              </p>
-            </div>
-          )}
-
-          {/* Empty state */}
-          {data && data.items.length === 0 && (
-            <div className="bg-bg-secondary rounded-lg p-8 text-center">
-              <div className="text-4xl mb-4">📐</div>
-              <h3 className="text-lg font-medium text-text-primary mb-2">
-                {filters.status || filters.channel_id || filters.file_type || filters.q
-                  ? 'No designs match your filters'
-                  : 'No designs yet'}
-              </h3>
-              <p className="text-text-secondary mb-4">
-                {filters.status || filters.channel_id || filters.file_type || filters.q
-                  ? 'Try adjusting your filters to see more results.'
-                  : 'Designs will appear here after you run a backfill on a channel with 3D models.'}
-              </p>
-            </div>
-          )}
-
-          {/* Content */}
-          {data && data.items.length > 0 && (
-            <>
-              {view === 'grid' ? (
-                <DesignGrid
-                  designs={data.items}
-                  selectedIds={selectedIds}
-                  onToggleSelect={toggleSelection}
-                />
-              ) : (
-                <DesignList
-                  designs={data.items}
-                  sortBy={filters.sort_by}
-                  sortOrder={filters.sort_order}
-                  onSort={handleColumnSort}
-                  selectedIds={selectedIds}
-                  onToggleSelect={toggleSelection}
-                />
-              )}
-
-              {/* Pagination */}
-              {data.pages > 1 && (
-                <div className="flex items-center justify-between py-4">
-                  <p className="text-sm text-text-secondary">
-                    Page {data.page} of {data.pages} ({data.total} total)
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handlePageChange(data.page - 1)}
-                      disabled={data.page <= 1}
-                      className="px-3 py-1 text-sm rounded bg-bg-secondary text-text-secondary hover:bg-bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Previous
-                    </button>
-                    <button
-                      onClick={() => handlePageChange(data.page + 1)}
-                      disabled={data.page >= data.pages}
-                      className="px-3 py-1 text-sm rounded bg-bg-secondary text-text-secondary hover:bg-bg-tertiary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
         </div>
 
-        {/* Selection Action Bar */}
-        {selectedIds.size > 0 && (
-          <div className="sticky bottom-0 bg-bg-secondary border-t border-bg-tertiary p-4 flex items-center justify-between">
-            <span className="text-sm text-text-secondary">
-              {selectedIds.size} design{selectedIds.size !== 1 ? 's' : ''} selected
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={clearSelection}
-                className="px-3 py-1.5 text-sm rounded bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
-              >
-                Clear Selection
-              </button>
-              <button
-                onClick={() => setShowBulkDeleteModal(true)}
-                className="px-3 py-1.5 text-sm rounded bg-accent-danger/20 text-accent-danger hover:bg-accent-danger/30 transition-colors"
-              >
-                Delete Selected
-              </button>
-              <button
-                onClick={() => setShowMergeModal(true)}
-                disabled={selectedIds.size < 2}
-                className="px-3 py-1.5 text-sm rounded bg-accent-primary text-white hover:bg-accent-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Merge Selected
-              </button>
-            </div>
+        {/* Error state */}
+        {error && (
+          <div className="mx-4 mb-4 bg-accent-danger/20 border border-accent-danger/50 rounded-lg p-4">
+            <p className="text-accent-danger">
+              Failed to load designs: {(error as Error).message}
+            </p>
           </div>
         )}
+
+        {/* Design Grid with Infinite Scroll */}
+        <InfiniteDesignGrid
+          designs={designs}
+          isLoading={isLoading}
+          isFetchingNextPage={isFetchingNextPage}
+          hasNextPage={hasNextPage ?? false}
+          fetchNextPage={fetchNextPage}
+          view={view}
+          scrollRef={scrollRef}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelection}
+        />
       </div>
+
+      {/* Scroll to Top Button */}
+      <ScrollToTopButton scrollRef={scrollRef} />
+
+      {/* Selection Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="bg-bg-secondary border-t border-bg-tertiary p-4 flex items-center justify-between">
+          <span className="text-sm text-text-secondary">
+            {selectedIds.size} design{selectedIds.size !== 1 ? 's' : ''} selected
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={clearSelection}
+              className="px-3 py-1.5 text-sm rounded bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors"
+            >
+              Clear Selection
+            </button>
+            <button
+              onClick={() => setShowBulkDeleteModal(true)}
+              className="px-3 py-1.5 text-sm rounded bg-accent-danger/20 text-accent-danger hover:bg-accent-danger/30 transition-colors"
+            >
+              Delete Selected
+            </button>
+            <button
+              onClick={() => setShowMergeModal(true)}
+              disabled={selectedIds.size < 2}
+              className="px-3 py-1.5 text-sm rounded bg-accent-primary text-white hover:bg-accent-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Merge Selected
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Filter Modal */}
+      <CustomFilterModal
+        isOpen={showCustomFilterModal}
+        onClose={() => setShowCustomFilterModal(false)}
+        onApply={handleApplyCustomFilter}
+        onSave={handleSaveCustomFilter}
+      />
 
       {/* Merge Modal */}
       {showMergeModal && selectedDesigns.length >= 2 && (
@@ -337,24 +305,6 @@ export function Designs() {
   )
 }
 
-function FilterIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-    </svg>
-  )
-}
-
 interface MergeModalProps {
   designs: DesignListItem[]
   onClose: () => void
@@ -378,22 +328,16 @@ function MergeModal({ designs, onClose, onMerge, isPending }: MergeModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
-
-      {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="relative w-full max-w-lg bg-bg-primary rounded-lg shadow-xl">
-          {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary">
             <div>
-              <h2 className="text-lg font-medium text-text-primary">
-                Merge Designs
-              </h2>
+              <h2 className="text-lg font-medium text-text-primary">Merge Designs</h2>
               <p className="text-sm text-text-muted mt-0.5">
                 Select which design should be the primary (target)
               </p>
@@ -407,7 +351,6 @@ function MergeModal({ designs, onClose, onMerge, isPending }: MergeModalProps) {
             </button>
           </div>
 
-          {/* Content */}
           <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
             <p className="text-sm text-text-secondary">
               The selected design will become the primary. All other designs will be merged into it and deleted.
@@ -455,7 +398,6 @@ function MergeModal({ designs, onClose, onMerge, isPending }: MergeModalProps) {
             )}
           </div>
 
-          {/* Footer */}
           <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary">
             <button
               onClick={onClose}
@@ -496,7 +438,6 @@ function CloseIcon() {
   )
 }
 
-// Bulk Delete Modal
 interface BulkDeleteModalProps {
   count: number
   deleteFiles: boolean
@@ -527,17 +468,13 @@ function BulkDeleteModal({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 transition-opacity"
         onClick={isPending ? undefined : onClose}
         aria-hidden="true"
       />
-
-      {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
         <div className="relative w-full max-w-md bg-bg-primary rounded-lg shadow-xl">
-          {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-bg-tertiary">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-accent-danger/20 rounded-lg">
@@ -557,7 +494,6 @@ function BulkDeleteModal({
             </button>
           </div>
 
-          {/* Content */}
           <div className="p-6 space-y-4">
             <p className="text-text-secondary">
               Are you sure you want to delete {count} design{count !== 1 ? 's' : ''}?
@@ -565,9 +501,7 @@ function BulkDeleteModal({
             </p>
 
             <div className="space-y-3 pt-2">
-              <p className="text-sm text-text-muted">
-                Choose what to delete:
-              </p>
+              <p className="text-sm text-text-muted">Choose what to delete:</p>
               <label className="flex items-start gap-3 p-3 rounded-lg bg-bg-secondary cursor-pointer hover:bg-bg-tertiary transition-colors">
                 <input
                   type="radio"
@@ -577,9 +511,7 @@ function BulkDeleteModal({
                   className="mt-0.5 text-accent-primary focus:ring-accent-primary"
                 />
                 <div>
-                  <p className="text-sm font-medium text-text-primary">
-                    Database only
-                  </p>
+                  <p className="text-sm font-medium text-text-primary">Database only</p>
                   <p className="text-xs text-text-muted mt-0.5">
                     Remove from Printarr but keep files in library
                   </p>
@@ -594,9 +526,7 @@ function BulkDeleteModal({
                   className="mt-0.5 text-accent-danger focus:ring-accent-danger"
                 />
                 <div>
-                  <p className="text-sm font-medium text-accent-danger">
-                    Database + Files
-                  </p>
+                  <p className="text-sm font-medium text-accent-danger">Database + Files</p>
                   <p className="text-xs text-text-muted mt-0.5">
                     Remove from Printarr and delete all files from disk
                   </p>
@@ -611,7 +541,6 @@ function BulkDeleteModal({
             )}
           </div>
 
-          {/* Footer */}
           <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-tertiary">
             <button
               onClick={onClose}

@@ -167,6 +167,39 @@ export interface DesignListParams {
   sort_order?: SortOrder
   // v0.7 additions
   tags?: string[] // Filter by tag names (any match)
+  // v1.0 additions - import source filtering
+  import_source_id?: string
+  import_source_folder_id?: string
+}
+
+// =============================================================================
+// Designer Autocomplete types (v1.0)
+// =============================================================================
+
+export interface DesignerSuggestion {
+  name: string
+  count: number
+}
+
+export interface DesignerSuggestionsResponse {
+  items: DesignerSuggestion[]
+}
+
+// =============================================================================
+// All Folders types (v1.0) - for filter dropdowns
+// =============================================================================
+
+export interface AllFoldersItem {
+  id: string
+  name: string | null
+  source_id: string
+  source_name: string
+  google_drive_url: string | null
+  items_imported: number
+}
+
+export interface AllFoldersResponse {
+  items: AllFoldersItem[]
 }
 
 // Request/Response types for Thangs link operations

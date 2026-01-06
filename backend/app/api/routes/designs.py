@@ -132,6 +132,55 @@ class UnmergeDesignResponse(BaseModel):
 router = APIRouter(prefix="/designs", tags=["designs"])
 
 
+# =============================================================================
+# Designer Autocomplete Endpoint
+# =============================================================================
+
+
+class DesignerSuggestion(BaseModel):
+    """Designer suggestion for autocomplete."""
+
+    name: str
+    count: int
+
+
+class DesignerSuggestionsResponse(BaseModel):
+    """Response for designer autocomplete."""
+
+    items: list[DesignerSuggestion]
+
+
+@router.get("/designers", response_model=DesignerSuggestionsResponse)
+async def list_designers(
+    q: str | None = Query(None, description="Search prefix for filtering"),
+    limit: int = Query(20, ge=1, le=100, description="Max results to return"),
+    db: AsyncSession = Depends(get_db),
+) -> DesignerSuggestionsResponse:
+    """Get designer names for autocomplete with usage counts.
+
+    Returns unique designer names sorted by frequency (most used first).
+    Optionally filters by a search prefix.
+    """
+    query = (
+        select(Design.canonical_designer, func.count(Design.id).label("count"))
+        .where(Design.canonical_designer.isnot(None))
+        .where(Design.canonical_designer != "")
+        .group_by(Design.canonical_designer)
+        .order_by(func.count(Design.id).desc())
+        .limit(limit)
+    )
+
+    if q:
+        query = query.where(Design.canonical_designer.ilike(f"%{q}%"))
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    return DesignerSuggestionsResponse(
+        items=[DesignerSuggestion(name=row[0], count=row[1]) for row in rows]
+    )
+
+
 @router.get("/", response_model=DesignList)
 async def list_designs(
     page: int = Query(1, ge=1, description="Page number"),
@@ -142,6 +191,8 @@ async def list_designs(
     multicolor: MulticolorStatus | None = Query(None, description="Filter by multicolor status"),
     has_thangs_link: bool | None = Query(None, description="Filter by Thangs link status"),
     designer: str | None = Query(None, description="Filter by designer (partial match)"),
+    import_source_id: str | None = Query(None, description="Filter by import source ID"),
+    import_source_folder_id: str | None = Query(None, description="Filter by import source folder ID"),
     tags: list[str] | None = Query(None, description="Filter by tag IDs"),
     tag_match: TagMatch = Query(TagMatch.ANY, description="Tag matching mode: 'any' (OR) or 'all' (AND)"),
     q: str | None = Query(None, description="Full-text search on title and designer"),
@@ -193,6 +244,19 @@ async def list_designs(
         # Case-insensitive partial match on designer
         query = query.where(Design.canonical_designer.ilike(f"%{designer}%"))
 
+    if import_source_id:
+        # Filter by import source
+        query = query.where(Design.import_source_id == import_source_id)
+
+    if import_source_folder_id:
+        # Filter by import source folder (via ImportRecord relationship)
+        from app.db.models.import_record import ImportRecord
+        designs_from_folder = select(ImportRecord.design_id).where(
+            ImportRecord.import_source_folder_id == import_source_folder_id,
+            ImportRecord.design_id.isnot(None),
+        )
+        query = query.where(Design.id.in_(designs_from_folder))
+
     if has_thangs_link is not None:
         # Subquery to find designs with Thangs links
         designs_with_thangs = select(ExternalMetadataSource.design_id).where(
@@ -243,7 +307,7 @@ async def list_designs(
 
     # Get total count (before pagination) - optimized (#219)
     # Use approximate count for unfiltered queries on large tables
-    has_filters = any([status, channel_id, multicolor, file_type, designer, has_thangs_link, tags, q])
+    has_filters = any([status, channel_id, multicolor, file_type, designer, import_source_id, import_source_folder_id, has_thangs_link, tags, q])
     is_approximate = False
 
     if not has_filters:

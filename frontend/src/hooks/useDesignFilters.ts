@@ -70,6 +70,9 @@ export function useDesignFilters(defaultPageSize = 24) {
     sort_by: parseSortField(searchParams.get('sort_by')) || 'created_at',
     sort_order: parseSortOrder(searchParams.get('sort_order')) || 'DESC',
     tags: parseTags(searchParams.get('tags')),
+    // v1.0 additions - import source filtering
+    import_source_id: searchParams.get('import_source_id') || undefined,
+    import_source_folder_id: searchParams.get('import_source_folder_id') || undefined,
   }), [searchParams, defaultPageSize])
 
   // Update filters (merges with existing and updates URL)
@@ -124,6 +127,8 @@ export function useDesignFilters(defaultPageSize = 24) {
       designer: undefined,
       q: undefined,
       tags: undefined,
+      import_source_id: undefined,
+      import_source_folder_id: undefined,
       page: 1,
     })
   }, [setFilters])
