@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings as app_settings
 from app.core.logging import get_logger
@@ -173,26 +174,28 @@ class DashboardService:
         )
         queued = result.scalar() or 0
 
-        # Get recent completions (last 10)
+        # Get recent completions (last 10) - use eager loading to avoid N+1 queries
         result = await self.db.execute(
             select(Job)
+            .options(selectinload(Job.design))
             .where(Job.status == JobStatus.SUCCESS)
             .order_by(Job.finished_at.desc())
             .limit(10)
         )
         recent_completions = [
-            await self._job_to_summary(job) for job in result.scalars().all()
+            self._job_to_summary_sync(job) for job in result.scalars().all()
         ]
 
-        # Get recent failures (last 5)
+        # Get recent failures (last 5) - use eager loading to avoid N+1 queries
         result = await self.db.execute(
             select(Job)
+            .options(selectinload(Job.design))
             .where(Job.status == JobStatus.FAILED)
             .order_by(Job.finished_at.desc())
             .limit(5)
         )
         recent_failures = [
-            await self._job_to_summary(job) for job in result.scalars().all()
+            self._job_to_summary_sync(job) for job in result.scalars().all()
         ]
 
         return QueueResponse(
@@ -387,8 +390,25 @@ class DashboardService:
 
         return file_count, size_bytes
 
+    def _job_to_summary_sync(self, job: Job) -> JobSummary:
+        """Convert a Job to a JobSummary using already-loaded design relationship.
+
+        This avoids N+1 queries when the Job.design relationship is eager-loaded.
+        """
+        design_title = job.design.canonical_title if job.design else None
+
+        return JobSummary(
+            id=job.id,
+            type=job.type.value,
+            status=job.status.value,
+            design_title=design_title,
+            created_at=job.created_at,
+            finished_at=job.finished_at,
+            error=job.last_error,
+        )
+
     async def _job_to_summary(self, job: Job) -> JobSummary:
-        """Convert a Job to a JobSummary."""
+        """Convert a Job to a JobSummary (legacy - use _job_to_summary_sync with eager loading)."""
         design_title = None
         if job.design_id:
             result = await self.db.execute(

@@ -76,7 +76,7 @@ class BaseWorker(ABC):
         self._jobs_failed = 0
         self._started_at: datetime | None = None
         self._last_progress_update: datetime | None = None
-        self._progress_update_interval = 1.0  # Minimum seconds between updates
+        self._progress_update_interval = 2.0  # Minimum seconds between updates (reduced from 1.0 for less DB contention)
 
     @abstractmethod
     async def process(
