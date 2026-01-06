@@ -28,7 +28,7 @@ router = APIRouter(prefix="/activity", tags=["activity"])
 @router.get("/", response_model=ActivityListResponse)
 async def list_activity(
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=1, le=100, description="Items per page"),
+    page_size: int = Query(50, ge=1, le=1000, description="Items per page (max 1000)"),
     job_type: JobType | None = Query(None, description="Filter by job type"),
     status: str | None = Query(None, description="Comma-separated statuses (SUCCESS,FAILED,CANCELED)"),
     db: AsyncSession = Depends(get_db),

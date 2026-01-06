@@ -7,6 +7,15 @@ import type { ActivityListParams, ActivityItem } from '@/types/queue'
 type StatusFilter = 'all' | 'SUCCESS' | 'FAILED'
 type JobTypeFilter = 'all' | 'DOWNLOAD_DESIGN' | 'EXTRACT_ARCHIVE' | 'IMPORT_FILES' | 'GENERATE_PREVIEW'
 type DateFilter = 'all' | '24h' | '7d' | '30d'
+type PageSizeOption = 50 | 100 | 250 | 500 | 1000
+
+const PAGE_SIZE_OPTIONS: { value: PageSizeOption; label: string }[] = [
+  { value: 50, label: '50' },
+  { value: 100, label: '100' },
+  { value: 250, label: '250' },
+  { value: 500, label: '500' },
+  { value: 1000, label: 'All' },
+]
 
 // Estimated row height for history items (actual height varies)
 const ESTIMATED_ITEM_HEIGHT = 140
@@ -15,6 +24,7 @@ export function HistoryView() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [jobTypeFilter, setJobTypeFilter] = useState<JobTypeFilter>('all')
   const [dateFilter, setDateFilter] = useState<DateFilter>('all')
+  const [pageSize, setPageSize] = useState<PageSizeOption>(50)
   const [page, setPage] = useState(1)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [showClearFailedConfirm, setShowClearFailedConfirm] = useState(false)
@@ -23,7 +33,7 @@ export function HistoryView() {
   // Build query params
   const params: ActivityListParams = {
     page,
-    page_size: 50,
+    page_size: pageSize,
   }
 
   if (statusFilter !== 'all') {
@@ -160,6 +170,25 @@ export function HistoryView() {
               <option value="24h">Last 24 Hours</option>
               <option value="7d">Last 7 Days</option>
               <option value="30d">Last 30 Days</option>
+            </select>
+          </div>
+
+          {/* Page size selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-text-muted">Show:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value) as PageSizeOption)
+                setPage(1)
+              }}
+              className="text-sm px-3 py-1.5 rounded bg-bg-tertiary text-text-primary border-none focus:ring-2 focus:ring-accent-primary"
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 
