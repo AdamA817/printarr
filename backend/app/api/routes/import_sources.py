@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.db import get_db
 from app.db.models import (
+    Channel,
     ImportProfile,
     ImportRecord,
     ImportRecordStatus,
@@ -58,7 +59,10 @@ async def _get_source_or_404(db: AsyncSession, source_id: str) -> ImportSource:
     """Get an import source by ID or raise 404."""
     result = await db.execute(
         select(ImportSource)
-        .options(selectinload(ImportSource.folders))
+        .options(
+            selectinload(ImportSource.folders),
+            selectinload(ImportSource.channel),
+        )
         .where(ImportSource.id == source_id)
     )
     source = result.scalar_one_or_none()
@@ -330,6 +334,23 @@ async def create_import_source(
     db.add(source)
     await db.flush()  # Get the ID before queuing job
 
+    # Create a virtual channel for this import source (#237)
+    # This allows import sources to appear in the unified channels list
+    virtual_channel = Channel(
+        is_virtual=True,
+        import_source_id=source.id,
+        telegram_peer_id=None,  # No Telegram ID for virtual channels
+        title=f"Import: {data.name}",
+        is_enabled=True,
+    )
+    db.add(virtual_channel)
+    await db.flush()
+    logger.info(
+        "virtual_channel_created",
+        source_id=source.id,
+        channel_id=virtual_channel.id,
+    )
+
     # Auto-queue initial sync job if sync is enabled
     if data.sync_enabled:
         queue = JobQueueService(db)
@@ -429,6 +450,9 @@ async def update_import_source(
     # Apply updates
     if data.name is not None:
         source.name = data.name
+        # Sync virtual channel title (#237)
+        if source.channel:
+            source.channel.title = f"Import: {data.name}"
 
     if data.google_drive_url is not None and source.source_type == ImportSourceType.GOOGLE_DRIVE:
         source.google_drive_url = data.google_drive_url

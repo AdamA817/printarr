@@ -163,16 +163,27 @@ class LibraryImportService:
                 )
                 continue
 
-            # Handle filename collision
+            # Preserve folder structure from staging (#236)
+            # relative_path may contain subdirs like "Supported/body.stl"
+            staging_relative = Path(file_info.relative_path)
+            if len(staging_relative.parts) > 1:
+                # Has subdirectory structure - preserve it
+                subdir = staging_relative.parent
+                target_dir = library_path / subdir
+            else:
+                # Root-level file
+                target_dir = library_path
+
+            # Handle filename collision within the target directory
             target_filename = self._resolve_collision(
-                library_path, file_info.filename
+                target_dir, file_info.filename
             )
-            target_path = library_path / target_filename
+            target_path = target_dir / target_filename
 
             # Move file (no DB)
             await self._move_file(file_info.source_path, target_path)
 
-            # Record the move for DB update
+            # Record the move for DB update - preserve internal structure in relative_path
             new_relative_path = str(target_path.relative_to(settings.library_path))
             moved_files.append((file_info.design_file_id, new_relative_path, target_filename))
 
@@ -460,7 +471,7 @@ class LibraryImportService:
         return extracted_count
 
     def _find_3mf_files(self, directory: Path) -> list[Path]:
-        """Find all 3MF files in a directory (non-recursive).
+        """Find all 3MF files in a directory (recursive to support folder structure #236).
 
         Args:
             directory: Directory to search.
@@ -471,7 +482,8 @@ class LibraryImportService:
         if not directory.exists():
             return []
 
-        return list(directory.glob("*.3mf"))
+        # Use rglob to search recursively for 3MF files in subdirectories
+        return list(directory.rglob("*.3mf"))
 
     async def _extract_thumbnail_from_3mf(
         self, threemf_path: Path

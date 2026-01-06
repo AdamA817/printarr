@@ -17,6 +17,7 @@ from app.db.base import Base
 from app.db.models.enums import ImportSourceStatus, ImportSourceType
 
 if TYPE_CHECKING:
+    from app.db.models.channel import Channel
     from app.db.models.design import Design
     from app.db.models.google_credentials import GoogleCredentials
     from app.db.models.import_profile import ImportProfile
@@ -114,6 +115,9 @@ class ImportSource(Base):
     )
     folders: Mapped[list[ImportSourceFolder]] = relationship(
         "ImportSourceFolder", back_populates="import_source", cascade="all, delete-orphan"
+    )
+    channel: Mapped[Channel | None] = relationship(
+        "Channel", back_populates="import_source", uselist=False
     )
 
     # Indexes

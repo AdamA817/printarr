@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, Index, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,12 +14,13 @@ from app.db.models.enums import BackfillMode, DesignerSource, DownloadMode, Titl
 
 if TYPE_CHECKING:
     from app.db.models.design_source import DesignSource
+    from app.db.models.import_source import ImportSource
     from app.db.models.job import Job
     from app.db.models.telegram_message import TelegramMessage
 
 
 class Channel(Base):
-    """Represents a monitored Telegram channel/group."""
+    """Represents a monitored Telegram channel or virtual import source channel (#237)."""
 
     __tablename__ = "channels"
 
@@ -28,8 +29,16 @@ class Channel(Base):
         String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
 
-    # Telegram identification
-    telegram_peer_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    # Virtual channel flag (#237) - True for import source channels, False for Telegram channels
+    is_virtual: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Import source link (#237) - Only set for virtual channels
+    import_source_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("import_sources.id", ondelete="CASCADE"), nullable=True
+    )
+
+    # Telegram identification (nullable for virtual channels)
+    telegram_peer_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     invite_link: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -76,6 +85,13 @@ class Channel(Base):
     jobs: Mapped[list[Job]] = relationship(
         "Job", back_populates="channel", cascade="all, delete-orphan"
     )
+    import_source: Mapped[ImportSource | None] = relationship(
+        "ImportSource", back_populates="channel"
+    )
 
     # Indexes
-    __table_args__ = (Index("ix_channels_enabled_sync", "is_enabled", "last_sync_at"),)
+    __table_args__ = (
+        Index("ix_channels_enabled_sync", "is_enabled", "last_sync_at"),
+        Index("ix_channels_import_source", "import_source_id"),
+        Index("ix_channels_virtual", "is_virtual"),
+    )
