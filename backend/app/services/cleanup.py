@@ -197,12 +197,16 @@ class CleanupService:
             return recovered
 
     async def _reset_orphaned_import_records(self) -> int:
-        """Reset import records that point to deleted designs.
+        """Reset import records that are in a bad state.
 
-        These records have a design_id that no longer exists in the database.
+        Handles two cases:
+        1. Records with design_id pointing to a deleted design
+        2. Records marked IMPORTED but with no design_id (bug aftermath)
         """
         async with async_session_maker() as db:
-            # Find import records with design_id that doesn't exist
+            reset_count = 0
+
+            # Case 1: Records with design_id that doesn't exist
             result = await db.execute(
                 select(ImportRecord)
                 .where(ImportRecord.design_id.isnot(None))
@@ -214,7 +218,6 @@ class CleanupService:
             )
             records = result.scalars().all()
 
-            reset_count = 0
             for record in records:
                 # Check if design exists
                 design = await db.get(Design, record.design_id)
@@ -229,6 +232,25 @@ class CleanupService:
                     record.design_id = None
                     record.error_message = "Design deleted - reset for re-import"
                     reset_count += 1
+
+            # Case 2: Records marked IMPORTED but with no design_id
+            # This can happen due to bugs where status was set but design wasn't linked
+            result = await db.execute(
+                select(ImportRecord)
+                .where(ImportRecord.design_id.is_(None))
+                .where(ImportRecord.status == ImportRecordStatus.IMPORTED)
+            )
+            orphaned_imported = result.scalars().all()
+
+            for record in orphaned_imported:
+                logger.info(
+                    "cleanup_resetting_imported_without_design",
+                    record_id=record.id,
+                    detected_title=record.detected_title,
+                )
+                record.status = ImportRecordStatus.PENDING
+                record.error_message = "Marked IMPORTED but no design - reset for re-import"
+                reset_count += 1
 
             await db.commit()
             return reset_count
