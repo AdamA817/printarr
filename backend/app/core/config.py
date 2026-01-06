@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -102,6 +102,30 @@ class Settings(BaseSettings):
         default=None,
         description="Telegram API Hash from my.telegram.org",
     )
+
+    @field_validator("telegram_api_id", mode="before")
+    @classmethod
+    def empty_string_to_none_int(cls, v: str | int | None) -> int | None:
+        """Convert empty strings to None for optional int fields."""
+        if v == "" or v is None:
+            return None
+        return int(v)
+
+    @field_validator(
+        "telegram_api_hash",
+        "flaresolverr_url",
+        "google_client_id",
+        "google_client_secret",
+        "google_api_key",
+        "encryption_key",
+        mode="before",
+    )
+    @classmethod
+    def empty_string_to_none_str(cls, v: str | None) -> str | None:
+        """Convert empty strings to None for optional str fields."""
+        if v == "" or v is None:
+            return None
+        return v
 
     # Telegram rate limiting (DEC-042)
     telegram_rate_limit_rpm: int = Field(
