@@ -89,6 +89,8 @@ export function ImportSourceCard({
         return <FolderIcon className="w-6 h-6" />
       case 'UPLOAD':
         return <UploadIcon className="w-6 h-6" />
+      case 'PHPBB_FORUM':
+        return <ForumIcon className="w-6 h-6" />
       default:
         return <FolderIcon className="w-6 h-6" />
     }
@@ -102,6 +104,8 @@ export function ImportSourceCard({
         return 'Bulk Folder'
       case 'UPLOAD':
         return 'Upload'
+      case 'PHPBB_FORUM':
+        return 'phpBB Forum'
       default:
         return source.source_type
     }
@@ -155,6 +159,10 @@ export function ImportSourceCard({
     }
     if (source.source_type === 'BULK_FOLDER' && source.folder_path) {
       return source.folder_path
+    }
+    // phpBB forum - show forum URL
+    if (source.source_type === 'PHPBB_FORUM' && source.phpbb_forum_url) {
+      return source.phpbb_forum_url
     }
     // Check first folder
     if (hasFolders) {
@@ -551,6 +559,19 @@ function SpinnerIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="10" strokeWidth={2} strokeDasharray="60" strokeDashoffset="20" />
+    </svg>
+  )
+}
+
+function ForumIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"
+      />
     </svg>
   )
 }

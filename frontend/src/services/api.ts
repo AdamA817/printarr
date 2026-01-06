@@ -110,6 +110,12 @@ import type {
   GoogleOAuthInitResponse,
   GoogleOAuthCallbackParams,
   GoogleOAuthCallbackResponse,
+  // phpBB types (v1.0 - issue #241)
+  PhpbbTestLoginRequest,
+  PhpbbTestLoginResponse,
+  PhpbbCredentialsCreate,
+  PhpbbCredentials,
+  PhpbbCredentialsList,
 } from '@/types/import-source'
 
 export const api = axios.create({
@@ -602,4 +608,30 @@ export const uploadApi = {
   // Delete an upload (cancel or cleanup)
   delete: (uploadId: string) =>
     api.delete(`/upload/${uploadId}`),
+}
+
+// =============================================================================
+// phpBB Credentials API (v1.0 - issue #241)
+// =============================================================================
+
+export const phpbbApi = {
+  // Test login credentials without storing
+  testLogin: (data: PhpbbTestLoginRequest) =>
+    api.post<PhpbbTestLoginResponse>('/import-sources/phpbb/test-login', data).then((r) => r.data),
+
+  // Create and store credentials
+  createCredentials: (data: PhpbbCredentialsCreate) =>
+    api.post<PhpbbCredentials>('/import-sources/phpbb/credentials', data).then((r) => r.data),
+
+  // List all stored credentials
+  listCredentials: () =>
+    api.get<PhpbbCredentialsList>('/import-sources/phpbb/credentials').then((r) => r.data),
+
+  // Get credentials by ID
+  getCredentials: (id: string) =>
+    api.get<PhpbbCredentials>(`/import-sources/phpbb/credentials/${id}`).then((r) => r.data),
+
+  // Delete credentials
+  deleteCredentials: (id: string) =>
+    api.delete(`/import-sources/phpbb/credentials/${id}`),
 }

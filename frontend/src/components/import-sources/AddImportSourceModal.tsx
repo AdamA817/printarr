@@ -5,7 +5,8 @@ import { useState, useEffect } from 'react'
 import { useImportProfiles } from '@/hooks/useImportProfiles'
 import { useGoogleOAuthStatus } from '@/hooks/useGoogleOAuth'
 import { GoogleConnectCard } from './GoogleConnectCard'
-import type { ImportSourceCreate, ImportSourceType, ImportProfile } from '@/types/import-source'
+import { phpbbApi } from '@/services/api'
+import type { ImportSourceCreate, ImportSourceType, ImportProfile, PhpbbCredentials } from '@/types/import-source'
 
 interface AddImportSourceModalProps {
   isOpen: boolean
@@ -34,8 +35,27 @@ export function AddImportSourceModal({
   })
   const [selectedCredentialsId, setSelectedCredentialsId] = useState<string | null>(null)
 
+  // phpBB state (v1.0 - issue #241)
+  const [phpbbBaseUrl, setPhpbbBaseUrl] = useState('')
+  const [phpbbUsername, setPhpbbUsername] = useState('')
+  const [phpbbPassword, setPhpbbPassword] = useState('')
+  const [phpbbTestResult, setPhpbbTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [phpbbTesting, setPhpbbTesting] = useState(false)
+  const [phpbbCredentials, setPhpbbCredentials] = useState<PhpbbCredentials[]>([])
+  const [selectedPhpbbCredentialsId, setSelectedPhpbbCredentialsId] = useState<string | null>(null)
+  const [phpbbCreatingCredentials, setPhpbbCreatingCredentials] = useState(false)
+
   const { data: profilesData } = useImportProfiles()
   const { data: oauthStatus } = useGoogleOAuthStatus()
+
+  // Load phpBB credentials when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      phpbbApi.listCredentials().then((data) => {
+        setPhpbbCredentials(data.items)
+      }).catch(console.error)
+    }
+  }, [isOpen])
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -49,6 +69,14 @@ export function AddImportSourceModal({
         sync_interval_hours: 1,
       })
       setSelectedCredentialsId(null)
+      // Reset phpBB state
+      setPhpbbBaseUrl('')
+      setPhpbbUsername('')
+      setPhpbbPassword('')
+      setPhpbbTestResult(null)
+      setPhpbbTesting(false)
+      setSelectedPhpbbCredentialsId(null)
+      setPhpbbCreatingCredentials(false)
     }
   }, [isOpen])
 
@@ -61,7 +89,17 @@ export function AddImportSourceModal({
       // Clear type-specific fields
       google_drive_url: type === 'GOOGLE_DRIVE' ? '' : undefined,
       folder_path: type === 'BULK_FOLDER' ? '' : undefined,
+      phpbb_forum_url: type === 'PHPBB_FORUM' ? '' : undefined,
+      phpbb_credentials_id: undefined,
     }))
+    // Reset phpBB form state when switching types
+    if (type !== 'PHPBB_FORUM') {
+      setPhpbbBaseUrl('')
+      setPhpbbUsername('')
+      setPhpbbPassword('')
+      setPhpbbTestResult(null)
+      setSelectedPhpbbCredentialsId(null)
+    }
     setStep('configure')
   }
 
@@ -76,12 +114,62 @@ export function AddImportSourceModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // Include google_credentials_id if a Google account was selected
+    // Include credentials based on source type
     const submitData = {
       ...formData,
       ...(selectedCredentialsId && { google_credentials_id: selectedCredentialsId }),
+      ...(selectedPhpbbCredentialsId && { phpbb_credentials_id: selectedPhpbbCredentialsId }),
     }
     onSubmit(submitData)
+  }
+
+  // phpBB test login handler
+  const handlePhpbbTestLogin = async () => {
+    setPhpbbTesting(true)
+    setPhpbbTestResult(null)
+    try {
+      const result = await phpbbApi.testLogin({
+        base_url: phpbbBaseUrl,
+        username: phpbbUsername,
+        password: phpbbPassword,
+      })
+      setPhpbbTestResult(result)
+    } catch (err) {
+      setPhpbbTestResult({
+        success: false,
+        message: (err as Error).message || 'Test failed',
+      })
+    } finally {
+      setPhpbbTesting(false)
+    }
+  }
+
+  // phpBB create credentials handler
+  const handlePhpbbCreateCredentials = async () => {
+    setPhpbbCreatingCredentials(true)
+    try {
+      const credentials = await phpbbApi.createCredentials({
+        base_url: phpbbBaseUrl,
+        username: phpbbUsername,
+        password: phpbbPassword,
+        test_login: true,
+      })
+      // Add to list and select
+      setPhpbbCredentials((prev) => [...prev, credentials])
+      setSelectedPhpbbCredentialsId(credentials.id)
+      // Clear form fields
+      setPhpbbBaseUrl('')
+      setPhpbbUsername('')
+      setPhpbbPassword('')
+      setPhpbbTestResult({ success: true, message: 'Credentials saved successfully' })
+    } catch (err) {
+      setPhpbbTestResult({
+        success: false,
+        message: (err as Error).message || 'Failed to save credentials',
+      })
+    } finally {
+      setPhpbbCreatingCredentials(false)
+    }
   }
 
   const canProceedFromConfigure = () => {
@@ -92,6 +180,11 @@ export function AddImportSourceModal({
       // Only require credentials if OAuth is configured (for private folders)
       // API key mode (public folders) doesn't need credentials
       if (oauthStatus?.configured && !selectedCredentialsId) return false
+    }
+    if (formData.source_type === 'PHPBB_FORUM') {
+      // Need credentials and forum URL
+      if (!selectedPhpbbCredentialsId) return false
+      if (!formData.phpbb_forum_url?.trim()) return false
     }
     return true
   }
@@ -156,6 +249,14 @@ export function AddImportSourceModal({
                 onClick={() => handleTypeSelect('GOOGLE_DRIVE')}
                 disabled={!oauthStatus?.configured && !oauthStatus?.api_key_configured}
                 disabledReason={!oauthStatus?.configured && !oauthStatus?.api_key_configured ? 'Not configured' : undefined}
+              />
+              <SourceTypeOption
+                type="PHPBB_FORUM"
+                icon={<ForumIcon className="w-8 h-8" />}
+                title="phpBB Forum"
+                description="Import designs from a phpBB forum (e.g., printables.club)"
+                selected={formData.source_type === 'PHPBB_FORUM'}
+                onClick={() => handleTypeSelect('PHPBB_FORUM')}
               />
             </div>
           )}
@@ -236,6 +337,129 @@ export function AddImportSourceModal({
                       {oauthStatus?.configured
                         ? 'Paste the URL of a Google Drive folder you want to import from'
                         : 'Paste the URL of a publicly shared Google Drive folder'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* phpBB Forum specific (v1.0 - issue #241) */}
+              {formData.source_type === 'PHPBB_FORUM' && (
+                <div className="space-y-4">
+                  {/* Existing credentials selection */}
+                  {phpbbCredentials.length > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-text-primary mb-1">
+                        Select Forum Account
+                      </label>
+                      <select
+                        value={selectedPhpbbCredentialsId || ''}
+                        onChange={(e) => setSelectedPhpbbCredentialsId(e.target.value || null)}
+                        className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+                      >
+                        <option value="">Add new credentials...</option>
+                        {phpbbCredentials.map((cred) => (
+                          <option key={cred.id} value={cred.id}>
+                            {cred.base_url}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* New credentials form */}
+                  {!selectedPhpbbCredentialsId && (
+                    <div className="space-y-3 p-3 bg-bg-tertiary/50 rounded-lg border border-bg-tertiary">
+                      <p className="text-sm font-medium text-text-primary">Forum Credentials</p>
+
+                      <div>
+                        <label className="block text-xs text-text-secondary mb-1">
+                          Forum Base URL <span className="text-accent-danger">*</span>
+                        </label>
+                        <input
+                          type="url"
+                          value={phpbbBaseUrl}
+                          onChange={(e) => setPhpbbBaseUrl(e.target.value)}
+                          placeholder="https://forum.example.com"
+                          className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs text-text-secondary mb-1">
+                          Username <span className="text-accent-danger">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={phpbbUsername}
+                          onChange={(e) => setPhpbbUsername(e.target.value)}
+                          placeholder="your_username"
+                          className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs text-text-secondary mb-1">
+                          Password <span className="text-accent-danger">*</span>
+                        </label>
+                        <input
+                          type="password"
+                          value={phpbbPassword}
+                          onChange={(e) => setPhpbbPassword(e.target.value)}
+                          placeholder="your_password"
+                          className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+                        />
+                      </div>
+
+                      {/* Test result */}
+                      {phpbbTestResult && (
+                        <div className={`p-2 rounded text-sm ${
+                          phpbbTestResult.success
+                            ? 'bg-accent-success/20 text-accent-success border border-accent-success/30'
+                            : 'bg-accent-danger/20 text-accent-danger border border-accent-danger/30'
+                        }`}>
+                          {phpbbTestResult.message}
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handlePhpbbTestLogin}
+                          disabled={phpbbTesting || !phpbbBaseUrl || !phpbbUsername || !phpbbPassword}
+                          className="flex-1 px-3 py-2 bg-bg-tertiary border border-text-muted/30 text-text-primary rounded hover:bg-bg-tertiary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                        >
+                          {phpbbTesting && <SpinnerIcon className="w-4 h-4 animate-spin" />}
+                          Test Login
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handlePhpbbCreateCredentials}
+                          disabled={phpbbCreatingCredentials || !phpbbBaseUrl || !phpbbUsername || !phpbbPassword}
+                          className="flex-1 px-3 py-2 bg-accent-primary text-white rounded hover:bg-accent-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                        >
+                          {phpbbCreatingCredentials && <SpinnerIcon className="w-4 h-4 animate-spin" />}
+                          Save Credentials
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Forum URL (page to import from) */}
+                  <div>
+                    <label className="block text-sm font-medium text-text-primary mb-1">
+                      Forum Page URL <span className="text-accent-danger">*</span>
+                    </label>
+                    <input
+                      type="url"
+                      value={formData.phpbb_forum_url || ''}
+                      onChange={(e) => setFormData({ ...formData, phpbb_forum_url: e.target.value })}
+                      placeholder="https://forum.example.com/viewforum.php?f=123"
+                      className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+                      disabled={!selectedPhpbbCredentialsId}
+                    />
+                    <p className="text-xs text-text-muted mt-1">
+                      URL of the forum section to import designs from
                     </p>
                   </div>
                 </div>
@@ -494,6 +718,19 @@ function SpinnerIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <circle cx="12" cy="12" r="10" strokeWidth={2} strokeDasharray="60" strokeDashoffset="20" />
+    </svg>
+  )
+}
+
+function ForumIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"
+      />
     </svg>
   )
 }

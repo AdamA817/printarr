@@ -7,7 +7,8 @@
 // Enums - Must match backend/app/db/models/enums.py
 // =============================================================================
 
-export type ImportSourceType = 'GOOGLE_DRIVE' | 'UPLOAD' | 'BULK_FOLDER'
+// Must match backend/app/db/models/enums.py
+export type ImportSourceType = 'GOOGLE_DRIVE' | 'UPLOAD' | 'BULK_FOLDER' | 'PHPBB_FORUM'
 
 export type ImportSourceStatus = 'ACTIVE' | 'PAUSED' | 'ERROR' | 'PENDING' | 'RATE_LIMITED'
 
@@ -165,6 +166,10 @@ export interface ImportSource {
   // Google OAuth status (shared across all folders)
   google_connected?: boolean
 
+  // phpBB connection status (v1.0 - issue #241)
+  phpbb_connected?: boolean
+  phpbb_forum_url?: string | null
+
   // Type-specific fields (DEPRECATED - use folders instead)
   google_drive_url: string | null
   google_drive_folder_id: string | null
@@ -210,6 +215,10 @@ export interface ImportSourceCreate {
 
   // Bulk folder specific
   folder_path?: string | null
+
+  // phpBB specific (v1.0 - issue #241)
+  phpbb_credentials_id?: string | null
+  phpbb_forum_url?: string | null
 
   // Optional settings
   import_profile_id?: string | null
@@ -328,4 +337,39 @@ export interface GoogleOAuthCallbackResponse {
   credentials_id: string
   email: string
   message: string
+}
+
+// =============================================================================
+// phpBB Credentials Types (v1.0 - issue #241)
+// =============================================================================
+
+export interface PhpbbTestLoginRequest {
+  base_url: string
+  username: string
+  password: string
+}
+
+export interface PhpbbTestLoginResponse {
+  success: boolean
+  message: string
+}
+
+export interface PhpbbCredentialsCreate {
+  base_url: string
+  username: string
+  password: string
+  test_login?: boolean
+}
+
+export interface PhpbbCredentials {
+  id: string
+  base_url: string
+  last_login_at: string | null
+  last_login_error: string | null
+  session_expires_at: string | null
+  created_at: string
+}
+
+export interface PhpbbCredentialsList {
+  items: PhpbbCredentials[]
 }
