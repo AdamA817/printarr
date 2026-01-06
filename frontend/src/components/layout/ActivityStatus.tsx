@@ -193,20 +193,10 @@ function DetailedView({ jobs }: { jobs: QueueItem[] }) {
         <div className="border-t border-bg-tertiary my-2" />
       )}
 
-      {/* Queued jobs */}
+      {/* Queued count */}
       {queuedJobs.length > 0 && (
-        <div className="space-y-0.5">
-          <div className="text-xs text-text-muted uppercase tracking-wider py-1">
-            Queued ({queuedJobs.length})
-          </div>
-          {queuedJobs.slice(0, 5).map((job) => (
-            <ActiveJobItem key={job.id} job={job} />
-          ))}
-          {queuedJobs.length > 5 && (
-            <div className="text-xs text-text-muted py-1">
-              +{queuedJobs.length - 5} more queued
-            </div>
-          )}
+        <div className="text-xs text-text-muted py-1">
+          {queuedJobs.length} queued
         </div>
       )}
 
