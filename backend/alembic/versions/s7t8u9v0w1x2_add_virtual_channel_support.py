@@ -62,9 +62,35 @@ def upgrade() -> None:
     op.create_index("ix_channels_import_source", "channels", ["import_source_id"])
     op.create_index("ix_channels_virtual", "channels", ["is_virtual"])
 
+    # Create virtual channels for existing import sources
+    # This ensures existing import sources have their virtual channel created
+    op.execute("""
+        INSERT INTO channels (id, is_virtual, import_source_id, telegram_peer_id, title, is_enabled, created_at, updated_at, is_private, backfill_mode, backfill_value, download_mode)
+        SELECT
+            gen_random_uuid()::text,
+            true,
+            id,
+            NULL,
+            'Import: ' || name,
+            true,
+            NOW(),
+            NOW(),
+            false,
+            'LAST_N_MESSAGES',
+            100,
+            'MANUAL'
+        FROM import_sources
+        WHERE NOT EXISTS (
+            SELECT 1 FROM channels WHERE channels.import_source_id = import_sources.id
+        )
+    """)
+
 
 def downgrade() -> None:
     """Remove virtual channel support."""
+    # Delete virtual channels first (they have NULL telegram_peer_id)
+    op.execute("DELETE FROM channels WHERE is_virtual = true")
+
     # Drop indexes
     op.drop_index("ix_channels_virtual")
     op.drop_index("ix_channels_import_source")
