@@ -1586,9 +1586,9 @@ class SyncImportSourceWorker(BaseWorker):
 
         for record in records:
             try:
-                # Only Google Drive folders support per-design downloads for now
-                if source.source_type != ImportSourceType.GOOGLE_DRIVE:
-                    continue  # TODO: Implement folder-based bulk import
+                # Only Google Drive and phpBB folders support per-design downloads
+                if source.source_type not in (ImportSourceType.GOOGLE_DRIVE, ImportSourceType.PHPBB_FORUM):
+                    continue  # Bulk folder uses different import path
 
                 # Check for conflicts before queuing
                 if conflict_resolution == ConflictResolution.SKIP:
