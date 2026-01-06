@@ -107,6 +107,10 @@
           Mode="" Description="Maximum Google API requests per minute (10-1000)"
           Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
 
+  <Config Name="Google Max Concurrent Downloads" Target="PRINTARR_GOOGLE_MAX_CONCURRENT_DOWNLOADS" Default="5"
+          Mode="" Description="Maximum concurrent Google Drive file downloads (1-10). Higher = faster but more API usage."
+          Type="Variable" Display="advanced" Required="false" Mask="false">5</Config>
+
   <Config Name="Encryption Key" Target="PRINTARR_ENCRYPTION_KEY" Default=""
           Mode="" Description="32-byte hex key for encrypting OAuth tokens. Generate with: openssl rand -hex 32"
           Type="Variable" Display="advanced" Required="false" Mask="true"/>

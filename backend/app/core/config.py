@@ -178,6 +178,12 @@ class Settings(BaseSettings):
         le=1000,
         description="Maximum Google API requests per minute (10-1000)",
     )
+    google_max_concurrent_downloads: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+        description="Maximum concurrent Google Drive file downloads (1-10)",
+    )
 
     # Encryption key for storing OAuth tokens (auto-generated if not set)
     encryption_key: str | None = Field(

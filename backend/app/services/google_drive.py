@@ -1575,44 +1575,81 @@ class GoogleDriveService:
         # Build folder lookup for path reconstruction
         folders: dict[str, FileInfo] = {f.id: f for f in all_files if f.is_folder}
 
-        # Download each file
+        # Get concurrency limit from settings
+        from app.core.config import settings
+        max_concurrent = settings.google_max_concurrent_downloads
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        # Track progress atomically
+        progress_lock = asyncio.Lock()
+        completed_count = 0
         downloaded: list[tuple[Path, int]] = []
-        for i, file_info in enumerate(files_to_download):
+        total_files = len(files_to_download)
+
+        async def download_single_file(file_info: FileInfo) -> tuple[Path, int] | None:
+            """Download a single file with semaphore-limited concurrency."""
+            nonlocal completed_count
+
             # Build relative path from parent chain
             relative_path = self._build_relative_path(file_info, folders, folder_id)
             dest_path = dest_dir / relative_path
 
-            try:
-                await self.download_file(file_info.id, dest_path, credentials)
-                downloaded.append((dest_path, file_info.size))
+            async with semaphore:
+                try:
+                    await self.download_file(file_info.id, dest_path, credentials)
 
-                logger.debug(
-                    "gdrive_file_downloaded",
-                    file_id=file_info.id,
-                    name=file_info.name,
-                    relative_path=relative_path,
-                )
+                    logger.debug(
+                        "gdrive_file_downloaded",
+                        file_id=file_info.id,
+                        name=file_info.name,
+                        relative_path=relative_path,
+                    )
 
-            except GoogleDriveError as e:
-                logger.error(
-                    "gdrive_file_download_failed",
-                    file_id=file_info.id,
-                    name=file_info.name,
-                    error=str(e),
-                )
-                # Continue with other files
+                    result = (dest_path, file_info.size)
 
-            if progress_callback:
-                result = progress_callback(i + 1, len(files_to_download), file_info.name, file_info.size)
-                # Await if callback is async
-                if inspect.isawaitable(result):
-                    await result
+                except GoogleDriveError as e:
+                    logger.error(
+                        "gdrive_file_download_failed",
+                        file_id=file_info.id,
+                        name=file_info.name,
+                        error=str(e),
+                    )
+                    result = None
+
+                # Update progress after download completes (success or failure)
+                async with progress_lock:
+                    completed_count += 1
+                    current_count = completed_count
+
+                if progress_callback:
+                    cb_result = progress_callback(
+                        current_count, total_files, file_info.name, file_info.size
+                    )
+                    # Await if callback is async
+                    if inspect.isawaitable(cb_result):
+                        await cb_result
+
+                return result
+
+        # Download all files concurrently (up to semaphore limit)
+        results = await asyncio.gather(
+            *[download_single_file(f) for f in files_to_download],
+            return_exceptions=True,
+        )
+
+        # Collect successful downloads
+        for result in results:
+            if isinstance(result, tuple):
+                downloaded.append(result)
+            elif isinstance(result, Exception):
+                logger.error("gdrive_download_exception", error=str(result))
 
         logger.info(
             "gdrive_download_complete",
             folder_id=folder_id,
             files_downloaded=len(downloaded),
             total_size=sum(size for _, size in downloaded),
+            max_concurrent=max_concurrent,
         )
 
         return downloaded
