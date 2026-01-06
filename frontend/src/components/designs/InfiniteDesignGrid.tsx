@@ -66,13 +66,16 @@ export function InfiniteDesignGrid({
   const loadMoreRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    const scrollElement = scrollRef.current
+    if (!scrollElement) return
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
           fetchNextPage()
         }
       },
-      { threshold: 0.1, rootMargin: '100px' }
+      { root: scrollElement, threshold: 0.1, rootMargin: '100px' }
     )
 
     const el = loadMoreRef.current
@@ -85,7 +88,7 @@ export function InfiniteDesignGrid({
         observer.unobserve(el)
       }
     }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, scrollRef])
 
   // Calculate columns and row height
   const columns = view === 'grid' ? getColumnCount(containerWidth) : 1
