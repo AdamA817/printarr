@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
@@ -866,9 +866,22 @@ class SyncImportSourceWorker(BaseWorker):
                 total_imported += result["imported"]
                 all_errors.extend(result.get("errors", []))
 
-                # Update folder stats
-                folder.items_detected = (folder.items_detected or 0) + result["detected"]
-                folder.items_imported = (folder.items_imported or 0) + result["imported"]
+                # Update folder stats - compute actual counts from database
+                # to avoid inflated counts from multiple syncs/retries
+                detected_count = await db.execute(
+                    select(func.count()).where(
+                        ImportRecord.import_source_folder_id == folder.id
+                    )
+                )
+                imported_count = await db.execute(
+                    select(func.count()).where(
+                        ImportRecord.import_source_folder_id == folder.id,
+                        ImportRecord.status == ImportRecordStatus.IMPORTED,
+                        ImportRecord.design_id.isnot(None),
+                    )
+                )
+                folder.items_detected = detected_count.scalar() or 0
+                folder.items_imported = imported_count.scalar() or 0
                 folder.last_synced_at = datetime.now(timezone.utc)
                 folder.last_sync_error = None
 
@@ -1230,8 +1243,8 @@ class SyncImportSourceWorker(BaseWorker):
                 if record.detected_title:
                     queued_titles.add(record.detected_title)
 
-                # Update folder stats
-                folder.items_imported = (folder.items_imported or 0) + 1
+                # Note: items_imported is updated when the download job completes,
+                # not when queued (to avoid inflated counts from retries/requeues)
 
             except Exception as e:
                 error_msg = f"Failed to queue {record.source_path}: {e}"
