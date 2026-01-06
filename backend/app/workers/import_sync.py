@@ -885,6 +885,15 @@ class SyncImportSourceWorker(BaseWorker):
                     error=str(e),
                 )
 
+        # Also process orphaned records (records without folder assignment)
+        # These are records from the root source folder before sub-folders were added
+        if auto_import:
+            orphaned_queued, orphaned_errors = await self._queue_orphaned_pending_downloads(
+                db, source, conflict_resolution
+            )
+            total_imported += orphaned_queued
+            all_errors.extend(orphaned_errors)
+
         # Update aggregate source stats
         source.items_imported = sum(f.items_imported or 0 for f in source.folders)
 
@@ -1240,6 +1249,132 @@ class SyncImportSourceWorker(BaseWorker):
         logger.info(
             "folder_auto_import_queued",
             folder_id=folder.id,
+            queued=queued,
+            errors=len(errors),
+        )
+
+        return queued, errors
+
+    async def _queue_orphaned_pending_downloads(
+        self,
+        db,
+        source: ImportSource,
+        conflict_resolution: ConflictResolution,
+    ) -> tuple[int, list[str]]:
+        """Queue downloads for orphaned PENDING records without folder assignment.
+
+        These are records from the root source folder before sub-folders were added,
+        or records that were reset due to bugs but lost their folder assignment.
+
+        Args:
+            db: Database session.
+            source: The import source.
+            conflict_resolution: How to handle conflicts.
+
+        Returns:
+            Tuple of (queued_count, errors).
+        """
+        # Get PENDING records without folder assignment for this source
+        result = await db.execute(
+            select(ImportRecord).where(
+                ImportRecord.import_source_id == source.id,
+                ImportRecord.import_source_folder_id.is_(None),
+                ImportRecord.status == ImportRecordStatus.PENDING,
+            )
+        )
+        records = list(result.scalars().all())
+
+        if not records:
+            return 0, []
+
+        logger.info(
+            "orphaned_auto_import_queueing",
+            source_id=source.id,
+            pending_count=len(records),
+        )
+
+        queued = 0
+        errors: list[str] = []
+        queue = JobQueueService(db)
+
+        # Track titles already queued in this batch for intra-batch deduplication
+        queued_titles: set[str] = set()
+
+        for record in records:
+            try:
+                # Only Google Drive sources support per-design downloads
+                if source.source_type != ImportSourceType.GOOGLE_DRIVE:
+                    continue
+
+                # Check for conflicts before queuing
+                if conflict_resolution == ConflictResolution.SKIP:
+                    # Intra-batch deduplication: skip if same title already queued
+                    if record.detected_title and record.detected_title in queued_titles:
+                        record.status = ImportRecordStatus.SKIPPED
+                        logger.info(
+                            "orphaned_import_skipped_intra_batch_duplicate",
+                            source_id=source.id,
+                            record_id=record.id,
+                            detected_title=record.detected_title,
+                        )
+                        continue
+
+                    # Cross-source deduplication: check against existing designs
+                    existing = await self._find_existing_design(db, record, source)
+                    if existing:
+                        record.status = ImportRecordStatus.SKIPPED
+                        record.design_id = existing.id
+                        logger.info(
+                            "orphaned_import_skipped_duplicate",
+                            source_id=source.id,
+                            record_id=record.id,
+                            existing_design_id=existing.id,
+                        )
+                        continue
+
+                # Check for existing queued/running job for this record
+                existing_job = await queue.get_pending_job_for_import_record(record.id)
+                if existing_job:
+                    logger.debug(
+                        "orphaned_import_job_already_queued",
+                        source_id=source.id,
+                        record_id=record.id,
+                        job_id=existing_job.id,
+                    )
+                    continue
+
+                # Queue DOWNLOAD_IMPORT_RECORD job with display name
+                display_name = f"Download: {record.detected_title or record.source_path.split('/')[-1]} from {source.name}"
+                await queue.enqueue(
+                    JobType.DOWNLOAD_IMPORT_RECORD,
+                    payload={
+                        "import_record_id": record.id,
+                    },
+                    priority=5,
+                    display_name=display_name,
+                )
+                queued += 1
+
+                # Track title for intra-batch deduplication
+                if record.detected_title:
+                    queued_titles.add(record.detected_title)
+
+            except Exception as e:
+                error_msg = f"Failed to queue orphaned {record.source_path}: {e}"
+                errors.append(error_msg)
+                logger.error(
+                    "orphaned_queue_failed",
+                    source_id=source.id,
+                    record_id=record.id,
+                    error=str(e),
+                )
+
+        # Commit all queued jobs
+        await db.commit()
+
+        logger.info(
+            "orphaned_auto_import_queued",
+            source_id=source.id,
             queued=queued,
             errors=len(errors),
         )
