@@ -54,6 +54,7 @@ export function AddFolderModal({
   const canSubmit = () => {
     if (sourceType === 'BULK_FOLDER' && !formData.folder_path?.trim()) return false
     if (sourceType === 'GOOGLE_DRIVE' && !formData.google_drive_url?.trim()) return false
+    if (sourceType === 'PHPBB_FORUM' && !formData.phpbb_forum_url?.trim()) return false
     return true
   }
 
@@ -118,6 +119,25 @@ export function AddFolderModal({
                 />
                 <p className="text-xs text-text-muted mt-1">
                   URL of the Google Drive folder to import from
+                </p>
+              </div>
+            )}
+
+            {sourceType === 'PHPBB_FORUM' && (
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-1">
+                  Forum Page URL <span className="text-accent-danger">*</span>
+                </label>
+                <input
+                  type="url"
+                  value={formData.phpbb_forum_url || ''}
+                  onChange={(e) => setFormData({ ...formData, phpbb_forum_url: e.target.value })}
+                  placeholder="https://forum.example.com/viewforum.php?f=123"
+                  className="w-full px-3 py-2 bg-bg-tertiary border border-bg-tertiary rounded-lg text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary/50"
+                  autoFocus
+                />
+                <p className="text-xs text-text-muted mt-1">
+                  URL of the phpBB forum page to import from (viewforum.php?f=X)
                 </p>
               </div>
             )}

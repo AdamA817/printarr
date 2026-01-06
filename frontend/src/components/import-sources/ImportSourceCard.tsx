@@ -79,7 +79,7 @@ export function ImportSourceCard({
   const isSyncing = triggerSync.isPending
   const hasFolders = source.folders && source.folders.length > 0
   // Allow expanding for any source that can have multiple folders (even if currently empty)
-  const canHaveMultipleFolders = source.source_type === 'GOOGLE_DRIVE' || source.source_type === 'BULK_FOLDER'
+  const canHaveMultipleFolders = source.source_type === 'GOOGLE_DRIVE' || source.source_type === 'BULK_FOLDER' || source.source_type === 'PHPBB_FORUM'
 
   const getSourceIcon = () => {
     switch (source.source_type) {
@@ -167,7 +167,7 @@ export function ImportSourceCard({
     // Check first folder
     if (hasFolders) {
       const folder = source.folders[0]
-      return folder.google_drive_url || folder.folder_path || '-'
+      return folder.google_drive_url || folder.folder_path || folder.phpbb_forum_url || '-'
     }
     return '-'
   }
@@ -359,7 +359,7 @@ interface FolderRowProps {
 
 function FolderRow({ folder, sourceType, onSync, onToggleEnabled, isSyncing }: FolderRowProps) {
   const displayName = folder.name || getFolderDisplayName(folder)
-  const locationText = folder.google_drive_url || folder.folder_path || '-'
+  const locationText = folder.google_drive_url || folder.folder_path || folder.phpbb_forum_url || '-'
 
   return (
     <div className={`px-4 py-3 flex items-center gap-4 ${!folder.enabled ? 'opacity-50' : ''}`}>
@@ -445,6 +445,11 @@ function getFolderDisplayName(folder: ImportSourceFolderSummary): string {
     // Get last part of path
     const parts = folder.folder_path.split(/[/\\]/)
     return parts[parts.length - 1] || folder.folder_path
+  }
+  if (folder.phpbb_forum_url) {
+    // Extract forum ID from URL for display
+    const match = folder.phpbb_forum_url.match(/f=(\d+)/)
+    return match ? `Forum ${match[1]}` : 'phpBB Forum'
   }
   return 'Unnamed folder'
 }

@@ -114,6 +114,7 @@ export interface ImportSourceFolderSummary {
   google_drive_url: string | null
   google_folder_id: string | null
   folder_path: string | null
+  phpbb_forum_url: string | null // v1.0 - issue #242
   enabled: boolean
   items_detected: number
   items_imported: number
@@ -139,6 +140,7 @@ export interface ImportSourceFolderCreate {
   name?: string | null
   google_drive_url?: string | null
   folder_path?: string | null
+  phpbb_forum_url?: string | null // v1.0 - issue #242
   import_profile_id?: string | null
   default_designer?: string | null
   default_tags?: string[] | null
