@@ -1,5 +1,6 @@
 services:
   printarr:
+    image: printarr:latest
     build:
       context: .
       dockerfile: Dockerfile
