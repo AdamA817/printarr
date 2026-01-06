@@ -113,6 +113,15 @@ class ForumInfo(BaseModel):
     post_count: int = 0
 
 
+class ImageInfo(BaseModel):
+    """Information about an image in a forum post."""
+
+    url: str
+    alt_text: str | None = None
+    is_inline: bool = False  # True if embedded in post content
+    is_attachment: bool = False  # True if it's an attached image
+
+
 class DetectedPhpbbDesign(BaseModel):
     """A design detected in a phpBB forum topic."""
 
@@ -122,6 +131,7 @@ class DetectedPhpbbDesign(BaseModel):
     relative_path: str  # forum_id/topic_id
     title: str  # Cleaned topic title
     attachments: list[AttachmentInfo] = Field(default_factory=list)
+    images: list[ImageInfo] = Field(default_factory=list)  # Preview images from post
     total_size: int = 0
     author: str | None = None
     last_post_date: datetime | None = None
@@ -753,6 +763,160 @@ class PhpbbService:
 
         return attachments
 
+    async def get_topic_images(
+        self,
+        base_url: str,
+        topic_url: str,
+        cookies: dict[str, str],
+    ) -> list[ImageInfo]:
+        """Get all images from a topic's posts.
+
+        Extracts images that can be used as design previews.
+
+        Args:
+            base_url: Base URL of the phpBB forum.
+            topic_url: URL of the topic (viewtopic.php?f=X&t=Y)
+            cookies: Session cookies.
+
+        Returns:
+            List of ImageInfo for images in the topic.
+        """
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError as e:
+            raise PhpbbError("BeautifulSoup not installed") from e
+
+        base_url = base_url.rstrip("/")
+
+        # Build full URL
+        if not topic_url.startswith("http"):
+            full_url = urljoin(base_url + "/", topic_url)
+        else:
+            full_url = topic_url
+
+        images: list[ImageInfo] = []
+        seen_urls: set[str] = set()
+
+        # Image extensions to look for
+        image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+        async with httpx.AsyncClient(
+            follow_redirects=True, timeout=30.0, cookies=cookies
+        ) as client:
+            # Only look at first page of topic (where preview images likely are)
+            await self._rate_limit()
+
+            response = await client.get(full_url)
+
+            if response.status_code != 200:
+                raise PhpbbError(f"Failed to load topic: {response.status_code}")
+
+            soup = BeautifulSoup(response.text, "lxml")
+
+            # Find post content divs
+            post_contents = soup.find_all("div", class_="content")
+
+            for content in post_contents:
+                # Find inline images in post content
+                img_tags = content.find_all("img")
+
+                for img in img_tags:
+                    src = img.get("src", "")
+                    if not src:
+                        continue
+
+                    # Build absolute URL
+                    if not src.startswith("http"):
+                        img_url = urljoin(base_url + "/", src)
+                    else:
+                        img_url = src
+
+                    # Skip small icons, smilies, avatars
+                    if any(x in img_url.lower() for x in ["smilies", "smiley", "avatar", "icon", "rank"]):
+                        continue
+
+                    # Skip if already seen
+                    if img_url in seen_urls:
+                        continue
+                    seen_urls.add(img_url)
+
+                    # Check if it's a real image (by extension or known patterns)
+                    parsed_url = urlparse(img_url)
+                    path_lower = parsed_url.path.lower()
+
+                    is_image = any(path_lower.endswith(ext) for ext in image_extensions)
+
+                    # phpBB attached images often use download/file.php
+                    is_attachment = "download/file.php" in img_url
+
+                    if not is_image and not is_attachment:
+                        # Check for image mode parameter (phpBB attachment viewer)
+                        if "mode=view" not in img_url:
+                            continue
+
+                    alt_text = img.get("alt", "") or img.get("title", "")
+
+                    images.append(ImageInfo(
+                        url=img_url,
+                        alt_text=alt_text if alt_text else None,
+                        is_inline=True,
+                        is_attachment=is_attachment,
+                    ))
+
+            # Also look for linked images (thumbnails that link to full size)
+            for link in soup.find_all("a", href=re.compile(r"download/file\.php.*mode=view")):
+                href = link.get("href", "")
+                if not href:
+                    continue
+
+                img_url = urljoin(base_url + "/", href)
+
+                if img_url in seen_urls:
+                    continue
+                seen_urls.add(img_url)
+
+                images.append(ImageInfo(
+                    url=img_url,
+                    alt_text=None,
+                    is_inline=False,
+                    is_attachment=True,
+                ))
+
+            # Look for attached images in attachment boxes
+            attachment_divs = soup.find_all("div", class_=re.compile(r"attach|thumbnail"))
+            for div in attachment_divs:
+                # Find image links
+                img_link = div.find("a", href=re.compile(r"download/file\.php"))
+                if img_link:
+                    href = img_link.get("href", "")
+                    img_url = urljoin(base_url + "/", href)
+
+                    # Check if it's an image attachment (has mode=view or filename ends in image ext)
+                    parsed = urlparse(href)
+                    params = parse_qs(parsed.query)
+
+                    # Check filename if available
+                    filename_span = div.find("span", class_="filename")
+                    if filename_span:
+                        filename = filename_span.get_text(strip=True).lower()
+                        if any(filename.endswith(ext) for ext in image_extensions):
+                            if img_url not in seen_urls:
+                                seen_urls.add(img_url)
+                                images.append(ImageInfo(
+                                    url=img_url,
+                                    alt_text=filename_span.get_text(strip=True),
+                                    is_inline=False,
+                                    is_attachment=True,
+                                ))
+
+        logger.debug(
+            "phpbb_images_found",
+            topic_url=topic_url,
+            image_count=len(images),
+        )
+
+        return images
+
     def _parse_size(self, size_str: str) -> int:
         """Parse a human-readable size string to bytes."""
         size_str = size_str.strip().upper()
@@ -858,6 +1022,7 @@ class PhpbbService:
         forum_url: str,
         cookies: dict[str, str],
         max_topics: int | None = None,
+        include_images: bool = True,
     ) -> list[DetectedPhpbbDesign]:
         """Scan a forum for designs (topics with ZIP attachments).
 
@@ -866,6 +1031,7 @@ class PhpbbService:
             forum_url: URL of the forum to scan.
             cookies: Session cookies.
             max_topics: Optional limit on topics to scan.
+            include_images: Whether to also extract preview images from topics.
 
         Returns:
             List of detected designs.
@@ -900,6 +1066,18 @@ class PhpbbService:
             if not archive_attachments:
                 continue
 
+            # Get preview images if requested
+            images: list[ImageInfo] = []
+            if include_images:
+                try:
+                    images = await self.get_topic_images(base_url, topic_url, cookies)
+                except PhpbbError as e:
+                    logger.warning(
+                        "phpbb_topic_images_failed",
+                        topic_id=topic.topic_id,
+                        error=str(e),
+                    )
+
             # Create design from topic
             total_size = sum(a.size_bytes for a in archive_attachments)
 
@@ -913,6 +1091,7 @@ class PhpbbService:
                 relative_path=f"{topic.forum_id}/{topic.topic_id}",
                 title=title,
                 attachments=archive_attachments,
+                images=images,
                 total_size=total_size,
                 author=topic.author,
                 last_post_date=topic.last_post_date,

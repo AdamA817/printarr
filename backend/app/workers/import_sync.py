@@ -471,6 +471,9 @@ class SyncImportSourceWorker(BaseWorker):
                     for a in design.attachments
                 ]
 
+                # Store image URLs for preview extraction
+                images_data = [img.url for img in design.images]
+
                 record = ImportRecord(
                     import_source_id=source.id,
                     source_path=design.relative_path,
@@ -479,14 +482,17 @@ class SyncImportSourceWorker(BaseWorker):
                     detected_title=design.title,
                     detected_designer=design.author or source.default_designer,
                     model_file_count=len(design.attachments),  # Each attachment is a ZIP
-                    preview_file_count=0,
+                    preview_file_count=len(design.images),
                     detected_at=datetime.now(timezone.utc),
                     # Store extra data in payload_json for download worker
                     payload_json=json.dumps({
                         "topic_id": design.topic_id,
                         "forum_id": design.forum_id,
                         "topic_title": design.topic_title,
+                        "title": design.title,
+                        "author": design.author,
                         "attachments": attachments_data,
+                        "images": images_data,
                     }),
                 )
                 db.add(record)
@@ -1465,6 +1471,9 @@ class SyncImportSourceWorker(BaseWorker):
                     for a in design.attachments
                 ]
 
+                # Store image URLs for preview extraction
+                images_data = [img.url for img in design.images]
+
                 record = ImportRecord(
                     import_source_folder_id=folder.id,
                     import_source_id=source.id,  # Keep for backward compatibility
@@ -1474,13 +1483,16 @@ class SyncImportSourceWorker(BaseWorker):
                     detected_title=design.title,
                     detected_designer=design.author or effective_designer,
                     model_file_count=len(design.attachments),  # Each attachment is a ZIP
-                    preview_file_count=0,
+                    preview_file_count=len(design.images),
                     detected_at=datetime.now(timezone.utc),
                     payload_json=json_module.dumps({
                         "topic_id": design.topic_id,
                         "forum_id": design.forum_id,
                         "topic_title": design.topic_title,
+                        "title": design.title,
+                        "author": design.author,
                         "attachments": attachments_data,
+                        "images": images_data,
                     }),
                 )
                 db.add(record)
