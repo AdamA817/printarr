@@ -44,7 +44,7 @@ export function useSSE(options: UseSSEOptions = {}) {
 
   const eventSourceRef = useRef<EventSource | null>(null)
   const retryDelayRef = useRef(INITIAL_RETRY_DELAY)
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isUnmountedRef = useRef(false)
 
   // Handle job progress event

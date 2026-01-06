@@ -182,7 +182,7 @@ function CheckIcon({ className }: { className?: string }) {
   )
 }
 
-function SettingsSkeleton({ title }: { title: string }) {
+function SettingsSkeleton({ title: _title }: { title: string }) {
   return (
     <div className="bg-bg-secondary rounded-lg p-6 animate-pulse">
       <div className="h-6 bg-bg-tertiary rounded w-40 mb-4" />
