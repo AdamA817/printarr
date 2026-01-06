@@ -22,17 +22,20 @@ if TYPE_CHECKING:
     from app.db.models.google_credentials import GoogleCredentials
     from app.db.models.import_profile import ImportProfile
     from app.db.models.import_source_folder import ImportSourceFolder
+    from app.db.models.phpbb_credentials import PhpbbCredentials
 
 
 class ImportSource(Base):
     """Parent container for import folders.
 
-    Supports three source types:
+    Supports four source types:
     - GOOGLE_DRIVE: Patreon/creator shared folders (public or OAuth authenticated)
     - UPLOAD: Direct file/archive upload via web UI (system singleton)
     - BULK_FOLDER: Local folder monitoring for existing collections
+    - PHPBB_FORUM: phpBB forum scraping (e.g., Hex3D Patreon)
 
     See DEC-033 for original design, DEC-038 for multi-folder support.
+    See issue #239 for phpBB forum integration.
     """
 
     __tablename__ = "import_sources"
@@ -56,6 +59,11 @@ class ImportSource(Base):
         String(36), ForeignKey("google_credentials.id"), nullable=True
     )
 
+    # phpBB forum credentials (for PHPBB_FORUM sources)
+    phpbb_credentials_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("phpbb_credentials.id"), nullable=True
+    )
+
     # ======== DEPRECATED: Single-folder fields (for backward compatibility) ========
     # These will be migrated to ImportSourceFolder and eventually removed
     google_drive_url: Mapped[str | None] = mapped_column(
@@ -68,6 +76,11 @@ class ImportSource(Base):
         String(1024), nullable=True, doc="DEPRECATED: Use folders instead"
     )
     # ======== END DEPRECATED ========
+
+    # phpBB forum settings (v1.0 - issue #239)
+    phpbb_forum_url: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True, doc="URL of phpBB forum to import (viewforum.php?f=X)"
+    )
 
     # Shared settings (inherited by folders unless overridden)
     import_profile_id: Mapped[str | None] = mapped_column(
@@ -106,6 +119,9 @@ class ImportSource(Base):
     # Relationships
     google_credentials: Mapped[GoogleCredentials | None] = relationship(
         "GoogleCredentials", back_populates="import_sources"
+    )
+    phpbb_credentials: Mapped[PhpbbCredentials | None] = relationship(
+        "PhpbbCredentials", back_populates="import_sources"
     )
     import_profile: Mapped[ImportProfile | None] = relationship(
         "ImportProfile", back_populates="import_sources"

@@ -46,6 +46,7 @@ from app.services.duplicate import DuplicateService
 from app.services.google_drive import GoogleDriveError, GoogleDriveService, GoogleRateLimitError
 from app.services.import_profile import ImportProfileService
 from app.services.job_queue import JobQueueService
+from app.services.phpbb import PhpbbAuthError, PhpbbError, PhpbbService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
 # Auto-merge threshold for cross-source duplicate detection (DEC-041 / #216)
@@ -397,6 +398,250 @@ class SyncImportSourceWorker(BaseWorker):
             "imported": imported,
             "errors": errors,
         }
+
+    async def _sync_phpbb_forum(
+        self,
+        db,
+        source: ImportSource,
+        auto_import: bool,
+        conflict_resolution: ConflictResolution,
+    ) -> dict[str, Any]:
+        """Sync a phpBB forum import source (issue #239).
+
+        Args:
+            db: Database session.
+            source: The import source.
+            auto_import: Whether to auto-import detected designs.
+            conflict_resolution: How to handle conflicts.
+
+        Returns:
+            Dict with detected and imported counts.
+        """
+        if not source.phpbb_forum_url:
+            raise NonRetryableError("phpBB Forum source missing forum URL")
+
+        if not source.phpbb_credentials_id:
+            raise NonRetryableError("phpBB Forum source missing credentials")
+
+        # Update progress: scanning
+        await self.update_progress(0, 100)
+
+        # Get phpBB credentials
+        phpbb_service = PhpbbService(db)
+        credentials = await phpbb_service.get_credentials(source.phpbb_credentials_id)
+        if not credentials:
+            raise NonRetryableError(f"phpBB credentials {source.phpbb_credentials_id} not found")
+
+        try:
+            # Get session cookies (login if needed)
+            cookies = await phpbb_service.get_session_cookies(credentials)
+
+            # Scan forum for designs (topics with ZIP attachments)
+            detected_designs = await phpbb_service.scan_forum_for_designs(
+                credentials.base_url,
+                source.phpbb_forum_url,
+                cookies,
+            )
+            detected = len(detected_designs)
+
+            # Update progress: creating records
+            await self.update_progress(30, 100)
+
+            # Create import records for detected designs
+            import json
+            for design in detected_designs:
+                # Check if record already exists
+                existing = await db.execute(
+                    select(ImportRecord).where(
+                        ImportRecord.import_source_id == source.id,
+                        ImportRecord.source_path == design.relative_path,
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    continue  # Skip existing records
+
+                # Store attachment info in payload
+                attachments_data = [
+                    {
+                        "file_id": a.file_id,
+                        "filename": a.filename,
+                        "size_bytes": a.size_bytes,
+                        "download_url": a.download_url,
+                    }
+                    for a in design.attachments
+                ]
+
+                record = ImportRecord(
+                    import_source_id=source.id,
+                    source_path=design.relative_path,
+                    file_size=design.total_size,
+                    status=ImportRecordStatus.PENDING,
+                    detected_title=design.title,
+                    detected_designer=design.author or source.default_designer,
+                    model_file_count=len(design.attachments),  # Each attachment is a ZIP
+                    preview_file_count=0,
+                    detected_at=datetime.now(timezone.utc),
+                    # Store extra data in payload_json for download worker
+                    payload_json=json.dumps({
+                        "topic_id": design.topic_id,
+                        "forum_id": design.forum_id,
+                        "topic_title": design.topic_title,
+                        "attachments": attachments_data,
+                    }),
+                )
+                db.add(record)
+
+            # Commit records to release locks before potentially long import operations
+            await db.commit()
+
+            imported = 0
+            errors: list[str] = []
+
+            if auto_import:
+                # Update progress: importing
+                await self.update_progress(50, 100)
+
+                # Queue download jobs for pending records
+                imported, errors = await self._queue_phpbb_pending_downloads(
+                    db, source, conflict_resolution
+                )
+
+            # Update progress: complete (force to bypass throttle)
+            await self.update_progress(100, 100, force=True)
+
+            return {
+                "detected": detected,
+                "imported": imported,
+                "errors": errors,
+            }
+
+        except PhpbbAuthError as e:
+            source.status = ImportSourceStatus.ERROR
+            source.last_sync_error = f"phpBB authentication failed: {e}"
+            await db.commit()
+            raise NonRetryableError(str(e))
+
+        except PhpbbError as e:
+            source.status = ImportSourceStatus.ERROR
+            source.last_sync_error = str(e)
+            await db.commit()
+            raise RetryableError(str(e))
+
+    async def _queue_phpbb_pending_downloads(
+        self,
+        db,
+        source: ImportSource,
+        conflict_resolution: ConflictResolution,
+    ) -> tuple[int, list[str]]:
+        """Queue download jobs for pending phpBB designs.
+
+        Args:
+            db: Database session.
+            source: The import source.
+            conflict_resolution: How to handle conflicts.
+
+        Returns:
+            Tuple of (queued_count, errors).
+        """
+        # Get pending records
+        result = await db.execute(
+            select(ImportRecord).where(
+                ImportRecord.import_source_id == source.id,
+                ImportRecord.status == ImportRecordStatus.PENDING,
+            )
+        )
+        records = list(result.scalars().all())
+
+        logger.info(
+            "phpbb_auto_import_queueing",
+            source_id=source.id,
+            pending_count=len(records),
+        )
+
+        queued = 0
+        errors: list[str] = []
+        queue = JobQueueService(db)
+
+        # Track titles already queued in this batch for intra-batch deduplication
+        queued_titles: set[str] = set()
+
+        for i, record in enumerate(records):
+            try:
+                # Check for conflicts before queuing
+                if conflict_resolution == ConflictResolution.SKIP:
+                    # Intra-batch deduplication: skip if same title already queued
+                    if record.detected_title and record.detected_title in queued_titles:
+                        record.status = ImportRecordStatus.SKIPPED
+                        logger.info(
+                            "phpbb_import_skipped_intra_batch_duplicate",
+                            record_id=record.id,
+                            detected_title=record.detected_title,
+                        )
+                        continue
+
+                    # Cross-source deduplication: check against existing designs
+                    existing = await self._find_existing_design(db, record, source)
+                    if existing:
+                        record.status = ImportRecordStatus.SKIPPED
+                        record.design_id = existing.id
+                        logger.info(
+                            "phpbb_import_skipped_duplicate",
+                            record_id=record.id,
+                            existing_design_id=existing.id,
+                        )
+                        continue
+
+                # Check for existing queued/running job for this record
+                existing_job = await queue.get_pending_job_for_import_record(record.id)
+                if existing_job:
+                    logger.debug(
+                        "phpbb_import_job_already_queued",
+                        record_id=record.id,
+                        job_id=existing_job.id,
+                    )
+                    continue
+
+                # Queue DOWNLOAD_IMPORT_RECORD job with display name
+                display_name = f"Download: {record.detected_title or record.source_path.split('/')[-1]} from {source.name}"
+                await queue.enqueue(
+                    JobType.DOWNLOAD_IMPORT_RECORD,
+                    payload={
+                        "import_record_id": record.id,
+                    },
+                    priority=5,
+                    display_name=display_name,
+                )
+                queued += 1
+
+                # Track title for intra-batch deduplication
+                if record.detected_title:
+                    queued_titles.add(record.detected_title)
+
+                # Update progress
+                progress = 50 + int((i + 1) / len(records) * 45)  # 50-95% for queueing
+                await self.update_progress(progress, 100)
+
+            except Exception as e:
+                error_msg = f"Failed to queue {record.source_path}: {e}"
+                errors.append(error_msg)
+                logger.error(
+                    "phpbb_queue_failed",
+                    record_id=record.id,
+                    source_path=record.source_path,
+                    error=str(e),
+                )
+
+        # Commit all queued jobs
+        await db.commit()
+
+        logger.info(
+            "phpbb_auto_import_queued",
+            source_id=source.id,
+            queued=queued,
+            errors=len(errors),
+        )
+
+        return queued, errors
 
     async def _import_google_drive_pending(
         self,
@@ -946,6 +1191,10 @@ class SyncImportSourceWorker(BaseWorker):
             )
         elif source.source_type == ImportSourceType.GOOGLE_DRIVE:
             return await self._sync_google_drive(
+                db, source, auto_import, conflict_resolution
+            )
+        elif source.source_type == ImportSourceType.PHPBB_FORUM:
+            return await self._sync_phpbb_forum(
                 db, source, auto_import, conflict_resolution
             )
         else:

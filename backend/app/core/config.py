@@ -221,6 +221,26 @@ class Settings(BaseSettings):
         description="Priority for auto-queued render jobs (-10 to 10, negative = background)",
     )
 
+    # phpBB Forum settings (v1.0 - issue #239)
+    phpbb_request_delay: float = Field(
+        default=1.0,
+        ge=0.5,
+        le=10.0,
+        description="Delay in seconds between phpBB requests to avoid rate limiting (0.5-10)",
+    )
+    phpbb_max_concurrent_downloads: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Maximum concurrent downloads from phpBB forums (1-10)",
+    )
+    phpbb_session_timeout_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Hours before phpBB session cookies expire and re-login is required (1-168)",
+    )
+
     @property
     def upload_staging_path(self) -> Path:
         """Get the upload staging directory path."""

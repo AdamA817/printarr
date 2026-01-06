@@ -51,3 +51,7 @@ watchdog>=3.0.0
 
 # Fuzzy String Matching (v0.9 Deduplication)
 rapidfuzz>=3.5.0
+
+# HTML Parsing (v1.0 phpBB Forum Integration)
+beautifulsoup4>=4.12.0
+lxml>=5.0.0

@@ -150,6 +150,14 @@ class ImportSourceCreate(BaseModel):
         None, max_length=1024, description="Local folder path"
     )
 
+    # phpBB Forum specific (v1.0 - issue #239)
+    phpbb_credentials_id: str | None = Field(
+        None, description="ID of stored phpBB credentials"
+    )
+    phpbb_forum_url: str | None = Field(
+        None, max_length=1024, description="URL of the phpBB forum to import from (viewforum.php?f=X)"
+    )
+
     # Optional settings
     import_profile_id: str | None = Field(None, description="Import profile to use")
     default_designer: str | None = Field(
@@ -205,6 +213,10 @@ class ImportSourceResponse(BaseModel):
 
     # Google OAuth status (shared across all folders)
     google_connected: bool = False
+
+    # phpBB status (v1.0 - issue #239)
+    phpbb_connected: bool = False
+    phpbb_forum_url: str | None = None
 
     # Type-specific fields (DEPRECATED - use folders instead)
     google_drive_url: str | None = None
@@ -302,3 +314,75 @@ class GoogleOAuthStatusResponse(BaseModel):
     authenticated: bool
     email: str | None = None
     expires_at: datetime | None = None
+
+
+# ============================================================
+# phpBB Forum Schemas (v1.0 - issue #239)
+# ============================================================
+
+
+class PhpbbCredentialsCreate(BaseModel):
+    """Schema for creating phpBB forum credentials."""
+
+    base_url: str = Field(
+        ..., max_length=512, description="Base URL of the phpBB forum (e.g., https://hex3dpatreon.com)"
+    )
+    username: str = Field(..., min_length=1, max_length=255, description="Forum username")
+    password: str = Field(..., min_length=1, description="Forum password")
+    test_login: bool = Field(True, description="Test login before storing credentials")
+
+
+class PhpbbCredentialsResponse(BaseModel):
+    """Schema for phpBB credentials response (excludes sensitive data)."""
+
+    model_config = {"from_attributes": True}
+
+    id: str
+    base_url: str
+    last_login_at: datetime | None = None
+    last_login_error: str | None = None
+    session_expires_at: datetime | None = None
+    created_at: datetime
+
+
+class PhpbbCredentialsList(BaseModel):
+    """List of phpBB credentials."""
+
+    items: list[PhpbbCredentialsResponse]
+
+
+class PhpbbTestLoginRequest(BaseModel):
+    """Request to test phpBB login."""
+
+    base_url: str = Field(..., max_length=512, description="Base URL of the phpBB forum")
+    username: str = Field(..., min_length=1, max_length=255, description="Forum username")
+    password: str = Field(..., min_length=1, description="Forum password")
+
+
+class PhpbbTestLoginResponse(BaseModel):
+    """Response from phpBB login test."""
+
+    success: bool
+    message: str
+    forum_name: str | None = None
+
+
+class PhpbbForumInfo(BaseModel):
+    """Information about a phpBB forum."""
+
+    forum_id: int
+    name: str
+    url: str
+    topic_count: int = 0
+
+
+class PhpbbForumListRequest(BaseModel):
+    """Request to list forums on a phpBB site."""
+
+    credentials_id: str = Field(..., description="ID of stored phpBB credentials")
+
+
+class PhpbbForumListResponse(BaseModel):
+    """Response listing available forums."""
+
+    forums: list[PhpbbForumInfo]

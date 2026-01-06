@@ -41,6 +41,7 @@ from app.db.models.enums import (
 from app.db.models.external_metadata_source import ExternalMetadataSource
 from app.db.models.google_credentials import GoogleCredentials
 from app.db.models.import_profile import ImportProfile
+from app.db.models.phpbb_credentials import PhpbbCredentials
 from app.db.models.import_record import ImportRecord
 from app.db.models.import_source import ImportSource
 from app.db.models.import_source_folder import ImportSourceFolder
@@ -63,6 +64,7 @@ __all__ = [
     "ExternalMetadataSource",
     "GoogleCredentials",
     "ImportProfile",
+    "PhpbbCredentials",
     "ImportRecord",
     "ImportSource",
     "ImportSourceFolder",

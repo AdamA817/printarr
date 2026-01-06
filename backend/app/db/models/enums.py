@@ -208,6 +208,7 @@ class ImportSourceType(str, enum.Enum):
     GOOGLE_DRIVE = "GOOGLE_DRIVE"  # Google Drive folder link
     UPLOAD = "UPLOAD"  # Direct file upload via UI
     BULK_FOLDER = "BULK_FOLDER"  # Local folder monitoring
+    PHPBB_FORUM = "PHPBB_FORUM"  # phpBB forum (e.g., Hex3D Patreon)
 
 
 class ImportSourceStatus(str, enum.Enum):

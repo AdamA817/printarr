@@ -40,11 +40,17 @@ from app.schemas.import_source import (
     ImportSourceList,
     ImportSourceResponse,
     ImportSourceUpdate,
+    PhpbbCredentialsCreate,
+    PhpbbCredentialsList,
+    PhpbbCredentialsResponse,
+    PhpbbTestLoginRequest,
+    PhpbbTestLoginResponse,
     SyncTriggerRequest,
     SyncTriggerResponse,
 )
 from app.services.google_drive import GoogleDriveService
 from app.services.job_queue import JobQueueService
+from app.services.phpbb import PhpbbAuthError, PhpbbService
 
 logger = get_logger(__name__)
 
@@ -222,12 +228,17 @@ async def _build_source_response(
     # Check if Google is connected
     google_connected = source.google_credentials_id is not None
 
+    # Check if phpBB is connected
+    phpbb_connected = source.phpbb_credentials_id is not None
+
     return ImportSourceResponse(
         id=source.id,
         name=source.name,
         source_type=source.source_type,
         status=source.status,
         google_connected=google_connected,
+        phpbb_connected=phpbb_connected,
+        phpbb_forum_url=source.phpbb_forum_url,
         google_drive_url=source.google_drive_url,
         google_drive_folder_id=source.google_drive_folder_id,
         folder_path=source.folder_path,
@@ -362,6 +373,23 @@ async def create_import_source(
                 detail="folder_path is required for BULK_FOLDER sources",
             )
         folder_id = None
+    elif data.source_type == ImportSourceType.PHPBB_FORUM:
+        if not data.phpbb_credentials_id:
+            raise HTTPException(
+                status_code=400,
+                detail="phpbb_credentials_id is required for PHPBB_FORUM sources",
+            )
+        if not data.phpbb_forum_url:
+            raise HTTPException(
+                status_code=400,
+                detail="phpbb_forum_url is required for PHPBB_FORUM sources",
+            )
+        # Verify credentials exist
+        from app.db.models import PhpbbCredentials
+        creds = await db.get(PhpbbCredentials, data.phpbb_credentials_id)
+        if not creds:
+            raise HTTPException(status_code=400, detail="phpBB credentials not found")
+        folder_id = None
     else:
         folder_id = None
 
@@ -380,6 +408,8 @@ async def create_import_source(
         google_drive_folder_id=folder_id,
         google_credentials_id=data.google_credentials_id,
         folder_path=data.folder_path,
+        phpbb_credentials_id=data.phpbb_credentials_id,
+        phpbb_forum_url=data.phpbb_forum_url,
         import_profile_id=data.import_profile_id,
         default_designer=data.default_designer,
         default_tags_json=json.dumps(data.default_tags) if data.default_tags else None,
@@ -1108,3 +1138,146 @@ async def trigger_folder_sync(
         designs_detected=0,
         designs_imported=0,
     )
+
+
+# =============================================================================
+# phpBB Credentials Management (v1.0 - issue #239)
+# =============================================================================
+
+
+@router.post("/phpbb/test-login", response_model=PhpbbTestLoginResponse)
+async def test_phpbb_login(
+    request: PhpbbTestLoginRequest,
+    db: AsyncSession = Depends(get_db),
+) -> PhpbbTestLoginResponse:
+    """Test phpBB login credentials without storing them.
+
+    Use this to verify credentials before creating a source.
+    """
+    service = PhpbbService(db)
+    try:
+        await service.login(request.base_url, request.username, request.password)
+        return PhpbbTestLoginResponse(
+            success=True,
+            message="Login successful",
+        )
+    except PhpbbAuthError as e:
+        return PhpbbTestLoginResponse(
+            success=False,
+            message=str(e),
+        )
+    except Exception as e:
+        logger.error("phpbb_test_login_failed", error=str(e))
+        return PhpbbTestLoginResponse(
+            success=False,
+            message=f"Login failed: {e}",
+        )
+
+
+@router.post(
+    "/phpbb/credentials",
+    response_model=PhpbbCredentialsResponse,
+    status_code=201,
+)
+async def create_phpbb_credentials(
+    data: PhpbbCredentialsCreate,
+    db: AsyncSession = Depends(get_db),
+) -> PhpbbCredentialsResponse:
+    """Create and store new phpBB forum credentials.
+
+    If test_login is True (default), credentials are validated before storing.
+    """
+    service = PhpbbService(db)
+    try:
+        credentials = await service.create_credentials(
+            base_url=data.base_url,
+            username=data.username,
+            password=data.password,
+            test_login=data.test_login,
+        )
+        await db.commit()
+        return PhpbbCredentialsResponse(
+            id=credentials.id,
+            base_url=credentials.base_url,
+            last_login_at=credentials.last_login_at,
+            last_login_error=credentials.last_login_error,
+            session_expires_at=credentials.session_expires_at,
+            created_at=credentials.created_at,
+        )
+    except PhpbbAuthError as e:
+        raise HTTPException(status_code=400, detail=f"Login failed: {e}")
+
+
+@router.get("/phpbb/credentials", response_model=PhpbbCredentialsList)
+async def list_phpbb_credentials(
+    db: AsyncSession = Depends(get_db),
+) -> PhpbbCredentialsList:
+    """List all stored phpBB credentials."""
+    service = PhpbbService(db)
+    credentials = await service.list_credentials()
+    return PhpbbCredentialsList(
+        items=[
+            PhpbbCredentialsResponse(
+                id=c.id,
+                base_url=c.base_url,
+                last_login_at=c.last_login_at,
+                last_login_error=c.last_login_error,
+                session_expires_at=c.session_expires_at,
+                created_at=c.created_at,
+            )
+            for c in credentials
+        ]
+    )
+
+
+@router.get(
+    "/phpbb/credentials/{credentials_id}",
+    response_model=PhpbbCredentialsResponse,
+)
+async def get_phpbb_credentials(
+    credentials_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> PhpbbCredentialsResponse:
+    """Get phpBB credentials by ID."""
+    service = PhpbbService(db)
+    credentials = await service.get_credentials(credentials_id)
+    if not credentials:
+        raise HTTPException(status_code=404, detail="Credentials not found")
+    return PhpbbCredentialsResponse(
+        id=credentials.id,
+        base_url=credentials.base_url,
+        last_login_at=credentials.last_login_at,
+        last_login_error=credentials.last_login_error,
+        session_expires_at=credentials.session_expires_at,
+        created_at=credentials.created_at,
+    )
+
+
+@router.delete("/phpbb/credentials/{credentials_id}", status_code=204)
+async def delete_phpbb_credentials(
+    credentials_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete stored phpBB credentials.
+
+    Note: This will fail if any import sources are using these credentials.
+    """
+    from app.db.models import PhpbbCredentials
+    from sqlalchemy import select
+
+    # Check if any import sources use these credentials
+    result = await db.execute(
+        select(ImportSource).where(ImportSource.phpbb_credentials_id == credentials_id)
+    )
+    sources = result.scalars().all()
+    if sources:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete: {len(sources)} import source(s) are using these credentials",
+        )
+
+    service = PhpbbService(db)
+    await service.delete_credentials(credentials_id)
+    await db.commit()
+
+    logger.info("phpbb_credentials_deleted", credentials_id=credentials_id)

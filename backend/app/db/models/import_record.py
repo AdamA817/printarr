@@ -99,6 +99,12 @@ class ImportRecord(Base):
         String(255), nullable=True, doc="Google Drive folder ID for this design"
     )
 
+    # Generic payload for source-specific data (v1.0 - issue #239)
+    # Used by phpBB sources to store attachment info for download worker
+    payload_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True, doc="JSON payload with source-specific data"
+    )
+
     # Timestamps
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
