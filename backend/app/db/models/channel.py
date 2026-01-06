@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -89,9 +89,11 @@ class Channel(Base):
         "ImportSource", back_populates="channel"
     )
 
-    # Indexes
+    # Indexes and constraints
     __table_args__ = (
         Index("ix_channels_enabled_sync", "is_enabled", "last_sync_at"),
         Index("ix_channels_import_source", "import_source_id"),
         Index("ix_channels_virtual", "is_virtual"),
+        # Each import source can only have one virtual channel
+        UniqueConstraint("import_source_id", name="uq_channels_import_source"),
     )
