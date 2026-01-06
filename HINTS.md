@@ -372,28 +372,128 @@ All persistent data must be in mounted volumes:
 - `/library` - Organized 3D model files
 - `/cache` - Thumbnails and previews
 
-### Unraid Deployment
+### Deploy Script (deploy.sh)
+
+The `deploy.sh` script handles local development and GHCR publishing:
+
 ```bash
-# On Unraid server, clone repo and set up deploy script
-git clone https://github.com/AdamA817/printarr.git
-cd printarr
-cp scripts/deploy.conf.example scripts/deploy.conf
+# Local development
+./deploy.sh              # Full rebuild and deploy
+./deploy.sh --fast       # Quick rebuild (uses cache)
+./deploy.sh --pull       # Git pull first, then deploy
+./deploy.sh --logs       # Follow container logs
 
-# Edit deploy.conf with your paths
-nano scripts/deploy.conf
-
-# Run deploy script
-./scripts/deploy.sh
-
-# Build only (don't restart container)
-./scripts/deploy.sh --build
+# GHCR publishing (for Unraid)
+./deploy.sh --unraid --push                # Build and push as :latest
+./deploy.sh --unraid --push --tag=v1.0.0   # Push with version tag
+./deploy.sh --reset                        # Wipe DB and restart
 ```
 
-The deploy script will:
-1. Pull latest code from git
-2. Build Docker image
-3. Stop/remove existing container
-4. Start new container with configured volumes
+### GHCR (GitHub Container Registry)
+
+GHCR is GitHub's Docker image hosting. Images live alongside your code at `ghcr.io`.
+
+| | GitHub | GHCR |
+|---|--------|------|
+| **Stores** | Source code | Docker images |
+| **URL** | github.com | ghcr.io |
+| **Auth** | SSH key or PAT | PAT with `packages` scope |
+
+#### First-Time GHCR Setup (Dev Machine)
+
+1. Create a GitHub Personal Access Token:
+   - Go to https://github.com/settings/tokens
+   - Generate new token (classic)
+   - Select scopes: `write:packages`, `read:packages`
+   - Copy the token
+
+2. Login to GHCR:
+   ```bash
+   docker login ghcr.io -u YOUR_GITHUB_USERNAME
+   # Paste token when prompted
+   ```
+
+3. Set up multi-platform builder (for Unraid amd64 + Mac arm64):
+   ```bash
+   docker buildx create --name multiplatform --use
+   ```
+
+#### Building Multi-Platform Images
+
+Mac builds ARM images by default, but Unraid needs AMD64. Use buildx:
+
+```bash
+# Build for both platforms and push
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/adama817/printarr:v1.0.0 \
+  -t ghcr.io/adama817/printarr:latest \
+  --push .
+
+# Or use the deploy script (does this automatically)
+./deploy.sh --unraid --push --tag=v1.0.0
+```
+
+**Common error**: `no matching manifest for linux/amd64`
+- This means the image was built only for ARM (Mac). Rebuild with buildx.
+
+#### First-Time GHCR Setup (Unraid)
+
+1. SSH into Unraid and login to GHCR:
+   ```bash
+   docker login ghcr.io -u YOUR_GITHUB_USERNAME
+   # Paste your PAT (needs read:packages scope)
+   ```
+
+2. Pull the image:
+   ```bash
+   docker pull ghcr.io/adama817/printarr:latest
+   ```
+
+3. The login persists across reboots.
+
+**Alternative**: Make the package public while keeping code private:
+- Go to https://github.com/YOUR_USERNAME?tab=packages
+- Click the package → Settings → Change visibility → Public
+
+### Unraid Template
+
+Copy `unraid/printarr.xml` to your Unraid server:
+
+```bash
+# From Unraid terminal
+mkdir -p /boot/config/plugins/dockerMan/templates-user
+# Then paste the template content into:
+nano /boot/config/plugins/dockerMan/templates-user/printarr.xml
+```
+
+Or run the container directly:
+
+```bash
+docker run -d \
+  --name Printarr \
+  -p 3333:3333 \
+  -e PUID=99 -e PGID=100 \
+  -e PRINTARR_TELEGRAM_API_ID=your_api_id \
+  -e PRINTARR_TELEGRAM_API_HASH=your_api_hash \
+  -v /mnt/user/appdata/printarr/config:/config \
+  -v /mnt/user/appdata/printarr/data:/data \
+  -v /mnt/user/appdata/printarr/cache:/cache \
+  -v /mnt/user/downloads/printarr-staging:/staging \
+  -v /mnt/user/3d-library:/library \
+  ghcr.io/adama817/printarr:latest
+```
+
+### Updating Unraid After New Release
+
+```bash
+# From Unraid terminal
+docker pull ghcr.io/adama817/printarr:latest
+docker stop Printarr && docker rm Printarr
+# Recreate from template or docker run command
+```
+
+Or in Unraid UI: Docker → Printarr icon → Force Update
 
 ---
 

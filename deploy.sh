@@ -232,31 +232,35 @@ if [ "$UNRAID_BUILD" = true ]; then
         echo -e "${YELLOW}[2/5] Skipping reset (use --reset to enable)${NC}"
     fi
 
-    # Step 3: Build the image
-    echo -e "${YELLOW}[3/5] Building container...${NC}"
-    if [ "$FAST_MODE" = true ]; then
-        docker build -t "${GHCR_REPO}:${VERSION_TAG}" .
+    # Step 3: Set up buildx for multi-platform builds
+    echo -e "${YELLOW}[3/5] Setting up multi-platform builder...${NC}"
+    docker buildx create --name multiplatform --use 2>/dev/null || docker buildx use multiplatform 2>/dev/null || true
+    echo ""
+
+    # Step 4: Build multi-platform image
+    echo -e "${YELLOW}[4/5] Building multi-platform container (amd64 + arm64)...${NC}"
+    BUILD_ARGS="--platform linux/amd64,linux/arm64"
+    BUILD_ARGS="$BUILD_ARGS -t ${GHCR_REPO}:${VERSION_TAG}"
+    if [ "$VERSION_TAG" != "latest" ]; then
+        BUILD_ARGS="$BUILD_ARGS -t ${GHCR_REPO}:latest"
+    fi
+
+    if [ "$PUSH_GHCR" = true ]; then
+        # Build and push in one step (required for multi-platform)
+        echo -e "  Building and pushing simultaneously (required for multi-platform)..."
+        docker buildx build $BUILD_ARGS --push .
     else
-        docker build --no-cache -t "${GHCR_REPO}:${VERSION_TAG}" .
+        # Build locally (single platform only for local use)
+        echo -e "  ${YELLOW}Note: Local builds are single-platform only. Use --push for multi-platform.${NC}"
+        docker build -t "${GHCR_REPO}:${VERSION_TAG}" .
+        if [ "$VERSION_TAG" != "latest" ]; then
+            docker tag "${GHCR_REPO}:${VERSION_TAG}" "${GHCR_REPO}:latest"
+        fi
     fi
     echo ""
 
-    # Step 4: Also tag as latest if using version tag
-    if [ "$VERSION_TAG" != "latest" ]; then
-        echo -e "${YELLOW}[4/5] Tagging as latest...${NC}"
-        docker tag "${GHCR_REPO}:${VERSION_TAG}" "${GHCR_REPO}:latest"
-        echo ""
-    else
-        echo -e "${YELLOW}[4/5] Already tagged as latest${NC}"
-    fi
-
-    # Step 5: Push to GHCR (optional)
+    # Step 5: Report results
     if [ "$PUSH_GHCR" = true ]; then
-        echo -e "${YELLOW}[5/5] Pushing to GitHub Container Registry...${NC}"
-        docker push "${GHCR_REPO}:${VERSION_TAG}"
-        if [ "$VERSION_TAG" != "latest" ]; then
-            docker push "${GHCR_REPO}:latest"
-        fi
         echo ""
         echo -e "${GREEN}========================================${NC}"
         echo -e "${GREEN}Build and Push Complete!${NC}"
