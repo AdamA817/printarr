@@ -967,7 +967,16 @@ class PhpbbService:
         if not match:
             return 0
 
-        value = float(match.group(1))
+        value_str = match.group(1)
+        # Handle edge cases like just "." or empty string
+        if not value_str or value_str == ".":
+            return 0
+
+        try:
+            value = float(value_str)
+        except ValueError:
+            return 0
+
         unit = match.group(2) or "B"
 
         multipliers = {
