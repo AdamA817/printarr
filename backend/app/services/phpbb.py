@@ -958,6 +958,240 @@ class PhpbbService:
 
         return images
 
+    async def get_topic_content(
+        self,
+        base_url: str,
+        topic_url: str,
+        cookies: dict[str, str],
+        include_images: bool = True,
+    ) -> tuple[list[AttachmentInfo], list[ImageInfo]]:
+        """Get attachments and images from a topic in a single fetch.
+
+        Optimized version that extracts both attachments and images from
+        the same page fetch, reducing HTTP requests by half.
+
+        Args:
+            base_url: Base URL of the phpBB forum.
+            topic_url: URL of the topic (viewtopic.php?f=X&t=Y)
+            cookies: Session cookies.
+            include_images: Whether to extract preview images.
+
+        Returns:
+            Tuple of (attachments, images).
+        """
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError as e:
+            raise PhpbbError("BeautifulSoup not installed") from e
+
+        base_url = base_url.rstrip("/")
+
+        # Build full URL
+        if not topic_url.startswith("http"):
+            full_url = urljoin(base_url + "/", topic_url)
+        else:
+            full_url = topic_url
+
+        attachments: list[AttachmentInfo] = []
+        images: list[ImageInfo] = []
+        seen_image_urls: set[str] = set()
+        image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+        async with httpx.AsyncClient(
+            follow_redirects=True, timeout=30.0, cookies=cookies
+        ) as client:
+            current_url = full_url
+            page_num = 0
+            max_pages = 100
+
+            while current_url and page_num < max_pages:
+                await self._rate_limit()
+
+                response = await client.get(current_url)
+
+                if response.status_code != 200:
+                    raise PhpbbError(f"Failed to load topic: {response.status_code}")
+
+                soup = BeautifulSoup(response.text, "lxml")
+
+                # ===== Extract Attachments =====
+                attachment_divs = soup.find_all("div", class_=re.compile(r"attach|file|download"))
+
+                for div in attachment_divs:
+                    download_links = div.find_all("a", href=re.compile(r"download/file\.php"))
+
+                    for link in download_links:
+                        href = link.get("href", "")
+                        id_match = re.search(r"id=(\d+)", href)
+                        if not id_match:
+                            continue
+
+                        file_id = int(id_match.group(1))
+
+                        if any(a.file_id == file_id for a in attachments):
+                            continue
+
+                        filename = None
+                        link_text = link.get_text(strip=True)
+                        if link_text and not link_text.lower().startswith(("download", "click")):
+                            filename = link_text
+
+                        if not filename:
+                            filename = link.get("title", "")
+
+                        if not filename:
+                            parent = link.parent
+                            if parent:
+                                filename_span = parent.find("span", class_="filename")
+                                if filename_span:
+                                    filename = filename_span.get_text(strip=True)
+
+                        if not filename:
+                            filename = f"attachment_{file_id}"
+
+                        size_display = ""
+                        size_bytes = 0
+                        size_elem = div.find(string=re.compile(r"[\d.]+\s*[KMGT]?i?B", re.IGNORECASE))
+                        if size_elem:
+                            size_display = size_elem.strip()
+                            size_bytes = self._parse_size(size_display)
+
+                        download_url = urljoin(base_url + "/", href)
+
+                        attachments.append(AttachmentInfo(
+                            file_id=file_id,
+                            filename=filename,
+                            size_bytes=size_bytes,
+                            size_display=size_display,
+                            download_url=download_url,
+                        ))
+
+                # Check inline attachments in posts
+                post_contents = soup.find_all("div", class_="content")
+                for content in post_contents:
+                    inline_links = content.find_all("a", href=re.compile(r"download/file\.php"))
+                    for link in inline_links:
+                        href = link.get("href", "")
+                        id_match = re.search(r"id=(\d+)", href)
+                        if not id_match:
+                            continue
+
+                        file_id = int(id_match.group(1))
+
+                        if any(a.file_id == file_id for a in attachments):
+                            continue
+
+                        filename = link.get_text(strip=True) or f"attachment_{file_id}"
+                        download_url = urljoin(base_url + "/", href)
+
+                        attachments.append(AttachmentInfo(
+                            file_id=file_id,
+                            filename=filename,
+                            download_url=download_url,
+                        ))
+
+                # ===== Extract Images (first page only) =====
+                if page_num == 0 and include_images:
+                    for content in post_contents:
+                        img_tags = content.find_all("img")
+
+                        for img in img_tags:
+                            src = img.get("src", "")
+                            if not src:
+                                continue
+
+                            if not src.startswith("http"):
+                                img_url = urljoin(base_url + "/", src)
+                            else:
+                                img_url = src
+
+                            if any(x in img_url.lower() for x in ["smilies", "smiley", "avatar", "icon", "rank"]):
+                                continue
+
+                            if img_url in seen_image_urls:
+                                continue
+                            seen_image_urls.add(img_url)
+
+                            parsed_url = urlparse(img_url)
+                            path_lower = parsed_url.path.lower()
+
+                            is_image = any(path_lower.endswith(ext) for ext in image_extensions)
+                            is_attachment = "download/file.php" in img_url
+
+                            if not is_image and not is_attachment:
+                                if "mode=view" not in img_url:
+                                    continue
+
+                            alt_text = img.get("alt", "") or img.get("title", "")
+
+                            images.append(ImageInfo(
+                                url=img_url,
+                                alt_text=alt_text if alt_text else None,
+                                is_inline=True,
+                                is_attachment=is_attachment,
+                            ))
+
+                    # Linked images (thumbnails -> full size)
+                    for link in soup.find_all("a", href=re.compile(r"download/file\.php.*mode=view")):
+                        href = link.get("href", "")
+                        if not href:
+                            continue
+
+                        img_url = urljoin(base_url + "/", href)
+
+                        if img_url in seen_image_urls:
+                            continue
+                        seen_image_urls.add(img_url)
+
+                        images.append(ImageInfo(
+                            url=img_url,
+                            alt_text=None,
+                            is_inline=False,
+                            is_attachment=True,
+                        ))
+
+                    # Attached images in attachment boxes
+                    for div in soup.find_all("div", class_=re.compile(r"attach|thumbnail")):
+                        img_link = div.find("a", href=re.compile(r"download/file\.php"))
+                        if img_link:
+                            href = img_link.get("href", "")
+                            img_url = urljoin(base_url + "/", href)
+
+                            filename_span = div.find("span", class_="filename")
+                            if filename_span:
+                                filename = filename_span.get_text(strip=True).lower()
+                                if any(filename.endswith(ext) for ext in image_extensions):
+                                    if img_url not in seen_image_urls:
+                                        seen_image_urls.add(img_url)
+                                        images.append(ImageInfo(
+                                            url=img_url,
+                                            alt_text=filename_span.get_text(strip=True),
+                                            is_inline=False,
+                                            is_attachment=True,
+                                        ))
+
+                # Check for next page
+                pagination = soup.find("div", class_="pagination")
+                next_url = None
+                if pagination:
+                    next_link = pagination.find("a", class_="arrow", string=re.compile(r"next|»"))
+                    if next_link:
+                        next_href = next_link.get("href", "")
+                        if next_href:
+                            next_url = urljoin(base_url + "/", next_href)
+
+                current_url = next_url
+                page_num += 1
+
+        logger.debug(
+            "phpbb_topic_content_found",
+            topic_url=topic_url,
+            attachment_count=len(attachments),
+            image_count=len(images),
+        )
+
+        return attachments, images
+
     def _parse_size(self, size_str: str) -> int:
         """Parse a human-readable size string to bytes."""
         size_str = size_str.strip().upper()
@@ -1092,11 +1326,11 @@ class PhpbbService:
         designs: list[DetectedPhpbbDesign] = []
 
         for topic in topics:
-            # Get attachments for this topic
+            # Get attachments and images in a single fetch
             topic_url = f"viewtopic.php?f={topic.forum_id}&t={topic.topic_id}"
             try:
-                attachments = await self.get_topic_attachments(
-                    base_url, topic_url, cookies
+                attachments, images = await self.get_topic_content(
+                    base_url, topic_url, cookies, include_images=include_images
                 )
             except PhpbbError as e:
                 logger.warning(
@@ -1115,18 +1349,6 @@ class PhpbbService:
 
             if not archive_attachments:
                 continue
-
-            # Get preview images if requested
-            images: list[ImageInfo] = []
-            if include_images:
-                try:
-                    images = await self.get_topic_images(base_url, topic_url, cookies)
-                except PhpbbError as e:
-                    logger.warning(
-                        "phpbb_topic_images_failed",
-                        topic_id=topic.topic_id,
-                        error=str(e),
-                    )
 
             # Create design from topic
             total_size = sum(a.size_bytes for a in archive_attachments)
