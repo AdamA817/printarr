@@ -515,6 +515,15 @@ class DownloadImportRecordWorker(BaseWorker):
                     f"No files downloaded from phpBB topic for record {record.id}"
                 )
 
+            # Deduplicate by path (same file can appear multiple times in attachments)
+            seen_paths: set[Path] = set()
+            unique_downloads: list[tuple[Path, int]] = []
+            for path, size in downloaded_files:
+                if path not in seen_paths:
+                    seen_paths.add(path)
+                    unique_downloads.append((path, size))
+            downloaded_files = unique_downloads
+
             # Extract archives to get model files
             extracted_files = await self._extract_archives(staging_dir, downloaded_files)
 
@@ -661,6 +670,11 @@ class DownloadImportRecordWorker(BaseWorker):
         archive_extensions = {".zip", ".rar", ".7z"}
 
         for file_path, _ in downloaded_files:
+            # Skip if file no longer exists (safety check)
+            if not file_path.exists():
+                logger.warning("phpbb_file_missing", file=str(file_path))
+                continue
+
             ext = file_path.suffix.lower()
 
             if ext == ".zip":
