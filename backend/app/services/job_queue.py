@@ -484,6 +484,40 @@ class JobQueueService:
         )
         return result.scalar_one_or_none()
 
+    async def get_pending_job_for_import_record(
+        self,
+        import_record_id: str,
+    ) -> Job | None:
+        """Get a pending (QUEUED or RUNNING) job for an import record (#237).
+
+        Checks DOWNLOAD_IMPORT_RECORD jobs by parsing payload JSON.
+
+        Args:
+            import_record_id: The import record ID.
+
+        Returns:
+            The pending Job if found, None otherwise.
+        """
+        # Query all pending DOWNLOAD_IMPORT_RECORD jobs
+        result = await self.db.execute(
+            select(Job).where(
+                Job.type == JobType.DOWNLOAD_IMPORT_RECORD,
+                Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+            )
+        )
+        jobs = result.scalars().all()
+
+        # Check payload for matching import_record_id
+        for job in jobs:
+            if job.payload_json:
+                try:
+                    payload = json.loads(job.payload_json)
+                    if payload.get("import_record_id") == import_record_id:
+                        return job
+                except json.JSONDecodeError:
+                    continue
+        return None
+
     async def cancel_jobs_for_design(
         self,
         design_id: str,

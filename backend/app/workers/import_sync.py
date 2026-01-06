@@ -466,6 +466,16 @@ class SyncImportSourceWorker(BaseWorker):
                         )
                         continue
 
+                # Check for existing queued/running job for this record (#237)
+                existing_job = await queue.get_pending_job_for_import_record(record.id)
+                if existing_job:
+                    logger.debug(
+                        "gdrive_import_job_already_queued",
+                        record_id=record.id,
+                        job_id=existing_job.id,
+                    )
+                    continue
+
                 # Queue DOWNLOAD_IMPORT_RECORD job with display name
                 display_name = f"Download: {record.detected_title or record.source_path.split('/')[-1]} from {source.name}"
                 await queue.enqueue(
@@ -1183,6 +1193,17 @@ class SyncImportSourceWorker(BaseWorker):
                             existing_design_id=existing.id,
                         )
                         continue
+
+                # Check for existing queued/running job for this record (#237)
+                existing_job = await queue.get_pending_job_for_import_record(record.id)
+                if existing_job:
+                    logger.debug(
+                        "folder_import_job_already_queued",
+                        folder_id=folder.id,
+                        record_id=record.id,
+                        job_id=existing_job.id,
+                    )
+                    continue
 
                 # Queue DOWNLOAD_IMPORT_RECORD job with display name
                 display_name = f"Download: {record.detected_title or record.source_path.split('/')[-1]} from {folder.display_name}"
