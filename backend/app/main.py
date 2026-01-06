@@ -94,6 +94,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     else:
         logger.info("sync_service_skipped_not_authenticated")
 
+    # Start cleanup service for data consistency (#237)
+    from app.services.cleanup import get_cleanup_service
+    cleanup_service = get_cleanup_service()
+    await cleanup_service.start()
+
     yield
 
     # Stop sync service
@@ -114,6 +119,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await worker_task
     except asyncio.CancelledError:
         pass
+
+    # Stop cleanup service
+    logger.info("stopping_cleanup_service")
+    await cleanup_service.stop()
 
     # Disconnect Telegram on shutdown
     if telegram_service.is_connected():
