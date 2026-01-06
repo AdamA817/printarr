@@ -711,6 +711,10 @@ class PhpbbService:
 
                         file_id = int(id_match.group(1))
 
+                        # Skip if already found (same attachment can appear in multiple divs)
+                        if any(a.file_id == file_id for a in attachments):
+                            continue
+
                         # Get filename - try multiple sources
                         filename = None
 
