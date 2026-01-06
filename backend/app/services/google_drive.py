@@ -1042,12 +1042,16 @@ class GoogleDriveService:
         if not credentials.expires_at:
             return
 
-        # Refresh if expiring in next 5 minutes
+        # Refresh if expiring in next 30 minutes (#237)
+        # Increased from 5 minutes because long operations (recursive folder listing,
+        # large downloads) can take 15+ minutes. Starting with a fresh token prevents
+        # mid-operation 401 errors where Google's library refreshes in memory but
+        # Printarr doesn't persist the new token.
         # Handle both timezone-naive (from DB) and timezone-aware datetimes
         expires_at = credentials.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at > datetime.now(timezone.utc) + timedelta(minutes=5):
+        if expires_at > datetime.now(timezone.utc) + timedelta(minutes=30):
             return
 
         if not credentials.refresh_token_encrypted:

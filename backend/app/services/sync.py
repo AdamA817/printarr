@@ -277,6 +277,10 @@ class SyncService:
             channels = result.scalars().all()
 
             for channel in channels:
+                # Skip virtual channels (#237) - they don't have Telegram peer IDs
+                if channel.is_virtual or not channel.telegram_peer_id:
+                    continue
+
                 try:
                     channel_id = int(channel.telegram_peer_id)
                     self._subscribed_channel_ids.add(abs(channel_id))
@@ -383,6 +387,10 @@ class SyncService:
 
     async def _catch_up_channel(self, channel: Channel) -> None:
         """Catch up a single channel by fetching messages since last sync."""
+        # Skip virtual channels (#237) - they don't have Telegram peer IDs
+        if channel.is_virtual or not channel.telegram_peer_id:
+            return
+
         telegram = TelegramService.get_instance()
 
         if not telegram.is_connected() or not await telegram.is_authenticated():
