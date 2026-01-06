@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.db import get_db
 from app.services.count_cache import get_approximate_count, count_cache
-from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType
+from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType, ImportSource
 from app.db.models.design_tag import DesignTag
 from app.db.models.enums import DesignStatus, MatchMethod, MetadataAuthority, MulticolorStatus
 from app.db.models.preview_asset import PreviewAsset
@@ -156,6 +156,7 @@ async def list_designs(
         selectinload(Design.external_metadata_sources),
         selectinload(Design.design_tags).selectinload(DesignTag.tag),
         selectinload(Design.preview_assets),
+        selectinload(Design.import_source).selectinload(ImportSource.channel),
     )
 
     # Apply filters
@@ -163,10 +164,21 @@ async def list_designs(
         query = query.where(Design.status == status)
 
     if channel_id:
-        # Filter by designs that have a source from this channel
+        # Filter by designs that have a source from this channel OR
+        # are from an import source with this virtual channel (#237)
+        from app.db.models import Channel
         query = query.where(
-            Design.id.in_(
-                select(DesignSource.design_id).where(DesignSource.channel_id == channel_id)
+            or_(
+                Design.id.in_(
+                    select(DesignSource.design_id).where(DesignSource.channel_id == channel_id)
+                ),
+                Design.import_source_id.in_(
+                    select(ImportSource.id).where(
+                        ImportSource.id.in_(
+                            select(Channel.import_source_id).where(Channel.id == channel_id)
+                        )
+                    )
+                ),
             )
         )
 
@@ -273,7 +285,7 @@ async def list_designs(
     # Transform to response items
     items = []
     for design in designs:
-        # Get first source's channel
+        # Get channel from DesignSource or ImportSource's virtual channel (#237)
         channel = None
         if design.sources:
             preferred = next((s for s in design.sources if s.is_preferred), design.sources[0])
@@ -282,6 +294,12 @@ async def list_designs(
                     id=preferred.channel.id,
                     title=preferred.channel.title,
                 )
+        elif design.import_source and design.import_source.channel:
+            # Fall back to virtual channel from import source
+            channel = ChannelSummary(
+                id=design.import_source.channel.id,
+                title=design.import_source.channel.title,
+            )
 
         # Check for Thangs link
         has_thangs = any(
@@ -360,6 +378,7 @@ async def get_design(
         .options(
             selectinload(Design.sources).selectinload(DesignSource.channel),
             selectinload(Design.external_metadata_sources),
+            selectinload(Design.import_source).selectinload(ImportSource.channel),
         )
         .where(Design.id == design_id)
     )
