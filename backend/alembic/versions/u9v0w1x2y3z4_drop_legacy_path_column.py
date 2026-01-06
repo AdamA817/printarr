@@ -1,7 +1,7 @@
 """Drop legacy path column from preview_assets.
 
-Revision ID: t8u9v0w1x2y3
-Revises: s7t8u9v0w1x2
+Revision ID: u9v0w1x2y3z4
+Revises: t8u9v0w1x2y3
 Create Date: 2026-01-06 00:00:00.000000
 
 The initial schema created preview_assets with a `path` column.
@@ -18,8 +18,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "t8u9v0w1x2y3"
-down_revision: str | None = "s7t8u9v0w1x2"
+revision: str = "u9v0w1x2y3z4"
+down_revision: str | None = "t8u9v0w1x2y3"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
