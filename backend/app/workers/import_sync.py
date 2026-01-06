@@ -515,6 +515,23 @@ class SyncImportSourceWorker(BaseWorker):
             # Update progress: complete (force to bypass throttle)
             await self.update_progress(100, 100, force=True)
 
+            # Update source stats (phpBB doesn't use folders, so we count records directly)
+            detected_count = await db.execute(
+                select(func.count()).where(
+                    ImportRecord.import_source_id == source.id,
+                )
+            )
+            imported_count = await db.execute(
+                select(func.count()).where(
+                    ImportRecord.import_source_id == source.id,
+                    ImportRecord.status == ImportRecordStatus.IMPORTED,
+                    ImportRecord.design_id.isnot(None),
+                )
+            )
+            source.items_detected = detected_count.scalar() or 0
+            source.items_imported = imported_count.scalar() or 0
+            await db.commit()
+
             return {
                 "detected": detected,
                 "imported": imported,
