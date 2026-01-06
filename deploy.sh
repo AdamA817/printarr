@@ -232,30 +232,36 @@ if [ "$UNRAID_BUILD" = true ]; then
         echo -e "${YELLOW}[2/5] Skipping reset (use --reset to enable)${NC}"
     fi
 
-    # Step 3: Set up buildx for multi-platform builds
-    echo -e "${YELLOW}[3/5] Setting up multi-platform builder...${NC}"
-    docker buildx create --name multiplatform --use 2>/dev/null || docker buildx use multiplatform 2>/dev/null || true
-    echo ""
-
-    # Step 4: Build multi-platform image
-    echo -e "${YELLOW}[4/5] Building multi-platform container (amd64 + arm64)...${NC}"
-    BUILD_ARGS="--platform linux/amd64,linux/arm64"
-    BUILD_ARGS="$BUILD_ARGS -t ${GHCR_REPO}:${VERSION_TAG}"
-    if [ "$VERSION_TAG" != "latest" ]; then
-        BUILD_ARGS="$BUILD_ARGS -t ${GHCR_REPO}:latest"
-    fi
-
+    # Step 3: Build the image
     if [ "$PUSH_GHCR" = true ]; then
-        # Build and push in one step (required for multi-platform)
+        # Multi-platform build for GHCR (Mac → Unraid)
+        echo -e "${YELLOW}[3/5] Setting up multi-platform builder...${NC}"
+        docker buildx create --name multiplatform --use 2>/dev/null || docker buildx use multiplatform 2>/dev/null || true
+        echo ""
+
+        echo -e "${YELLOW}[4/5] Building multi-platform container (amd64 + arm64)...${NC}"
+        BUILD_ARGS="--platform linux/amd64,linux/arm64"
+        BUILD_ARGS="$BUILD_ARGS -t ${GHCR_REPO}:${VERSION_TAG}"
+        if [ "$VERSION_TAG" != "latest" ]; then
+            BUILD_ARGS="$BUILD_ARGS -t ${GHCR_REPO}:latest"
+        fi
         echo -e "  Building and pushing simultaneously (required for multi-platform)..."
         docker buildx build $BUILD_ARGS --push .
     else
-        # Build locally (single platform only for local use)
-        echo -e "  ${YELLOW}Note: Local builds are single-platform only. Use --push for multi-platform.${NC}"
-        docker build -t "${GHCR_REPO}:${VERSION_TAG}" .
+        # Local build (on Unraid or dev machine)
+        echo -e "${YELLOW}[3/5] Building container locally...${NC}"
+        if [ "$FAST_MODE" = true ]; then
+            docker build -t "${GHCR_REPO}:${VERSION_TAG}" .
+        else
+            docker build --no-cache -t "${GHCR_REPO}:${VERSION_TAG}" .
+        fi
+        echo ""
+
+        echo -e "${YELLOW}[4/5] Tagging image...${NC}"
         if [ "$VERSION_TAG" != "latest" ]; then
             docker tag "${GHCR_REPO}:${VERSION_TAG}" "${GHCR_REPO}:latest"
         fi
+        echo -e "  Tagged as: ${GREEN}${GHCR_REPO}:latest${NC}"
     fi
     echo ""
 
@@ -282,19 +288,23 @@ if [ "$UNRAID_BUILD" = true ]; then
         echo -e "  ${YELLOW}docker stop Printarr && docker rm Printarr${NC}"
         echo -e "  Then recreate from template"
     else
-        echo -e "${YELLOW}[5/5] Skipping push (use --push to enable)${NC}"
+        echo -e "${YELLOW}[5/5] Build complete${NC}"
         echo ""
         echo -e "${GREEN}========================================${NC}"
         echo -e "${GREEN}Build Complete!${NC}"
         echo -e "${GREEN}========================================${NC}"
         echo ""
-        echo -e "Local image: ${GREEN}${GHCR_REPO}:${VERSION_TAG}${NC}"
+        echo -e "Local image: ${GREEN}${GHCR_REPO}:latest${NC}"
         echo ""
-        echo -e "To push to GHCR, run:"
-        echo -e "  ${YELLOW}docker push ${GHCR_REPO}:${VERSION_TAG}${NC}"
-        if [ "$VERSION_TAG" != "latest" ]; then
-            echo -e "  ${YELLOW}docker push ${GHCR_REPO}:latest${NC}"
-        fi
+        echo -e "Next steps:"
+        echo -e "  1. Go to Unraid Docker tab"
+        echo -e "  2. Click 'Add Container'"
+        echo -e "  3. Select 'Printarr' from the template dropdown"
+        echo -e "  4. Configure paths and Telegram credentials"
+        echo -e "  5. Click 'Apply'"
+        echo ""
+        echo -e "Or to push to GHCR for remote deployment:"
+        echo -e "  ${YELLOW}./deploy.sh --unraid --push${NC}"
     fi
     exit 0
 fi
