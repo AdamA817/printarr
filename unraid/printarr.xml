@@ -8,18 +8,20 @@
   <Support>https://github.com/AdamA817/printarr/issues</Support>
   <Project>https://github.com/AdamA817/printarr</Project>
   <Overview>
-    Printarr is a self-hosted web application that monitors Telegram channels
+    Printarr v1.0 is a self-hosted web application that monitors Telegram channels
     for 3D-printable designs, catalogs them, and manages downloads into a
     structured local library. Inspired by Radarr/Sonarr.
 
     Features:
-    - Monitor Telegram channels for 3D designs
+    - Monitor Telegram channels for 3D designs with live sync
     - Auto-detect STL, 3MF, OBJ files and archives
-    - Organize downloads into structured library
-    - Preview generation with stl-thumb
-    - Thangs integration for metadata enrichment
-    - Google Drive import (v0.8+)
-    - Bulk folder monitoring (v0.8+)
+    - Organize downloads into structured library with templates
+    - Preview generation with stl-thumb (multi-angle rendering)
+    - Thangs integration for metadata and duplicate detection
+    - Google Drive import with OAuth support
+    - Bulk folder monitoring for existing collections
+    - Real-time updates via Server-Sent Events
+    - Advanced rate limiting for Telegram API compliance
   </Overview>
   <Category>MediaApp:Other Productivity:</Category>
   <WebUI>http://[IP]:[PORT:3333]</WebUI>
@@ -93,6 +95,18 @@
           Mode="" Description="Google API Key for public folder access only (alternative to OAuth)"
           Type="Variable" Display="advanced" Required="false" Mask="true"/>
 
+  <Config Name="Google Redirect URI" Target="PRINTARR_GOOGLE_REDIRECT_URI" Default=""
+          Mode="" Description="OAuth redirect URI for Google Drive (leave empty for default)"
+          Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="Google Request Delay" Target="PRINTARR_GOOGLE_REQUEST_DELAY" Default="0.5"
+          Mode="" Description="Delay in seconds between Google API requests (0.0-10.0)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">0.5</Config>
+
+  <Config Name="Google Requests Per Minute" Target="PRINTARR_GOOGLE_REQUESTS_PER_MINUTE" Default="60"
+          Mode="" Description="Maximum Google API requests per minute (10-1000)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">60</Config>
+
   <!-- ========== FLARESOLVERR ========== -->
   <Config Name="FlareSolverr URL" Target="PRINTARR_FLARESOLVERR_URL" Default=""
           Mode="" Description="FlareSolverr URL for Thangs Cloudflare bypass (e.g., http://192.168.1.100:8191/v1)"
@@ -112,6 +126,15 @@
           Mode="" Description="Maximum simultaneous downloads"
           Type="Variable" Display="advanced" Required="false" Mask="false">2</Config>
 
+  <!-- ========== TELEGRAM RATE LIMITING (v1.0+) ========== -->
+  <Config Name="Telegram Rate Limit (RPM)" Target="PRINTARR_TELEGRAM_RATE_LIMIT_RPM" Default="30"
+          Mode="" Description="Maximum Telegram API requests per minute (10-100). Lower if you get rate limited."
+          Type="Variable" Display="advanced" Required="false" Mask="false">30</Config>
+
+  <Config Name="Telegram Channel Spacing" Target="PRINTARR_TELEGRAM_CHANNEL_SPACING" Default="2.0"
+          Mode="" Description="Minimum seconds between requests to the same channel (0.5-10.0)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">2.0</Config>
+
   <!-- ========== SYNC SETTINGS (v0.6+) ========== -->
   <Config Name="Enable Live Monitoring" Target="PRINTARR_SYNC_ENABLED" Default="true"
           Mode="" Description="Enable live Telegram channel monitoring"
@@ -121,10 +144,18 @@
           Mode="" Description="Seconds between sync polls (60-3600)"
           Type="Variable" Display="advanced" Required="false" Mask="false">300</Config>
 
+  <Config Name="Sync Batch Size" Target="PRINTARR_SYNC_BATCH_SIZE" Default="100"
+          Mode="" Description="Maximum messages to process per sync batch (10-500)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+
   <!-- ========== AUTO-RENDER SETTINGS (v0.8+) ========== -->
   <Config Name="Auto-Queue Preview Renders" Target="PRINTARR_AUTO_QUEUE_RENDER_AFTER_IMPORT" Default="true"
           Mode="" Description="Automatically queue STL preview renders after import"
           Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="Auto-Render Priority" Target="PRINTARR_AUTO_QUEUE_RENDER_PRIORITY" Default="-1"
+          Mode="" Description="Priority for auto-queued render jobs (-10 to 10, negative = background)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">-1</Config>
 
   <!-- ========== LOGGING ========== -->
   <Config Name="Log Level" Target="PRINTARR_LOG_LEVEL" Default="INFO"

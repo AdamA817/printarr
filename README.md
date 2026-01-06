@@ -1,138 +1,186 @@
 # Printarr
 
+[![CI](https://github.com/AdamA817/printarr/actions/workflows/ci.yml/badge.svg)](https://github.com/AdamA817/printarr/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io%2Fadama817%2Fprintarr-blue)](https://ghcr.io/adama817/printarr)
+[![Version](https://img.shields.io/badge/version-1.0.0-green.svg)](https://github.com/AdamA817/printarr/releases)
+
 A self-hosted web application that monitors Telegram channels for 3D-printable designs, catalogs them, and manages downloads into a structured local library.
 
 Inspired by the Radarr/Sonarr UX paradigm, adapted for 3D printing workflows.
 
 ## Features
 
-### Channel Monitoring
-- Monitor Telegram channels (public and private) via MTProto
-- Backfill historical content from channels
-- Automatic design detection from posts containing 3D files
-
-### Design Catalog (v0.4)
-- Radarr-style grid and list views for browsing designs
-- Filter by status, channel, file type
-- Thangs integration for metadata enrichment
-- Manual and automatic Thangs linking
-- Multi-message design merging for split archives
-
-### Downloads & Library (v0.5)
-- One-click download with "Want" / "Download" buttons
-- Archive extraction (ZIP, RAR, 7z, TAR)
-- Configurable library folder structure with template variables
-- Activity page with real-time queue and history views
-- Priority-based job queue with retry support
-
-### Live Monitoring (v0.6)
-- Continuous ingestion of new posts from monitored channels
-- Real-time updates via Telegram MTProto connection
-- Catch-up sync for missed messages during downtime
-- Per-channel download modes (manual, auto-new, auto-all)
-- Configurable polling interval and batch size
-- Channel discovery from forwarded messages and mentions
-
-### Coming Soon
-- Preview image generation (v0.7)
-- Deduplication (v0.8)
+- **Channel Monitoring** - Monitor Telegram channels (public and private) with live sync
+- **Design Catalog** - Radarr-style grid/list views with filtering and search
+- **Smart Downloads** - Priority queue with archive extraction (ZIP, RAR, 7z)
+- **Library Organization** - Configurable folder templates with designer/channel metadata
+- **Preview Generation** - Automatic STL thumbnail rendering with stl-thumb
+- **Thangs Integration** - Metadata enrichment and duplicate detection
+- **Google Drive Import** - OAuth integration for cloud file imports
+- **Bulk Folder Import** - Monitor local folders for existing collections
+- **Real-time Updates** - Live UI updates via Server-Sent Events
 
 ## Quick Start
 
 ### Prerequisites
 
 - Docker and Docker Compose
-- Telegram API credentials ([setup guide](TELEGRAM_SETUP.md))
+- Telegram API credentials from [my.telegram.org](https://my.telegram.org)
 
-### Installation
+### 1. Create directories
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/AdamA817/printarr.git
-   cd printarr
-   ```
+```bash
+mkdir -p printarr/{config,data,staging,library,cache}
+cd printarr
+```
 
-2. Configure environment:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your Telegram API credentials
-   ```
+### 2. Start container
 
-3. Start Printarr:
-   ```bash
-   docker compose up -d
-   ```
+```bash
+docker run -d \
+  --name printarr \
+  -p 3333:3333 \
+  -v ./config:/config \
+  -v ./data:/data \
+  -v ./staging:/staging \
+  -v ./library:/library \
+  -v ./cache:/cache \
+  -e PRINTARR_TELEGRAM_API_ID=your_api_id \
+  -e PRINTARR_TELEGRAM_API_HASH=your_api_hash \
+  ghcr.io/adama817/printarr:latest
+```
 
-4. Open http://localhost:3333 in your browser
+### 3. Access the web UI
 
-5. Complete the Telegram authentication wizard
+Open http://localhost:3333 and complete the Telegram authentication wizard.
+
+## Installation Options
+
+### Docker Compose (Recommended)
+
+```yaml
+services:
+  printarr:
+    image: ghcr.io/adama817/printarr:latest
+    container_name: printarr
+    ports:
+      - "3333:3333"
+    volumes:
+      - ./config:/config
+      - ./data:/data
+      - ./staging:/staging
+      - ./library:/library
+      - ./cache:/cache
+    environment:
+      - PRINTARR_TELEGRAM_API_ID=${TELEGRAM_API_ID}
+      - PRINTARR_TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
+    restart: unless-stopped
+```
+
+### Unraid
+
+Install via Community Apps by searching for "Printarr", or manually add the template from:
+`https://raw.githubusercontent.com/AdamA817/printarr/main/unraid/printarr.xml`
+
+## Configuration
+
+### Required Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `PRINTARR_TELEGRAM_API_ID` | Telegram API ID from [my.telegram.org](https://my.telegram.org) |
+| `PRINTARR_TELEGRAM_API_HASH` | Telegram API Hash |
+
+### Optional Environment Variables
+
+<details>
+<summary>Click to expand all options</summary>
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PRINTARR_PORT` | 3333 | Web UI port |
+| `PRINTARR_LOG_LEVEL` | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| `PRINTARR_MAX_CONCURRENT_DOWNLOADS` | 2 | Maximum simultaneous downloads |
+| `PRINTARR_LIBRARY_TEMPLATE` | `{designer}/{title}` | Library folder structure template |
+| `PRINTARR_FLARESOLVERR_URL` | - | FlareSolverr URL for Thangs (Cloudflare bypass) |
+| `PRINTARR_SYNC_ENABLED` | true | Enable live Telegram monitoring |
+| `PRINTARR_SYNC_POLL_INTERVAL` | 300 | Catch-up sync interval in seconds |
+| `PRINTARR_SYNC_BATCH_SIZE` | 100 | Messages per sync batch |
+| `PRINTARR_TELEGRAM_RATE_LIMIT_RPM` | 30 | Max Telegram API requests/minute |
+| `PRINTARR_TELEGRAM_CHANNEL_SPACING` | 2.0 | Seconds between channel requests |
+| `PRINTARR_GOOGLE_CLIENT_ID` | - | Google OAuth Client ID for Drive |
+| `PRINTARR_GOOGLE_CLIENT_SECRET` | - | Google OAuth Client Secret |
+| `PRINTARR_AUTO_QUEUE_RENDER_AFTER_IMPORT` | true | Auto-queue STL preview renders |
+
+</details>
+
+### Volume Mounts
+
+| Path | Purpose | Size Estimate |
+|------|---------|---------------|
+| `/config` | App config, database, Telegram session | ~50MB |
+| `/data` | Internal state, uploads | ~500MB |
+| `/staging` | Download/extraction workspace | 2-5GB |
+| `/library` | Organized 3D model library | Varies |
+| `/cache` | Thumbnails and preview images | ~1GB |
+
+## First-Time Setup
+
+### Getting Telegram API Credentials
+
+1. Go to [my.telegram.org](https://my.telegram.org) and log in
+2. Click "API development tools"
+3. Create a new application (any name/description)
+4. Copy the `api_id` and `api_hash`
+
+See [TELEGRAM_SETUP.md](TELEGRAM_SETUP.md) for detailed instructions.
+
+### Adding Your First Channel
+
+1. Navigate to **Channels** in the sidebar
+2. Click **Add Channel**
+3. Enter a Telegram channel username (e.g., `@FlexiFactorySTL`) or invite link
+4. Choose download mode:
+   - **Manual** - Only download explicitly requested designs
+   - **Auto (New Only)** - Automatically download new posts
+   - **Auto (All)** - Download everything including backfill
+5. Click **Add** and optionally start a backfill
+
+## FAQ
+
+<details>
+<summary>How do I get Telegram API credentials?</summary>
+
+Visit [my.telegram.org](https://my.telegram.org), log in, and create an application under "API development tools".
+</details>
+
+<details>
+<summary>Why do I need FlareSolverr for Thangs?</summary>
+
+Thangs uses Cloudflare protection. FlareSolverr acts as a proxy to bypass this for metadata lookups.
+</details>
+
+<details>
+<summary>How do I add a private channel?</summary>
+
+For private channels, use the invite link (e.g., `https://t.me/+abc123`). Your Telegram account must be a member of the channel.
+</details>
+
+<details>
+<summary>Where are my downloads stored?</summary>
+
+Downloads are organized in `/library` using the template defined in `PRINTARR_LIBRARY_TEMPLATE`. Default: `{designer}/{title}`.
+</details>
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Telegram Setup](TELEGRAM_SETUP.md) | How to obtain and configure Telegram API credentials |
-| [Docker Configuration](DOCKER.md) | Container setup, volumes, and environment variables |
-| [Architecture](ARCHITECTURE.md) | System design, components, and data flows |
-| [Data Model](DATA_MODEL.md) | Database schema and entity relationships |
-| [UI Flows](UI_FLOWS.md) | User interface screens and interactions |
-| [Requirements](REQUIREMENTS.md) | Full feature requirements |
-| [Roadmap](ROADMAP.md) | Development milestones and current version scope |
-
-## Deployment
-
-### Docker Compose
-
-See [docker-compose.yml](docker-compose.yml) for the default configuration.
-
-### Unraid
-
-An Unraid template is available at [unraid/printarr.xml](unraid/printarr.xml).
-
-### Manual Deploy Script
-
-For manual deployments on Unraid or other systems:
-
-```bash
-cp scripts/deploy.conf.example scripts/deploy.conf
-# Edit deploy.conf with your settings
-./scripts/deploy.sh
-```
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `TELEGRAM_API_ID` | Yes | - | Telegram API ID from my.telegram.org |
-| `TELEGRAM_API_HASH` | Yes | - | Telegram API Hash |
-| `PRINTARR_PORT` | No | 3333 | Web UI port |
-| `PRINTARR_LOG_LEVEL` | No | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
-| `PRINTARR_MAX_CONCURRENT_DOWNLOADS` | No | 3 | Maximum simultaneous Telegram downloads (1-10) |
-| `PRINTARR_LIBRARY_TEMPLATE` | No | `{designer}/{channel}/{title}` | Library folder structure template |
-| `PRINTARR_FLARESOLVERR_URL` | No | - | FlareSolverr URL for Thangs integration |
-| `PRINTARR_SYNC_ENABLED` | No | true | Enable live monitoring service |
-| `PRINTARR_SYNC_POLL_INTERVAL` | No | 300 | Catch-up sync interval in seconds (60-3600) |
-| `PRINTARR_SYNC_BATCH_SIZE` | No | 100 | Max messages per sync batch (10-500) |
-
-### Volume Mounts
-
-| Path | Purpose |
-|------|---------|
-| `/config` | Application config and Telegram session |
-| `/data` | Database and internal state |
-| `/staging` | Temporary download/extraction workspace |
-| `/library` | Final organized 3D model library |
-| `/cache` | Thumbnails and preview cache |
-
-## Tech Stack
-
-- **Backend**: Python 3.11+ with FastAPI
-- **Frontend**: React 18+ with TypeScript
-- **Database**: SQLite (dev) / PostgreSQL (production optional)
-- **Telegram**: Telethon (MTProto)
-- **Deployment**: Docker
+| [Telegram Setup](TELEGRAM_SETUP.md) | Telegram API credentials guide |
+| [Google Drive Setup](docs/GOOGLE_DRIVE_SETUP.md) | OAuth configuration for Drive imports |
+| [Docker Configuration](DOCKER.md) | Container setup and volumes |
+| [Architecture](ARCHITECTURE.md) | System design and components |
 
 ## Development
 
@@ -142,7 +190,7 @@ cp scripts/deploy.conf.example scripts/deploy.conf
 cd backend
 python -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
@@ -164,10 +212,21 @@ cd backend && pytest
 cd frontend && npm test
 ```
 
-## License
-
-MIT
-
 ## Contributing
 
-Contributions are welcome! Please read the documentation and check the [Roadmap](ROADMAP.md) for current development priorities.
+Contributions are welcome! Please:
+
+1. Check the [Roadmap](ROADMAP.md) for current priorities
+2. Open an issue to discuss significant changes
+3. Follow the existing code style
+4. Include tests for new features
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- Inspired by [Radarr](https://radarr.video/) and [Sonarr](https://sonarr.tv/)
+- STL rendering by [stl-thumb](https://github.com/unlimitedbacon/stl-thumb)
+- Telegram integration via [Telethon](https://github.com/LonamiWebs/Telethon)
