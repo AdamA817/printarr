@@ -52,7 +52,7 @@ class ChannelResponse(ChannelBase):
     """Schema for channel response."""
 
     id: str
-    telegram_peer_id: str
+    telegram_peer_id: str | None = None  # Nullable for virtual channels
     is_enabled: bool
 
     # Settings
