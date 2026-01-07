@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.models import Design, DesignTag, PreviewAsset, Tag
+from app.db.models import Design, DesignSource, DesignTag, PreviewAsset, Tag
 from app.db.models.enums import PreviewSource, TagSource
 from app.db.session import async_session_maker
 from app.services.tag import TagService
@@ -268,8 +268,17 @@ class AiService:
             db = async_session_maker()
 
         try:
-            # Get design
-            design = await db.get(Design, design_id)
+            # Get design with eager-loaded relationships (needed for sync _build_prompt)
+            from sqlalchemy.orm import selectinload
+
+            result = await db.execute(
+                select(Design)
+                .where(Design.id == design_id)
+                .options(
+                    selectinload(Design.sources).selectinload(DesignSource.channel)
+                )
+            )
+            design = result.scalar_one_or_none()
             if not design:
                 logger.warning("design_not_found", design_id=design_id)
                 return None
