@@ -10,13 +10,11 @@ Uses Google's Gemini API with rate limiting to respect API quotas.
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import time
-from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -220,6 +218,9 @@ class AiService:
     Uses Google Gemini to analyze preview images and generate tags.
     """
 
+    # Class-level client for reuse across instances
+    _client = None
+
     def __init__(self, db: AsyncSession | None = None):
         """Initialize the AI service.
 
@@ -227,22 +228,19 @@ class AiService:
             db: Optional database session. If not provided, creates sessions as needed.
         """
         self.db = db
-        self._client = None
-        self._model = None
 
-    async def _get_client(self):
-        """Get or create the Gemini client."""
-        if self._client is None:
+    @classmethod
+    def _get_client(cls):
+        """Get or create the Gemini client (lazy initialization)."""
+        if cls._client is None:
             if not settings.ai_configured:
                 raise RuntimeError("AI is not configured (ai_enabled=False or missing ai_api_key)")
 
-            import google.generativeai as genai
+            from google import genai
 
-            genai.configure(api_key=settings.ai_api_key)
-            self._client = genai
-            self._model = genai.GenerativeModel(settings.ai_model)
+            cls._client = genai.Client(api_key=settings.ai_api_key)
 
-        return self._client, self._model
+        return cls._client
 
     async def analyze_design(
         self,
@@ -577,30 +575,29 @@ JSON only:
             AiRateLimitError: If Gemini returns a rate limit error.
         """
         try:
-            _, model = await self._get_client()
+            from google.genai import types
 
-            # Build content parts
+            client = self._get_client()
+
+            # Build content parts for new SDK
             parts = []
 
-            # Add images
+            # Add images as Part objects
             for image_data, mime_type in images:
-                parts.append({
-                    "inline_data": {
-                        "mime_type": mime_type,
-                        "data": base64.b64encode(image_data).decode("utf-8"),
-                    }
-                })
+                parts.append(
+                    types.Part.from_bytes(data=image_data, mime_type=mime_type)
+                )
 
             # Add text prompt
-            parts.append(prompt)
+            parts.append(types.Part.from_text(prompt))
 
-            # Make the API call in executor since it's blocking
-            def _generate():
-                response = model.generate_content(parts)
-                return response.text
+            # Make async API call using client.aio
+            response = await client.aio.models.generate_content(
+                model=settings.ai_model,
+                contents=parts,
+            )
 
-            loop = asyncio.get_event_loop()
-            response_text = await loop.run_in_executor(None, _generate)
+            response_text = response.text
 
             # Parse the JSON response
             return self._parse_response(response_text)
