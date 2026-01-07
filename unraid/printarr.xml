@@ -22,6 +22,7 @@
     - Bulk folder monitoring for existing collections
     - Real-time updates via Server-Sent Events
     - Advanced rate limiting for Telegram API compliance
+    - AI-powered auto-tagging with Google Gemini (optional)
   </Overview>
   <Category>MediaApp:Other Productivity:</Category>
   <WebUI>http://[IP]:[PORT:3333]</WebUI>
@@ -164,6 +165,35 @@
   <Config Name="Auto-Render Priority" Target="PRINTARR_AUTO_QUEUE_RENDER_PRIORITY" Default="-1"
           Mode="" Description="Priority for auto-queued render jobs (-10 to 10, negative = background)"
           Type="Variable" Display="advanced" Required="false" Mask="false">-1</Config>
+
+  <!-- ========== AI ANALYSIS SETTINGS (v1.0+) ========== -->
+  <Config Name="Enable AI Analysis" Target="PRINTARR_AI_ENABLED" Default="false"
+          Mode="" Description="Enable AI-powered design tagging and analysis (requires Google AI API key)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="Google AI API Key" Target="PRINTARR_AI_API_KEY" Default=""
+          Mode="" Description="Google Gemini API key from https://aistudio.google.com/app/apikey (free tier available)"
+          Type="Variable" Display="advanced" Required="false" Mask="true"/>
+
+  <Config Name="AI Model" Target="PRINTARR_AI_MODEL" Default="gemini-1.5-flash"
+          Mode="" Description="Gemini model to use (gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">gemini-1.5-flash</Config>
+
+  <Config Name="Auto-Analyze on Import" Target="PRINTARR_AI_AUTO_ANALYZE_ON_IMPORT" Default="true"
+          Mode="" Description="Automatically run AI analysis when new designs are imported"
+          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="AI Selects Best Preview" Target="PRINTARR_AI_SELECT_BEST_PREVIEW" Default="true"
+          Mode="" Description="Allow AI to select the best preview image from available images"
+          Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="AI Rate Limit (RPM)" Target="PRINTARR_AI_RATE_LIMIT_RPM" Default="15"
+          Mode="" Description="Maximum AI API requests per minute (5-60). Lower for free tier, default 15."
+          Type="Variable" Display="advanced" Required="false" Mask="false">15</Config>
+
+  <Config Name="AI Max Tags Per Design" Target="PRINTARR_AI_MAX_TAGS_PER_DESIGN" Default="20"
+          Mode="" Description="Maximum AI-generated tags per design (1-30)"
+          Type="Variable" Display="advanced" Required="false" Mask="false">20</Config>
 
   <!-- ========== LOGGING ========== -->
   <Config Name="Log Level" Target="PRINTARR_LOG_LEVEL" Default="INFO"

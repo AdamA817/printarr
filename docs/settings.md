@@ -115,6 +115,57 @@ http://flaresolverr:8191/v1
 | **Auto-search** | Search Thangs for new designs |
 | **Auto-link threshold** | Confidence required for auto-linking |
 
+## AI Analysis Settings
+
+AI-powered tagging uses Google Gemini to automatically categorize and tag designs.
+
+### Getting Started
+
+1. Get a free API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Enable AI analysis in Settings
+3. Enter your API key
+4. New imports will be automatically analyzed
+
+### Settings
+
+| Setting | Description |
+|---------|-------------|
+| **Enable AI analysis** | Turn on/off AI tagging |
+| **API key** | Google Gemini API key |
+| **Model** | AI model to use (default: gemini-1.5-flash) |
+| **Auto-analyze on import** | Analyze new designs automatically |
+| **Select best preview** | Let AI choose the best preview image |
+| **Rate limit (RPM)** | Max requests per minute (5-60) |
+| **Max tags per design** | Limit on AI-generated tags (1-30) |
+
+### Model Options
+
+| Model | Speed | Quality | Cost |
+|-------|-------|---------|------|
+| gemini-1.5-flash | Fast | Good | Lowest |
+| gemini-1.5-pro | Medium | Better | Higher |
+| gemini-2.0-flash | Fastest | Good | Low |
+
+### Free Tier Limits
+
+Google AI's free tier includes:
+- 15 requests per minute
+- 1 million tokens per day
+- 1,500 requests per day
+
+This is sufficient for most personal libraries. The default rate limit (15 RPM) stays within free tier bounds.
+
+### Manual Analysis
+
+To analyze existing designs:
+1. Select designs in the grid
+2. Click **Bulk Actions** > **Analyze with AI**
+3. Analysis runs in background
+
+Or for individual designs:
+1. Open design detail page
+2. Click **Analyze** button
+
 ## Upload Settings
 
 | Setting | Description |
@@ -181,4 +232,14 @@ PRINTARR_SYNC_BATCH_SIZE: 50
 PRINTARR_MAX_CONCURRENT_DOWNLOADS: 1
 PRINTARR_AUTO_QUEUE_RENDER_AFTER_IMPORT: false  # Save CPU
 PRINTARR_SYNC_POLL_INTERVAL: 600
+```
+
+### With AI Tagging
+
+```yaml
+PRINTARR_AI_ENABLED: true
+PRINTARR_AI_API_KEY: your_api_key_here
+PRINTARR_AI_MODEL: gemini-1.5-flash  # Best cost/quality balance
+PRINTARR_AI_RATE_LIMIT_RPM: 15  # Free tier safe
+PRINTARR_AI_AUTO_ANALYZE_ON_IMPORT: true
 ```

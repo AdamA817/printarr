@@ -20,6 +20,7 @@ Inspired by the Radarr/Sonarr UX paradigm, adapted for 3D printing workflows.
 - **Google Drive Import** - OAuth integration for cloud file imports
 - **Bulk Folder Import** - Monitor local folders for existing collections
 - **Real-time Updates** - Live UI updates via Server-Sent Events
+- **AI Auto-Tagging** - Optional Google Gemini integration for automatic design categorization
 
 ## Quick Start
 
@@ -112,6 +113,11 @@ Install via Community Apps by searching for "Printarr", or manually add the temp
 | `PRINTARR_GOOGLE_CLIENT_ID` | - | Google OAuth Client ID for Drive |
 | `PRINTARR_GOOGLE_CLIENT_SECRET` | - | Google OAuth Client Secret |
 | `PRINTARR_AUTO_QUEUE_RENDER_AFTER_IMPORT` | true | Auto-queue STL preview renders |
+| `PRINTARR_AI_ENABLED` | false | Enable AI-powered tagging (requires API key) |
+| `PRINTARR_AI_API_KEY` | - | Google Gemini API key |
+| `PRINTARR_AI_MODEL` | gemini-1.5-flash | AI model (gemini-1.5-flash, gemini-1.5-pro) |
+| `PRINTARR_AI_AUTO_ANALYZE_ON_IMPORT` | true | Auto-analyze new designs |
+| `PRINTARR_AI_RATE_LIMIT_RPM` | 15 | AI API requests per minute (5-60) |
 
 </details>
 
@@ -171,6 +177,14 @@ For private channels, use the invite link (e.g., `https://t.me/+abc123`). Your T
 <summary>Where are my downloads stored?</summary>
 
 Downloads are organized in `/library` using the template defined in `PRINTARR_LIBRARY_TEMPLATE`. Default: `{designer}/{title}`.
+</details>
+
+<details>
+<summary>How do I enable AI auto-tagging?</summary>
+
+1. Get a free API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+2. Set `PRINTARR_AI_ENABLED=true` and `PRINTARR_AI_API_KEY=your_key`
+3. The free tier allows 15 requests/minute, which is sufficient for most personal use
 </details>
 
 ## Documentation
