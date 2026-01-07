@@ -25,6 +25,7 @@ const sourceConfig: Record<TagSource, { label: string; className: string }> = {
   AUTO_CAPTION: { label: 'caption', className: 'text-blue-400' },
   AUTO_FILENAME: { label: 'filename', className: 'text-purple-400' },
   AUTO_THANGS: { label: 'thangs', className: 'text-green-400' },
+  AUTO_AI: { label: 'AI', className: 'text-purple-400' },
   USER: { label: 'user', className: 'text-text-muted' },
 }
 

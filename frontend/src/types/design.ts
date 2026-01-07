@@ -8,7 +8,7 @@ export type MatchMethod = 'LINK' | 'TEXT' | 'GEOMETRY' | 'MANUAL'
 // Preview and Tag source types (must match backend enums.py)
 export type PreviewSource = 'TELEGRAM' | 'THANGS' | 'EMBEDDED_3MF' | 'RENDERED' | 'ARCHIVE'
 export type PreviewKind = 'THUMBNAIL' | 'FULL' | 'GALLERY'
-export type TagSource = 'AUTO_CAPTION' | 'AUTO_FILENAME' | 'AUTO_THANGS' | 'USER'
+export type TagSource = 'AUTO_CAPTION' | 'AUTO_FILENAME' | 'AUTO_THANGS' | 'AUTO_AI' | 'USER'
 export type MulticolorSource = 'HEURISTIC' | '3MF_ANALYSIS' | 'USER_OVERRIDE'
 
 // Summary of channel info for design response
