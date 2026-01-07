@@ -45,6 +45,14 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     # Google settings (Low Priority)
     "google_request_delay": 0.5,
     "google_requests_per_minute": 60,
+
+    # AI settings (v1.0 - DEC-043)
+    "ai_enabled": False,
+    "ai_model": "gemini-1.5-flash",
+    "ai_auto_analyze_on_import": True,
+    "ai_select_best_preview": True,
+    "ai_rate_limit_rpm": 15,
+    "ai_max_tags_per_design": 20,
 }
 
 # Settings metadata for UI (#221)
@@ -138,6 +146,41 @@ SETTINGS_METADATA: dict[str, dict[str, Any]] = {
         "min": 10,
         "max": 1000,
         "description": "Maximum Google API requests per minute",
+        "requires_restart": False,
+    },
+    # AI settings (v1.0 - DEC-043)
+    "ai_enabled": {
+        "type": "bool",
+        "description": "Enable AI analysis features",
+        "requires_restart": False,
+    },
+    "ai_model": {
+        "type": "string",
+        "description": "Gemini model to use (gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash)",
+        "requires_restart": False,
+    },
+    "ai_auto_analyze_on_import": {
+        "type": "bool",
+        "description": "Automatically analyze new designs after import",
+        "requires_restart": False,
+    },
+    "ai_select_best_preview": {
+        "type": "bool",
+        "description": "Let AI select the best preview image",
+        "requires_restart": False,
+    },
+    "ai_rate_limit_rpm": {
+        "type": "int",
+        "min": 5,
+        "max": 60,
+        "description": "AI requests per minute",
+        "requires_restart": False,
+    },
+    "ai_max_tags_per_design": {
+        "type": "int",
+        "min": 1,
+        "max": 30,
+        "description": "Maximum AI-generated tags per design",
         "requires_restart": False,
     },
 }
@@ -393,6 +436,13 @@ class SettingsService:
             "auto_queue_render_priority": env_settings.auto_queue_render_priority,
             "google_request_delay": env_settings.google_request_delay,
             "google_requests_per_minute": env_settings.google_requests_per_minute,
+            # AI settings (v1.0 - DEC-043)
+            "ai_enabled": env_settings.ai_enabled,
+            "ai_model": env_settings.ai_model,
+            "ai_auto_analyze_on_import": env_settings.ai_auto_analyze_on_import,
+            "ai_select_best_preview": env_settings.ai_select_best_preview,
+            "ai_rate_limit_rpm": env_settings.ai_rate_limit_rpm,
+            "ai_max_tags_per_design": env_settings.ai_max_tags_per_design,
         }
         return env_mapping.get(key)
 

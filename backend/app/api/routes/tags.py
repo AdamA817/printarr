@@ -144,6 +144,25 @@ async def search_tags(
     )
 
 
+@router.get("/top", response_model=list[str])
+async def get_top_tags(
+    limit: int = Query(300, ge=1, le=500, description="Max tags to return"),
+    db: AsyncSession = Depends(get_db),
+) -> list[str]:
+    """Get top tags by usage count for AI prompt context.
+
+    Returns a list of tag names sorted by usage count descending.
+    This is used by the AI service to build prompt context for tag normalization.
+    """
+    result = await db.execute(
+        select(Tag.name)
+        .where(Tag.usage_count > 0)
+        .order_by(Tag.usage_count.desc())
+        .limit(limit)
+    )
+    return [row[0] for row in result.all()]
+
+
 # =============================================================================
 # Design Tag Endpoints
 # =============================================================================
