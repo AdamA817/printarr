@@ -603,6 +603,9 @@ JSON only:
             # Build request payload
             payload = {
                 "contents": [{"parts": parts}],
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                },
             }
 
             # Make API request
