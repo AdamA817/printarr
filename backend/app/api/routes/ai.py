@@ -218,53 +218,7 @@ async def update_ai_settings(
     return await get_ai_settings(db=db)
 
 
-@router.post("/analyze/{design_id}", response_model=AnalyzeResponse)
-async def analyze_design(
-    design_id: str,
-    request: AnalyzeRequest = AnalyzeRequest(),
-    db: AsyncSession = Depends(get_db),
-) -> AnalyzeResponse:
-    """Queue AI analysis for a single design.
-
-    Returns 503 if AI is disabled.
-    """
-    _check_ai_enabled()
-
-    # Verify design exists
-    design = await db.get(Design, design_id)
-    if not design:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Design {design_id} not found",
-        )
-
-    # Queue the job
-    queue = JobQueueService(db)
-    job = await queue.enqueue(
-        job_type=JobType.AI_ANALYZE_DESIGN,
-        design_id=design_id,
-        payload={
-            "design_id": design_id,
-            "force": request.force,
-        },
-        display_name=f"AI: {design.canonical_title[:30]}..." if len(design.canonical_title) > 30 else f"AI: {design.canonical_title}",
-    )
-    await db.commit()
-
-    logger.info(
-        "ai_analysis_queued",
-        design_id=design_id,
-        job_id=job.id,
-        force=request.force,
-    )
-
-    return AnalyzeResponse(
-        job_id=job.id,
-        design_id=design_id,
-        status="queued",
-    )
-
-
+# NOTE: /analyze/bulk MUST come before /analyze/{design_id} to avoid route conflicts
 @router.post("/analyze/bulk", response_model=BulkAnalyzeResponse)
 async def bulk_analyze_designs(
     request: BulkAnalyzeRequest,
@@ -317,4 +271,51 @@ async def bulk_analyze_designs(
     return BulkAnalyzeResponse(
         jobs=jobs,
         total_queued=len(jobs),
+    )
+
+
+@router.post("/analyze/{design_id}", response_model=AnalyzeResponse)
+async def analyze_design(
+    design_id: str,
+    request: AnalyzeRequest = AnalyzeRequest(),
+    db: AsyncSession = Depends(get_db),
+) -> AnalyzeResponse:
+    """Queue AI analysis for a single design.
+
+    Returns 503 if AI is disabled.
+    """
+    _check_ai_enabled()
+
+    # Verify design exists
+    design = await db.get(Design, design_id)
+    if not design:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Design {design_id} not found",
+        )
+
+    # Queue the job
+    queue = JobQueueService(db)
+    job = await queue.enqueue(
+        job_type=JobType.AI_ANALYZE_DESIGN,
+        design_id=design_id,
+        payload={
+            "design_id": design_id,
+            "force": request.force,
+        },
+        display_name=f"AI: {design.canonical_title[:30]}..." if len(design.canonical_title) > 30 else f"AI: {design.canonical_title}",
+    )
+    await db.commit()
+
+    logger.info(
+        "ai_analysis_queued",
+        design_id=design_id,
+        job_id=job.id,
+        force=request.force,
+    )
+
+    return AnalyzeResponse(
+        job_id=job.id,
+        design_id=design_id,
+        status="queued",
     )
