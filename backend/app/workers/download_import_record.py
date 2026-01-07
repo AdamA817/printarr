@@ -263,6 +263,13 @@ class DownloadImportRecordWorker(BaseWorker):
                     f"No files downloaded from Google Drive folder {record.google_folder_id}"
                 )
 
+            # Extract file types from model files
+            file_types: set[str] = set()
+            for file_path, _ in downloaded_files:
+                ext = file_path.suffix.lower()
+                if ext in MODEL_EXTENSIONS:
+                    file_types.add(ext.lstrip(".").upper())
+
             # Create Design record
             design = Design(
                 canonical_title=record.detected_title or record.source_path.split("/")[-1],
@@ -271,6 +278,7 @@ class DownloadImportRecordWorker(BaseWorker):
                 metadata_authority=MetadataAuthority.USER,
                 import_source_id=source.id,
                 total_size_bytes=sum(size for _, size in downloaded_files),
+                primary_file_types=",".join(sorted(file_types)) if file_types else None,
             )
             db.add(design)
             await db.flush()
@@ -561,6 +569,13 @@ class DownloadImportRecordWorker(BaseWorker):
             # Combine all files (extracted + previews)
             all_files = extracted_files + preview_files
 
+            # Extract file types from model files
+            file_types: set[str] = set()
+            for file_path, _ in all_files:
+                ext = file_path.suffix.lower()
+                if ext in MODEL_EXTENSIONS:
+                    file_types.add(ext.lstrip(".").upper())
+
             # Create Design record
             design = Design(
                 canonical_title=record.detected_title or payload.get("title", "Unknown"),
@@ -569,6 +584,7 @@ class DownloadImportRecordWorker(BaseWorker):
                 metadata_authority=MetadataAuthority.USER,
                 import_source_id=source.id,
                 total_size_bytes=sum(size for _, size in all_files),
+                primary_file_types=",".join(sorted(file_types)) if file_types else None,
             )
             db.add(design)
             await db.flush()
