@@ -118,6 +118,7 @@ class Settings(BaseSettings):
         "google_client_secret",
         "google_api_key",
         "encryption_key",
+        "ai_api_key",
         mode="before",
     )
     @classmethod
@@ -241,6 +242,40 @@ class Settings(BaseSettings):
         description="Hours before phpBB session cookies expire and re-login is required (1-168)",
     )
 
+    # AI Analysis settings (v1.0 - DEC-043)
+    ai_enabled: bool = Field(
+        default=False,
+        description="Enable AI analysis features (requires ai_api_key)",
+    )
+    ai_api_key: str | None = Field(
+        default=None,
+        description="Google AI API key for Gemini",
+    )
+    ai_model: str = Field(
+        default="gemini-1.5-flash",
+        description="Gemini model (gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash)",
+    )
+    ai_auto_analyze_on_import: bool = Field(
+        default=True,
+        description="Automatically analyze new designs after import",
+    )
+    ai_select_best_preview: bool = Field(
+        default=True,
+        description="Let AI select the best preview image",
+    )
+    ai_rate_limit_rpm: int = Field(
+        default=15,
+        ge=5,
+        le=60,
+        description="AI requests per minute (5-60, default 15)",
+    )
+    ai_max_tags_per_design: int = Field(
+        default=20,
+        ge=1,
+        le=30,
+        description="Maximum AI-generated tags per design (1-30)",
+    )
+
     @property
     def upload_staging_path(self) -> Path:
         """Get the upload staging directory path."""
@@ -265,6 +300,11 @@ class Settings(BaseSettings):
     def google_api_configured(self) -> bool:
         """Check if Google API key is configured (for public folders)."""
         return self.google_api_key is not None
+
+    @property
+    def ai_configured(self) -> bool:
+        """Check if AI analysis is enabled and configured."""
+        return self.ai_enabled and self.ai_api_key is not None
 
 
 # Global settings instance

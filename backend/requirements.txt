@@ -55,3 +55,6 @@ rapidfuzz>=3.5.0
 # HTML Parsing (v1.0 phpBB Forum Integration)
 beautifulsoup4>=4.12.0
 lxml>=5.0.0
+
+# AI Analysis (v1.0 - DEC-043)
+google-generativeai>=0.8.0

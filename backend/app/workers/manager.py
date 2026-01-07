@@ -261,6 +261,7 @@ async def start_workers() -> None:
     # These imports are deferred to avoid circular imports
     # and to allow workers to be added incrementally
 
+    from app.workers.ai import AiWorker
     from app.workers.download import DownloadWorker
     from app.workers.download_import_record import DownloadImportRecordWorker
     from app.workers.extract import ExtractArchiveWorker
@@ -292,6 +293,10 @@ async def start_workers() -> None:
 
     # Register per-design download workers (DEC-040)
     manager.register_worker(DownloadImportRecordWorker, count=1)
+
+    # Register AI analysis workers (v1.0 - DEC-043)
+    # Only useful if AI is enabled, but worker handles this gracefully
+    manager.register_worker(AiWorker, count=1)
 
     logger.info("starting_workers", worker_count=manager.worker_count)
     await manager.start()
