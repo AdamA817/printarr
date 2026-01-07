@@ -252,8 +252,8 @@ class Settings(BaseSettings):
         description="Google AI API key for Gemini",
     )
     ai_model: str = Field(
-        default="gemini-1.5-flash",
-        description="Gemini model (gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash)",
+        default="gemini-3-flash-preview",
+        description="Gemini model (gemini-3-flash-preview, gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro)",
     )
     ai_auto_analyze_on_import: bool = Field(
         default=True,

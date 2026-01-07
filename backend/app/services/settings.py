@@ -48,7 +48,7 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
 
     # AI settings (v1.0 - DEC-043)
     "ai_enabled": False,
-    "ai_model": "gemini-1.5-flash",
+    "ai_model": "gemini-3-flash-preview",
     "ai_auto_analyze_on_import": True,
     "ai_select_best_preview": True,
     "ai_rate_limit_rpm": 15,
@@ -156,7 +156,7 @@ SETTINGS_METADATA: dict[str, dict[str, Any]] = {
     },
     "ai_model": {
         "type": "string",
-        "description": "Gemini model to use (gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash)",
+        "description": "Gemini model to use (gemini-3-flash-preview, gemini-2.0-flash, gemini-1.5-flash, gemini-1.5-pro)",
         "requires_restart": False,
     },
     "ai_auto_analyze_on_import": {
