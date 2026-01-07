@@ -287,21 +287,32 @@ async def list_designs(
         # Full-text search using PostgreSQL tsvector (#218)
         # Uses the search_vector generated column with GIN index for performance
         # For short queries (< 3 chars), fall back to trigram ILIKE for partial matching
+        search_pattern = f"%{q}%"
+
+        # Subquery to find designs with matching tags
+        designs_with_matching_tag = (
+            select(DesignTag.design_id)
+            .join(Tag, DesignTag.tag_id == Tag.id)
+            .where(Tag.name.ilike(search_pattern))
+        )
+
         if len(q) >= 3:
             # Use full-text search with plainto_tsquery for natural language queries
             # Also include partial match via trigram for better UX
+            # Also search tags by name
             search_condition = or_(
                 text("search_vector @@ plainto_tsquery('english', :q)"),
-                Design.canonical_title.ilike(f"%{q}%"),
+                Design.canonical_title.ilike(search_pattern),
+                Design.id.in_(designs_with_matching_tag),
             )
             query = query.where(search_condition).params(q=q)
         else:
             # Short queries use ILIKE with trigram index
-            search_pattern = f"%{q}%"
             query = query.where(
                 or_(
                     Design.canonical_title.ilike(search_pattern),
                     Design.canonical_designer.ilike(search_pattern),
+                    Design.id.in_(designs_with_matching_tag),
                 )
             )
 
