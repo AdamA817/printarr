@@ -6,8 +6,11 @@ import asyncio
 import time
 from typing import Any
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models import Job, JobType
+from app.db.session import async_session_maker
+from app.services.job_queue import JobQueueService
 from app.services.library import LibraryError, LibraryImportService
 from app.workers.base import BaseWorker, NonRetryableError, RetryableError
 
@@ -95,6 +98,10 @@ class ImportToLibraryWorker(BaseWorker):
                 library_path=result["library_path"],
             )
 
+            # Queue AI analysis if enabled (DEC-043)
+            if settings.ai_configured and settings.ai_auto_analyze_on_import:
+                await self._queue_ai_analysis(design_id)
+
             # Return result for storage in job
             return {
                 "files_imported": result["files_imported"],
@@ -129,6 +136,37 @@ class ImportToLibraryWorker(BaseWorker):
             )
             # Retry file system errors (might be temporary disk issues)
             raise RetryableError(error_msg)
+
+    async def _queue_ai_analysis(self, design_id: str) -> None:
+        """Queue an AI analysis job for the design.
+
+        Args:
+            design_id: The design to analyze.
+        """
+        try:
+            async with async_session_maker() as db:
+                queue = JobQueueService(db)
+                job = await queue.enqueue(
+                    job_type=JobType.AI_ANALYZE_DESIGN,
+                    design_id=design_id,
+                    payload={"design_id": design_id},
+                    priority=-1,  # Lower priority than user-triggered
+                    display_name="AI Analysis (auto)",
+                )
+                await db.commit()
+
+                logger.info(
+                    "ai_analysis_auto_queued",
+                    design_id=design_id,
+                    job_id=job.id,
+                )
+        except Exception as e:
+            # Don't fail the import if AI queueing fails
+            logger.warning(
+                "ai_analysis_queue_failed",
+                design_id=design_id,
+                error=str(e),
+            )
 
     def _make_progress_callback(self):
         """Create a progress callback for tracking import progress.
