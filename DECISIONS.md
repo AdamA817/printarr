@@ -1584,6 +1584,7 @@ Generate up to {max_tags} tags for this design.
 - Include: what it is, theme/franchise, style, use case
 - Be specific when warranted ("nightmare before christmas" not just "christmas")
 - Skip: "3d print", "stl", "model", "file"
+- **Do NOT include print-type tags** like "multicolor", "resin", "fdm", "presupported", "single color" - these require technical knowledge that can't be determined from images
 
 ### 2. Best Preview (if multiple images)
 Select which image (0-indexed) best represents this design.
