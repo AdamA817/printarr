@@ -32,6 +32,7 @@ const jobTypeLabels: Record<string, string> = {
   IMPORT_FILES: 'Importing',
   GENERATE_PREVIEW: 'Generating Preview',
   SYNC_IMPORT_SOURCE: 'Syncing',
+  AI_ANALYZE_DESIGN: 'AI Analyzing',
 }
 
 // Priority options

@@ -30,6 +30,7 @@ const jobTypeLabels: Record<string, string> = {
   EXTRACT_ARCHIVE: 'Extract',
   IMPORT_FILES: 'Import',
   GENERATE_PREVIEW: 'Preview',
+  AI_ANALYZE_DESIGN: 'AI Analysis',
 }
 
 function formatDuration(seconds: number | null): string {
