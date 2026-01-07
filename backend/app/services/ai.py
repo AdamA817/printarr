@@ -10,10 +10,12 @@ Uses Google's Gemini API with rate limiting to respect API quotas.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import time
 from typing import Any
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -215,11 +217,15 @@ class AiAnalysisResult:
 class AiService:
     """Service for AI-powered design analysis.
 
-    Uses Google Gemini to analyze preview images and generate tags.
+    Uses Google Gemini REST API to analyze preview images and generate tags.
+    Uses httpx for HTTP requests to avoid SDK dependency conflicts.
     """
 
-    # Class-level client for reuse across instances
-    _client = None
+    # Gemini API base URL
+    GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+    # Class-level httpx client for connection pooling
+    _http_client: httpx.AsyncClient | None = None
 
     def __init__(self, db: AsyncSession | None = None):
         """Initialize the AI service.
@@ -230,17 +236,14 @@ class AiService:
         self.db = db
 
     @classmethod
-    def _get_client(cls):
-        """Get or create the Gemini client (lazy initialization)."""
-        if cls._client is None:
-            if not settings.ai_configured:
-                raise RuntimeError("AI is not configured (ai_enabled=False or missing ai_api_key)")
-
-            from google import genai
-
-            cls._client = genai.Client(api_key=settings.ai_api_key)
-
-        return cls._client
+    def _get_http_client(cls) -> httpx.AsyncClient:
+        """Get or create the httpx client for API calls."""
+        if cls._http_client is None:
+            cls._http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(120.0),  # 2 minute timeout for AI responses
+                headers={"Content-Type": "application/json"},
+            )
+        return cls._http_client
 
     async def analyze_design(
         self,
@@ -564,6 +567,8 @@ JSON only:
     ) -> AiAnalysisResult | None:
         """Call the Gemini API with the prompt and images.
 
+        Uses the REST API directly with httpx to avoid SDK dependency conflicts.
+
         Args:
             prompt: The analysis prompt.
             images: List of (image_bytes, mime_type) tuples.
@@ -575,59 +580,100 @@ JSON only:
             AiRateLimitError: If Gemini returns a rate limit error.
         """
         try:
-            from google.genai import types
+            if not settings.ai_configured:
+                raise RuntimeError("AI is not configured")
 
-            client = self._get_client()
+            client = self._get_http_client()
 
-            # Build content parts for new SDK
+            # Build content parts for REST API
             parts = []
 
-            # Add images as Part objects
+            # Add images as inline_data
             for image_data, mime_type in images:
-                parts.append(
-                    types.Part.from_bytes(data=image_data, mime_type=mime_type)
-                )
+                parts.append({
+                    "inline_data": {
+                        "mime_type": mime_type,
+                        "data": base64.b64encode(image_data).decode("utf-8"),
+                    }
+                })
 
             # Add text prompt
-            parts.append(types.Part.from_text(prompt))
+            parts.append({"text": prompt})
 
-            # Make async API call using client.aio
-            response = await client.aio.models.generate_content(
-                model=settings.ai_model,
-                contents=parts,
+            # Build request payload
+            payload = {
+                "contents": [{"parts": parts}],
+            }
+
+            # Make API request
+            url = f"{self.GEMINI_API_BASE}/models/{settings.ai_model}:generateContent"
+            response = await client.post(
+                url,
+                json=payload,
+                headers={"x-goog-api-key": settings.ai_api_key},
             )
 
-            response_text = response.text
+            # Check for HTTP errors
+            if response.status_code == 429:
+                # Rate limit - extract retry-after if available
+                retry_after = int(response.headers.get("Retry-After", 60))
+                raise AiRateLimitError(
+                    retry_after=retry_after,
+                    message="Gemini rate limit exceeded",
+                )
+
+            if response.status_code >= 400:
+                error_data = response.json() if response.content else {}
+                error_msg = error_data.get("error", {}).get("message", response.text)
+                raise RuntimeError(f"Gemini API error ({response.status_code}): {error_msg}")
+
+            # Parse response
+            data = response.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                logger.warning("gemini_no_candidates", response=data)
+                return None
+
+            # Extract text from first candidate
+            content = candidates[0].get("content", {})
+            parts = content.get("parts", [])
+            if not parts:
+                logger.warning("gemini_no_parts", response=data)
+                return None
+
+            response_text = parts[0].get("text", "")
+            if not response_text:
+                logger.warning("gemini_empty_response", response=data)
+                return None
 
             # Parse the JSON response
             return self._parse_response(response_text)
 
-        except Exception as e:
-            # Check for rate limit errors from Gemini
+        except AiRateLimitError:
+            # Re-raise rate limit errors (already logged inline)
+            raise
+
+        except httpx.HTTPStatusError as e:
+            # HTTP errors from httpx
             error_str = str(e).lower()
-            error_type = type(e).__name__
-
-            # Handle ResourceExhausted or quota errors
-            if (
-                "resourceexhausted" in error_type.lower()
-                or "resource exhausted" in error_str
-                or "quota" in error_str
-                or "rate limit" in error_str
-                or "429" in error_str
-            ):
-                # Try to extract retry-after from error message
+            if "429" in error_str or "rate limit" in error_str:
                 retry_after = self._extract_retry_after(str(e))
-
-                # Notify rate limiter
                 rate_limiter = await AiRateLimiter.get_instance()
                 rate_limiter.handle_rate_limit(retry_after)
-
-                logger.warning(
-                    "gemini_rate_limit",
-                    error=str(e),
-                    retry_after=retry_after,
+                raise AiRateLimitError(
+                    retry_after=retry_after or 60,
+                    message=f"Gemini rate limit: {e}",
                 )
+            logger.error("gemini_http_error", error=str(e), exc_info=True)
+            raise
 
+        except Exception as e:
+            # Other errors - check for rate limit indicators
+            error_str = str(e).lower()
+            if "quota" in error_str or "rate limit" in error_str:
+                retry_after = self._extract_retry_after(str(e))
+                rate_limiter = await AiRateLimiter.get_instance()
+                rate_limiter.handle_rate_limit(retry_after)
                 raise AiRateLimitError(
                     retry_after=retry_after or 60,
                     message=f"Gemini rate limit: {e}",
@@ -636,7 +682,7 @@ JSON only:
             logger.error(
                 "gemini_api_error",
                 error=str(e),
-                error_type=error_type,
+                error_type=type(e).__name__,
                 exc_info=True,
             )
             raise

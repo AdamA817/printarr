@@ -57,4 +57,5 @@ beautifulsoup4>=4.12.0
 lxml>=5.0.0
 
 # AI Analysis (v1.0 - DEC-043)
-google-genai>=1.0.0
+# Uses Gemini REST API directly via httpx (already included above)
+# to avoid google-auth version conflicts with Google Drive OAuth
