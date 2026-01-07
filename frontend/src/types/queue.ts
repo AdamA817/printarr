@@ -1,5 +1,5 @@
 // Must match backend/app/db/models/enums.py
-export type JobType = 'DOWNLOAD_DESIGN' | 'EXTRACT_ARCHIVE' | 'IMPORT_FILES' | 'GENERATE_PREVIEW' | 'SYNC_IMPORT_SOURCE'
+export type JobType = 'DOWNLOAD_DESIGN' | 'EXTRACT_ARCHIVE' | 'IMPORT_FILES' | 'GENERATE_PREVIEW' | 'SYNC_IMPORT_SOURCE' | 'AI_ANALYZE_DESIGN'
 export type JobStatus = 'QUEUED' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'
 export type JobPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT'
 
