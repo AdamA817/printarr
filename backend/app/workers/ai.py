@@ -13,8 +13,8 @@ from app.core.logging import get_logger
 from app.db.models import Job
 from app.db.models.enums import JobType
 from app.db.session import async_session_maker
-from app.services.ai import AiService
-from app.workers.base import BaseWorker
+from app.services.ai import AiRateLimitError, AiService
+from app.workers.base import BaseWorker, RetryableError
 
 logger = get_logger(__name__)
 
@@ -24,6 +24,8 @@ class AiWorker(BaseWorker):
 
     Uses Google Gemini to analyze design preview images and generate tags.
     Only processes jobs when AI is enabled and configured.
+
+    Handles rate limit errors gracefully by scheduling retries.
     """
 
     job_types = [JobType.AI_ANALYZE_DESIGN]
@@ -83,6 +85,19 @@ class AiWorker(BaseWorker):
                     "tags": result.tags,
                     "best_preview_index": result.best_preview_index,
                 }
+
+            except AiRateLimitError as e:
+                # Rate limited by Gemini - retry with appropriate delay
+                logger.warning(
+                    "ai_analysis_rate_limited",
+                    job_id=job.id,
+                    design_id=design_id,
+                    retry_after=e.retry_after,
+                )
+                # Raise RetryableError to trigger job retry with backoff
+                raise RetryableError(
+                    f"Gemini rate limit - retry after {e.retry_after}s"
+                )
 
             except Exception as e:
                 logger.error(

@@ -54,6 +54,7 @@ class AiRateLimiter:
     Features:
     - Configurable requests per minute (RPM)
     - Thread-safe for concurrent workers
+    - Backoff support when Gemini returns rate limit errors
     - Simple token bucket without per-channel tracking (unlike Telegram)
 
     Usage:
@@ -79,6 +80,10 @@ class AiRateLimiter:
         self.last_refill = time.monotonic()
         self._token_lock = asyncio.Lock()
 
+        # Backoff state (when Gemini returns rate limit)
+        self._backoff_until: float = 0.0
+        self._rate_limit_count = 0
+
         # Metrics
         self._requests_total = 0
         self._throttled_count = 0
@@ -99,10 +104,54 @@ class AiRateLimiter:
     async def acquire(self) -> None:
         """Acquire permission to make an AI API call.
 
-        Blocks until a token is available.
+        Blocks until a token is available and backoff period has passed.
+
+        Raises:
+            AiRateLimitError: If in backoff and wait would be too long (>60s).
         """
+        # Check if we're in backoff from a previous rate limit response
+        now = time.monotonic()
+        if self._backoff_until > now:
+            wait_time = self._backoff_until - now
+            if wait_time > 60:
+                # Don't wait more than 60s - let the job retry later
+                raise AiRateLimitError(
+                    retry_after=int(wait_time),
+                    message=f"AI rate limited, retry in {int(wait_time)}s",
+                )
+            logger.info(
+                "ai_rate_limiter_backoff_wait",
+                wait_seconds=wait_time,
+            )
+            await asyncio.sleep(wait_time)
+
         await self._wait_for_token()
         self._requests_total += 1
+
+    def handle_rate_limit(self, retry_after: int | None = None) -> None:
+        """Handle a rate limit response from Gemini.
+
+        Sets backoff period and reduces effective RPM temporarily.
+
+        Args:
+            retry_after: Seconds to wait (from Gemini's response), or None for default.
+        """
+        self._rate_limit_count += 1
+
+        # Default to 60 seconds if not specified
+        wait_seconds = retry_after or 60
+
+        # Set backoff until time
+        self._backoff_until = time.monotonic() + wait_seconds
+
+        # Drain tokens to slow down after backoff
+        self.tokens = 0
+
+        logger.warning(
+            "ai_rate_limit_received",
+            retry_after=wait_seconds,
+            total_rate_limits=self._rate_limit_count,
+        )
 
     async def _wait_for_token(self) -> None:
         """Wait until a token is available (token bucket algorithm)."""
@@ -130,11 +179,18 @@ class AiRateLimiter:
 
     def get_stats(self) -> dict[str, Any]:
         """Get rate limiter statistics."""
+        now = time.monotonic()
+        in_backoff = self._backoff_until > now
+        backoff_remaining = max(0, self._backoff_until - now) if in_backoff else 0
+
         return {
             "rpm_limit": self.rpm,
             "tokens_available": self.tokens,
             "requests_total": self._requests_total,
             "throttled_count": self._throttled_count,
+            "rate_limit_count": self._rate_limit_count,
+            "in_backoff": in_backoff,
+            "backoff_remaining_seconds": int(backoff_remaining),
         }
 
 
@@ -507,6 +563,9 @@ JSON only:
 
         Returns:
             AiAnalysisResult or None if failed.
+
+        Raises:
+            AiRateLimitError: If Gemini returns a rate limit error.
         """
         try:
             _, model = await self._get_client()
@@ -538,12 +597,68 @@ JSON only:
             return self._parse_response(response_text)
 
         except Exception as e:
+            # Check for rate limit errors from Gemini
+            error_str = str(e).lower()
+            error_type = type(e).__name__
+
+            # Handle ResourceExhausted or quota errors
+            if (
+                "resourceexhausted" in error_type.lower()
+                or "resource exhausted" in error_str
+                or "quota" in error_str
+                or "rate limit" in error_str
+                or "429" in error_str
+            ):
+                # Try to extract retry-after from error message
+                retry_after = self._extract_retry_after(str(e))
+
+                # Notify rate limiter
+                rate_limiter = await AiRateLimiter.get_instance()
+                rate_limiter.handle_rate_limit(retry_after)
+
+                logger.warning(
+                    "gemini_rate_limit",
+                    error=str(e),
+                    retry_after=retry_after,
+                )
+
+                raise AiRateLimitError(
+                    retry_after=retry_after or 60,
+                    message=f"Gemini rate limit: {e}",
+                )
+
             logger.error(
                 "gemini_api_error",
                 error=str(e),
+                error_type=error_type,
                 exc_info=True,
             )
             raise
+
+    def _extract_retry_after(self, error_message: str) -> int | None:
+        """Extract retry-after seconds from an error message.
+
+        Args:
+            error_message: The error message string.
+
+        Returns:
+            Seconds to wait, or None if not found.
+        """
+        import re
+
+        # Look for patterns like "retry after 60 seconds" or "wait 30s"
+        patterns = [
+            r"retry.{0,10}?(\d+)\s*(?:second|sec|s\b)",
+            r"wait.{0,10}?(\d+)\s*(?:second|sec|s\b)",
+            r"(\d+)\s*(?:second|sec|s\b).{0,10}?(?:retry|wait)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, error_message.lower())
+            if match:
+                return int(match.group(1))
+
+        return None
 
     def _parse_response(self, response_text: str) -> AiAnalysisResult | None:
         """Parse the AI response JSON.
