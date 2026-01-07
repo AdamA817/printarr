@@ -1513,6 +1513,98 @@ v0.9 includes reliability improvements for job handling, Telegram rate limiting,
 
 ---
 
+### DEC-043: AI-Powered Design Tagging
+**Date**: 2026-01-06
+**Status**: Accepted
+
+**Context**
+Designs benefit from rich tagging for discoverability, but manual tagging is tedious and heuristic auto-tagging (from captions/filenames) is limited. Vision AI models can analyze preview images to generate meaningful tags, identify best preview images, and detect Thangs URLs from context.
+
+**Options Considered**
+1. OpenAI GPT-4o - Excellent vision, higher cost ($5-10/1K images), rate limits vary
+2. Google Gemini 1.5 Flash - Good vision, low cost (~$0.075/1M tokens), generous free tier
+3. Anthropic Claude 3 - Excellent vision, moderate cost, 4000 RPM limit
+4. Ollama/LLaVA self-hosted - Free, privacy-focused, lower quality
+
+**Decision**
+Use Google Gemini API with configurable model selection (1.5-flash, 1.5-pro, 2.0-flash). Leverage existing Google integration patterns. Support two AI-assisted features:
+1. **Auto-tagging**: Analyze preview images + text context to suggest tags
+2. **Best preview selection**: Pick most representative image from available previews
+
+**Tag Taxonomy Strategy**
+- AI adds tags directly without review workflow (user can remove if disagreed)
+- Normalize tags automatically (lowercase, singularize, common synonyms)
+- Prevent duplicates via normalization ("helmets" → "helmet", "xmas" → "christmas")
+- Support hierarchical specificity (both "christmas" and "nightmare before christmas")
+- New tags added to vocabulary automatically with `is_predefined=false`
+
+**Implementation Details**
+1. **New Job Type**: `AI_ANALYZE_DESIGN` for async processing
+2. **New TagSource**: `AUTO_AI` to track AI-generated tags
+3. **Rate Limiting**: Token bucket with configurable RPM (default 15/min for free tier)
+4. **Triggers**:
+   - Auto on import (configurable, default on)
+   - Bulk action on selected designs
+   - Manual "Analyze with AI" button per design
+5. **Settings**:
+   - `ai_enabled`: Master toggle
+   - `ai_api_key`: Google AI API key
+   - `ai_model`: Model selection (gemini-1.5-flash default)
+   - `ai_auto_analyze_on_import`: Auto-analyze new designs
+   - `ai_select_best_preview`: Let AI pick primary preview
+   - `ai_rate_limit_rpm`: Requests per minute
+   - `ai_max_tags_per_design`: Cap on AI-generated tags (default 20)
+
+**Base Prompt**
+```
+System: You are a 3D model cataloging assistant. Analyze preview images and metadata to generate accurate tags and select the best preview image. Always respond with valid JSON.
+
+User: Analyze this 3D printable design.
+
+## Design Information
+- **Title**: {design_title}
+- **Source**: {channel_name}
+- **Caption**:
+{caption_text}
+
+## Images
+{image_count} preview image(s) attached (numbered 0-{max_index}).
+Sources: {image_sources}
+
+## Existing Tags
+Prefer these existing tags when the meaning matches:
+{existing_tags_list}
+
+## Tasks
+
+### 1. Tags
+Generate up to {max_tags} tags for this design.
+- **Prefer existing tags** when meaning matches (use "helmet" not "helmets")
+- Lowercase, no special characters
+- Include: what it is, theme/franchise, style, use case
+- Be specific when warranted ("nightmare before christmas" not just "christmas")
+- Skip: "3d print", "stl", "model", "file"
+
+### 2. Best Preview (if multiple images)
+Select which image (0-indexed) best represents this design.
+- Shows the complete model clearly
+- Good lighting/angle
+- Prefer creator photos over gray STL renders
+
+## Response
+JSON only:
+{"tags": ["tag1", "tag2"], "best_preview_index": 0}
+```
+
+**Consequences**
+- Designs get richer metadata with minimal user effort
+- Requires Google AI API key (free tier available)
+- Background job queue prevents blocking UI
+- Tag vocabulary grows organically but stays normalized
+- Preview selection becomes smarter over time
+
+---
+
 ## Pending Decisions
 
 *No pending decisions at this time.*

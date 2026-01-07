@@ -340,18 +340,39 @@ Channels like Wicked STL post designs across multiple messages:
 ### Scope
 - [ ] All v0.x features polished
 - [ ] Full backfill options (all history, last N days)
-- [ ] Complete Settings UI
+- [ ] Complete Settings UI (all config options exposed)
 - [ ] Polished Unraid template with all options
 - [ ] CI/CD pipeline (auto-build, auto-release)
-- [ ] User documentation / README
-- [ ] Performance optimization for scale
+- [ ] User documentation (README + docs/)
+- [ ] Performance optimization for scale:
+  - [ ] WebSocket/SSE for true real-time updates
+  - [ ] List virtualization for large datasets
+  - [ ] Optimistic UI updates for instant feedback
+  - [ ] Full-text search with PostgreSQL GIN indexes
 - [ ] Error recovery and resilience
+- [ ] **phpBB Forum Import** (DEC-043):
+  - [ ] Add phpBB forums as import source (e.g., Hex3D Patreon)
+  - [ ] Session-based authentication with cookie persistence
+  - [ ] Topic scraping with attachment detection
+  - [ ] Rate limiting for forum requests
+- [ ] **AI-Powered Analysis** (DEC-043):
+  - [ ] Google Gemini integration for design analysis
+  - [ ] Auto-tagging from preview images + text context
+  - [ ] AI-assisted best preview selection
+  - [ ] Tag normalization (AI-driven, prefer existing tags)
+  - [ ] Design multi-select with bulk AI analysis
+  - [ ] Configurable AI features in settings
+- [ ] Design multi-select with bulk actions
+- [ ] Preserve folder structure during archive extraction
+- [ ] Virtual channels for import sources
 
 ### Success Criteria
 - Monitor 100+ channels reliably
 - Manage 10,000+ designs without slowdown
 - All features from REQUIREMENTS.md working
 - Clean upgrade path from v0.x
+- AI tagging generates useful tags with minimal user effort
+- phpBB forums can be added as import sources
 
 ---
 
@@ -369,7 +390,7 @@ Channels like Wicked STL post designs across multiple messages:
 
 **Active Version**: v1.0 - Production Ready
 
-**Last Updated**: 2026-01-05
+**Last Updated**: 2026-01-06
 
 ---
 
