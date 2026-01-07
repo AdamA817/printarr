@@ -635,3 +635,74 @@ export const phpbbApi = {
   deleteCredentials: (id: string) =>
     api.delete(`/import-sources/phpbb/credentials/${id}`),
 }
+
+// =============================================================================
+// AI API (v1.0 - DEC-043)
+// =============================================================================
+
+export interface AiStatusResponse {
+  enabled: boolean
+  configured: boolean
+  model: string
+}
+
+export interface AiSettingsResponse {
+  enabled: boolean
+  model: string
+  api_key_configured: boolean
+  auto_analyze_on_import: boolean
+  select_best_preview: boolean
+  rate_limit_rpm: number
+  max_tags_per_design: number
+}
+
+export interface AiSettingsUpdate {
+  enabled?: boolean
+  model?: string
+  auto_analyze_on_import?: boolean
+  select_best_preview?: boolean
+  rate_limit_rpm?: number
+  max_tags_per_design?: number
+}
+
+export interface AnalyzeRequest {
+  force?: boolean
+}
+
+export interface AnalyzeResponse {
+  job_id: string
+  design_id: string
+  status: string
+}
+
+export interface BulkAnalyzeRequest {
+  design_ids: string[]
+  force?: boolean
+}
+
+export interface BulkAnalyzeResponse {
+  jobs: AnalyzeResponse[]
+  total_queued: number
+}
+
+export const aiApi = {
+  // Get AI service status
+  getStatus: () =>
+    api.get<AiStatusResponse>('/ai/status').then((r) => r.data),
+
+  // Get AI settings
+  getSettings: () =>
+    api.get<AiSettingsResponse>('/ai/settings').then((r) => r.data),
+
+  // Update AI settings
+  updateSettings: (data: AiSettingsUpdate) =>
+    api.put<AiSettingsResponse>('/ai/settings', data).then((r) => r.data),
+
+  // Analyze a single design
+  analyze: (designId: string, request?: AnalyzeRequest) =>
+    api.post<AnalyzeResponse>(`/ai/analyze/${designId}`, request || {}).then((r) => r.data),
+
+  // Analyze multiple designs
+  bulkAnalyze: (request: BulkAnalyzeRequest) =>
+    api.post<BulkAnalyzeResponse>('/ai/analyze/bulk', request).then((r) => r.data),
+}

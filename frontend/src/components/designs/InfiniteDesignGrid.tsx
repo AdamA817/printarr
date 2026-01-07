@@ -14,7 +14,7 @@ interface InfiniteDesignGridProps {
   view: ViewMode
   scrollRef: RefObject<HTMLDivElement | null>
   selectedIds?: Set<string>
-  onToggleSelect?: (id: string) => void
+  onToggleSelect?: (id: string, event?: React.MouseEvent) => void
 }
 
 // Constants for grid layout
@@ -205,20 +205,45 @@ export function InfiniteDesignGrid({
       )}
 
       {/* Load more trigger */}
-      <div
-        ref={loadMoreRef}
-        className="h-20 flex items-center justify-center"
-      >
+      <div ref={loadMoreRef}>
         {isFetchingNextPage && (
-          <div className="flex items-center gap-2 text-text-muted">
-            <LoadingSpinner />
-            <span>Loading more...</span>
+          <div className="py-6">
+            {view === 'grid' ? (
+              // Show skeleton cards while loading more
+              <div
+                className="grid gap-4 opacity-60"
+                style={{
+                  gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                }}
+              >
+                {[...Array(Math.min(columns, 6))].map((_, i) => (
+                  <DesignCardSkeleton key={`loading-${i}`} />
+                ))}
+              </div>
+            ) : (
+              // Show skeleton rows for list view
+              <div className="space-y-2 opacity-60">
+                {[...Array(3)].map((_, i) => (
+                  <div key={`loading-${i}`} className="h-14 bg-bg-secondary rounded animate-pulse" />
+                ))}
+              </div>
+            )}
+            <div className="flex items-center justify-center gap-2 text-text-muted mt-4">
+              <LoadingSpinner />
+              <span className="text-sm">Loading more designs...</span>
+            </div>
           </div>
         )}
+        {!isFetchingNextPage && hasNextPage && (
+          // Invisible trigger area
+          <div className="h-20" />
+        )}
         {!hasNextPage && designs.length > 0 && (
-          <span className="text-sm text-text-muted">
-            All {designs.length.toLocaleString()} designs loaded
-          </span>
+          <div className="h-16 flex items-center justify-center">
+            <span className="text-sm text-text-muted">
+              All {designs.length.toLocaleString()} designs loaded
+            </span>
+          </div>
         )}
       </div>
     </div>

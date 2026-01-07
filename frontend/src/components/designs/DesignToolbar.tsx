@@ -28,6 +28,12 @@ interface DesignToolbarProps {
 
   // Stats
   totalCount?: number
+
+  // Selection (optional - for Select All feature)
+  selectedCount?: number
+  loadedCount?: number
+  onSelectAll?: () => void
+  onClearSelection?: () => void
 }
 
 export function DesignToolbar({
@@ -44,11 +50,52 @@ export function DesignToolbar({
   onOpenCustomFilter,
   onDeleteSavedFilter,
   totalCount,
+  selectedCount = 0,
+  loadedCount = 0,
+  onSelectAll,
+  onClearSelection,
 }: DesignToolbarProps) {
+  const hasSelection = selectedCount > 0
+  const allSelected = loadedCount > 0 && selectedCount === loadedCount
+  const someSelected = selectedCount > 0 && selectedCount < loadedCount
+
+  const handleSelectAllClick = () => {
+    if (allSelected) {
+      onClearSelection?.()
+    } else {
+      onSelectAll?.()
+    }
+  }
+
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 bg-bg-secondary rounded-lg">
-      {/* Left side: Filter + Search */}
+      {/* Left side: Select All + Filter + Search */}
       <div className="flex items-center gap-3 flex-1 w-full sm:w-auto">
+        {/* Select All checkbox */}
+        {onSelectAll && loadedCount > 0 && (
+          <div className="flex items-center">
+            <label className="flex items-center gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = someSelected
+                }}
+                onChange={handleSelectAllClick}
+                className="w-4 h-4 rounded border-text-muted bg-bg-tertiary text-accent-primary focus:ring-accent-primary focus:ring-offset-0 cursor-pointer"
+                title={allSelected ? 'Clear selection' : 'Select all visible'}
+              />
+              <span className="text-xs text-text-muted group-hover:text-text-secondary transition-colors whitespace-nowrap">
+                {hasSelection ? (
+                  allSelected ? 'All' : `${selectedCount}`
+                ) : (
+                  'All'
+                )}
+              </span>
+            </label>
+          </div>
+        )}
+
         <FilterDropdown
           activeFilterId={activeFilterId}
           savedFilters={savedFilters}

@@ -11,7 +11,7 @@ interface DesignListProps {
   sortOrder?: SortOrder
   onSort?: (field: SortField) => void
   selectedIds?: Set<string>
-  onToggleSelect?: (id: string) => void
+  onToggleSelect?: (id: string, event?: React.MouseEvent) => void
   showActions?: boolean
 }
 
@@ -76,7 +76,7 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
 
   const handleCheckboxClick = (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    onToggleSelect?.(id)
+    onToggleSelect?.(id, e)
   }
 
   const renderColumnHeader = (

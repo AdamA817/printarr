@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useMergeDesigns, useBulkDeleteDesigns } from '@/hooks/useDesigns'
 import { useDesignFilters } from '@/hooks/useDesignFilters'
 import {
@@ -7,6 +7,7 @@ import {
   getInfiniteDesignsTotal,
 } from '@/hooks/useInfiniteDesigns'
 import { useSavedFilters } from '@/hooks/useSavedFilters'
+import { useAiBulkAnalyze, useAiStatus } from '@/hooks/useAi'
 import {
   DesignToolbar,
   CustomFilterModal,
@@ -57,6 +58,7 @@ function setStoredActiveFilter(id: string) {
 
 export function Designs() {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const lastSelectedIdRef = useRef<string | null>(null)
   const [view, setView] = useState<ViewMode>(getStoredView)
   const [activeFilterId, setActiveFilterId] = useState<string | null>(getStoredActiveFilter)
   const [showCustomFilterModal, setShowCustomFilterModal] = useState(false)
@@ -70,6 +72,10 @@ export function Designs() {
 
   // Get filters from URL params
   const { filters, setFilters, clearFilters } = useDesignFilters()
+
+  // AI status and bulk analyze
+  const { data: aiStatus } = useAiStatus()
+  const aiBulkAnalyzeMutation = useAiBulkAnalyze()
 
   // Build query params without pagination (infinite scroll handles that)
   const queryParams: Omit<DesignListParams, 'page'> = {
@@ -155,21 +161,88 @@ export function Designs() {
     }
   }, [deleteFilter, activeFilterId, clearFilters])
 
-  const toggleSelection = useCallback((id: string) => {
+  // Toggle selection with optional Shift+click range support
+  const toggleSelection = useCallback((id: string, event?: React.MouseEvent) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
+
+      // Handle Shift+click range selection
+      if (event?.shiftKey && lastSelectedIdRef.current && designs.length > 0) {
+        const lastIndex = designs.findIndex((d) => d.id === lastSelectedIdRef.current)
+        const currentIndex = designs.findIndex((d) => d.id === id)
+
+        if (lastIndex !== -1 && currentIndex !== -1) {
+          const start = Math.min(lastIndex, currentIndex)
+          const end = Math.max(lastIndex, currentIndex)
+          for (let i = start; i <= end; i++) {
+            next.add(designs[i].id)
+          }
+          return next
+        }
+      }
+
+      // Regular toggle
       if (next.has(id)) {
         next.delete(id)
       } else {
         next.add(id)
       }
+
+      // Track last selected for shift+click
+      lastSelectedIdRef.current = id
+
       return next
     })
-  }, [])
+  }, [designs])
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set())
+    lastSelectedIdRef.current = null
   }, [])
+
+  // Select all loaded designs
+  const selectAll = useCallback(() => {
+    setSelectedIds(new Set(designs.map((d) => d.id)))
+  }, [designs])
+
+  // Keyboard shortcuts: Ctrl/Cmd+A to select all, Escape to clear
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Ignore if user is typing in an input
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+
+      // Ctrl/Cmd+A to select all
+      if ((event.metaKey || event.ctrlKey) && event.key === 'a') {
+        event.preventDefault()
+        selectAll()
+      }
+
+      // Escape to clear selection
+      if (event.key === 'Escape' && selectedIds.size > 0) {
+        event.preventDefault()
+        clearSelection()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectAll, clearSelection, selectedIds.size])
+
+  // Handle AI bulk analyze
+  const handleAiBulkAnalyze = useCallback(async () => {
+    if (selectedIds.size === 0) return
+    try {
+      await aiBulkAnalyzeMutation.mutateAsync({ designIds: Array.from(selectedIds) })
+      // Don't clear selection - let user see what was analyzed
+    } catch (err) {
+      console.error('Failed to queue AI analysis:', err)
+    }
+  }, [selectedIds, aiBulkAnalyzeMutation])
 
   // Get selected designs from loaded data
   const selectedDesigns = designs.filter((d) => selectedIds.has(d.id))
@@ -197,6 +270,10 @@ export function Designs() {
             onOpenCustomFilter={() => setShowCustomFilterModal(true)}
             onDeleteSavedFilter={handleDeleteSavedFilter}
             totalCount={totalCount}
+            selectedCount={selectedIds.size}
+            loadedCount={designs.length}
+            onSelectAll={selectAll}
+            onClearSelection={clearSelection}
           />
         </div>
 
@@ -239,6 +316,18 @@ export function Designs() {
             >
               Clear Selection
             </button>
+            {/* AI Analyze button - only show if AI is enabled */}
+            {aiStatus?.enabled && (
+              <button
+                onClick={handleAiBulkAnalyze}
+                disabled={aiBulkAnalyzeMutation.isPending}
+                className="px-3 py-1.5 text-sm rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                title="Analyze selected designs with AI to generate tags"
+              >
+                <SparklesIcon className="w-4 h-4" />
+                {aiBulkAnalyzeMutation.isPending ? 'Analyzing...' : 'AI Analyze'}
+              </button>
+            )}
             <button
               onClick={() => setShowBulkDeleteModal(true)}
               className="px-3 py-1.5 text-sm rounded bg-accent-danger/20 text-accent-danger hover:bg-accent-danger/30 transition-colors"
@@ -576,6 +665,24 @@ function TrashIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+      />
+    </svg>
+  )
+}
+
+function SparklesIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
       />
     </svg>
   )

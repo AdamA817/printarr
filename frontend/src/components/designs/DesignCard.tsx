@@ -9,7 +9,7 @@ import { getPreviewUrl } from '@/hooks/usePreviews'
 interface DesignCardProps {
   design: DesignListItem
   isSelected?: boolean
-  onToggleSelect?: (id: string) => void
+  onToggleSelect?: (id: string, event?: React.MouseEvent) => void
   selectionMode?: boolean
   showActions?: boolean
 }
@@ -51,7 +51,7 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, 
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    onToggleSelect?.(design.id)
+    onToggleSelect?.(design.id, e)
   }
 
   const hasPreview = design.primary_preview && !imageError

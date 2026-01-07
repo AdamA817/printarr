@@ -4,6 +4,7 @@ import {
   TelegramSettings,
   SyncSettings,
   PreviewSettings,
+  AiSettings,
 } from '@/components/settings'
 
 export function Settings() {
@@ -15,6 +16,7 @@ export function Settings() {
       <TelegramSettings />
       <SyncSettings />
       <PreviewSettings />
+      <AiSettings />
     </div>
   )
 }
