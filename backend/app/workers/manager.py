@@ -233,12 +233,12 @@ class WorkerManager:
                     if next_sync_at > now:
                         continue  # Not due yet
 
-                # Check if there's already a pending/running sync job for this source
+                # Check if there's already a queued/running sync job for this source
                 existing_job = await db.execute(
                     select(Job).where(
                         and_(
-                            Job.job_type == JobType.SYNC_IMPORT_SOURCE,
-                            Job.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+                            Job.type == JobType.SYNC_IMPORT_SOURCE,
+                            Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
                             Job.payload_json.like(f'%{source.id}%'),
                         )
                     )
