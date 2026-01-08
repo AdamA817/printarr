@@ -29,6 +29,8 @@ from app.db.models.enums import (
     ImportSourceType,
     MetadataAuthority,
     ModelKind,
+    PreviewKind,
+    PreviewSource,
 )
 from app.schemas.import_profile import ImportProfileConfig
 from app.schemas.upload import (
@@ -40,6 +42,7 @@ from app.schemas.upload import (
 from app.services.archive import ArchiveExtractor
 from app.services.auto_render import auto_queue_render_for_design
 from app.services.import_profile import ImportProfileService
+from app.services.preview import PreviewService
 from app.utils import compute_file_hash
 
 # Model file extensions for classification
@@ -355,6 +358,7 @@ class UploadService:
 
             total_size = 0
             file_types_set: set[str] = set()
+            image_files_for_preview: list[Path] = []
 
             for file_path in extracted_dir.rglob("*"):
                 if not file_path.is_file():
@@ -379,6 +383,8 @@ class UploadService:
                 elif ext_lower in IMAGE_EXTENSIONS:
                     file_kind = FileKind.IMAGE
                     model_kind = ModelKind.UNKNOWN
+                    # Track images for preview creation
+                    image_files_for_preview.append(dest_path)
                 else:
                     file_kind = FileKind.OTHER
                     model_kind = ModelKind.UNKNOWN
@@ -412,9 +418,42 @@ class UploadService:
 
             await self.db.flush()
 
-            # Auto-queue render if no previews detected
+            # Create PreviewAssets from images found in archive
+            preview_service = PreviewService(self.db)
+            preview_count = 0
+            for img_path in image_files_for_preview:
+                try:
+                    async with aiofiles.open(img_path, "rb") as f:
+                        image_data = await f.read()
+                    await preview_service.save_preview(
+                        design_id=design.id,
+                        source=PreviewSource.ARCHIVE,
+                        image_data=image_data,
+                        filename=img_path.name,
+                        kind=PreviewKind.GALLERY,
+                    )
+                    preview_count += 1
+                    logger.debug(
+                        "archive_preview_created",
+                        design_id=design.id,
+                        filename=img_path.name,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "archive_preview_failed",
+                        design_id=design.id,
+                        filename=img_path.name,
+                        error=str(e),
+                    )
+
+            # Auto-select primary preview if any were created
+            if preview_count > 0:
+                await preview_service.auto_select_primary(design.id)
+                preview_files = preview_count
+
+            # Auto-queue render if no previews from archive
             render_job_id = None
-            if preview_files == 0:
+            if preview_count == 0:
                 render_job_id = await auto_queue_render_for_design(self.db, design.id)
 
             # Update metadata

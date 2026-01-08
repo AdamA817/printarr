@@ -652,7 +652,15 @@ export function DesignDetail() {
               <div>
                 <dt className="text-sm text-text-muted">File Types</dt>
                 <dd className="text-text-primary mt-1">
-                  {design.primary_file_types || 'Unknown'}
+                  {(() => {
+                    if (!design.primary_file_types) return 'Unknown'
+                    try {
+                      const types = JSON.parse(design.primary_file_types)
+                      return Array.isArray(types) ? types.join(', ') : design.primary_file_types
+                    } catch {
+                      return design.primary_file_types
+                    }
+                  })()}
                 </dd>
               </div>
               <div>
