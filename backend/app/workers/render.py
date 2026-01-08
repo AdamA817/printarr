@@ -233,7 +233,7 @@ class RenderWorker(BaseWorker):
                             preview_service = PreviewService(db)
                             await preview_service.save_preview(
                                 design_id=design_id,
-                                source=PreviewSource.EMBEDDED,
+                                source=PreviewSource.EMBEDDED_3MF,
                                 image_data=image_data,
                                 filename=f"3mf_thumbnail.png",
                                 kind=PreviewKind.THUMBNAIL,
