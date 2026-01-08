@@ -6,8 +6,12 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Type
 
+from sqlalchemy import and_, or_, select
+from sqlalchemy.orm import selectinload
+
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.db.models import ImportSource, ImportSourceStatus, Job, JobStatus, JobType
 from app.db.session import async_session_maker
 from app.services.job_queue import JobQueueService
 from app.workers.base import BaseWorker
@@ -170,6 +174,9 @@ class WorkerManager:
                 # Check for stale jobs
                 await self._requeue_stale_jobs()
 
+                # Schedule import source syncs that are due
+                await self._schedule_due_import_syncs()
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -192,6 +199,84 @@ class WorkerManager:
                 logger.info(
                     "stale_jobs_recovered",
                     count=count,
+                )
+
+    async def _schedule_due_import_syncs(self) -> None:
+        """Schedule sync jobs for import sources that are due.
+
+        Checks for sources where:
+        - sync_enabled is True
+        - status is ACTIVE
+        - last_sync_at is NULL OR last_sync_at + sync_interval_hours < now
+        - No pending/running sync job exists for this source
+        """
+        async with async_session_maker() as db:
+            now = datetime.now(timezone.utc)
+
+            # Find sources that are due for sync
+            result = await db.execute(
+                select(ImportSource).where(
+                    and_(
+                        ImportSource.sync_enabled == True,
+                        ImportSource.status == ImportSourceStatus.ACTIVE,
+                        or_(
+                            ImportSource.last_sync_at.is_(None),
+                            # Check if last_sync_at + interval < now
+                            # We'll filter in Python since SQL interval math varies by DB
+                        ),
+                    )
+                )
+            )
+            sources = result.scalars().all()
+
+            queued_count = 0
+            for source in sources:
+                # Check if sync is actually due
+                if source.last_sync_at is not None:
+                    next_sync_at = source.last_sync_at + timedelta(hours=source.sync_interval_hours)
+                    if next_sync_at > now:
+                        continue  # Not due yet
+
+                # Check if there's already a pending/running sync job for this source
+                existing_job = await db.execute(
+                    select(Job).where(
+                        and_(
+                            Job.job_type == JobType.SYNC_IMPORT_SOURCE,
+                            Job.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+                            Job.payload_json.like(f'%{source.id}%'),
+                        )
+                    )
+                )
+                if existing_job.scalar_one_or_none():
+                    continue  # Already has a pending sync
+
+                # Queue a sync job
+                queue = JobQueueService(db)
+                await queue.enqueue(
+                    job_type=JobType.SYNC_IMPORT_SOURCE,
+                    payload={
+                        "source_id": source.id,
+                        "auto_import": False,  # Just detect, don't auto-import
+                    },
+                    priority=0,  # Normal priority
+                    display_name=f"Scheduled sync: {source.name}",
+                )
+                queued_count += 1
+
+                logger.info(
+                    "import_sync_scheduled",
+                    source_id=source.id,
+                    source_name=source.name,
+                    last_sync_at=source.last_sync_at.isoformat() if source.last_sync_at else None,
+                    interval_hours=source.sync_interval_hours,
+                )
+
+            await db.commit()
+
+            if queued_count > 0:
+                logger.info(
+                    "import_syncs_scheduled",
+                    count=queued_count,
                 )
 
     async def get_stats(self) -> dict[str, Any]:
