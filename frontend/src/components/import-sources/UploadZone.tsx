@@ -286,7 +286,6 @@ export function UploadZone({
           type="file"
           // @ts-expect-error - webkitdirectory is not in the standard types
           webkitdirectory=""
-          // @ts-expect-error - directory is for Firefox
           directory=""
           onChange={handleFolderInputChange}
           className="hidden"
