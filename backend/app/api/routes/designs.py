@@ -1612,6 +1612,12 @@ async def delete_design(
                     file_path.unlink()
                     logger.debug("library_file_deleted", path=str(file_path))
 
+        # Also clean up the design's library folder if it exists
+        library_folder = settings.library_path / design_id
+        if library_folder.exists() and library_folder.is_dir():
+            shutil.rmtree(library_folder)
+            logger.info("library_folder_deleted", design_id=design_id)
+
     # Delete related records (cascade)
     await db.execute(sql_delete(DesignFile).where(DesignFile.design_id == design_id))
     await db.execute(sql_delete(DesignSource).where(DesignSource.design_id == design_id))
