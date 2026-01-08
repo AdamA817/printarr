@@ -128,6 +128,15 @@ class PreviewCandidate:
     priority: int  # 1=explicit, 2=folder, 3=root
 
 
+@dataclass
+class ExtractResult:
+    """Result of archive extraction for upload flow."""
+
+    files_extracted: int
+    model_files: int
+    nested_archives: int
+
+
 class ArchiveExtractor:
     """Service for extracting archive files.
 
@@ -291,6 +300,69 @@ class ArchiveExtractor:
             priority=5,
         )
         return job.id
+
+    async def extract(
+        self,
+        archive_path: Path,
+        output_dir: Path,
+    ) -> ExtractResult:
+        """Extract an archive to a target directory.
+
+        Simple extraction method for upload flow (no design ID required).
+
+        Args:
+            archive_path: Path to the archive file.
+            output_dir: Directory to extract to.
+
+        Returns:
+            ExtractResult with extraction details.
+        """
+        import aiofiles.os
+
+        await aiofiles.os.makedirs(output_dir, exist_ok=True)
+
+        try:
+            extracted_paths = await self._extract_archive(archive_path, output_dir)
+
+            # Check for nested archives and extract them
+            nested_count = 0
+            nested_archives = [
+                f for f in extracted_paths
+                if f.suffix.lower() in ARCHIVE_EXTENSIONS
+                or str(f).lower().endswith((".tar.gz", ".tgz"))
+            ]
+
+            for nested in nested_archives:
+                logger.info(
+                    "extracting_nested_archive",
+                    archive=nested.name,
+                )
+                nested_paths = await self._extract_archive(nested, output_dir)
+                extracted_paths.extend(nested_paths)
+                nested_count += 1
+
+                # Delete nested archive after extraction
+                await self._delete_file(nested)
+                # Remove from extracted_paths since it's deleted
+                if nested in extracted_paths:
+                    extracted_paths.remove(nested)
+
+            # Count model files
+            model_count = sum(
+                1 for p in extracted_paths
+                if p.suffix.lower() in MODEL_EXTENSIONS
+            )
+
+            return ExtractResult(
+                files_extracted=len(extracted_paths),
+                model_files=model_count,
+                nested_archives=nested_count,
+            )
+
+        except (PasswordProtectedError, CorruptedArchiveError, MissingPartError):
+            raise
+        except Exception as e:
+            raise ArchiveError(f"Failed to extract {archive_path.name}: {e}")
 
     async def _prepare_file_info(
         self, file_path: Path, staging_dir: Path
