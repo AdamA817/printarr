@@ -1,9 +1,12 @@
-"""Worker for generating STL preview renders using stl-thumb."""
+"""Worker for generating STL preview renders using stl-thumb.
+
+Also supports extracting embedded thumbnails from 3MF files as a fallback.
+"""
 
 from __future__ import annotations
 
 import asyncio
-import os
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,14 @@ from app.workers.base import BaseWorker
 from sqlalchemy import select
 
 logger = get_logger(__name__)
+
+# Known thumbnail paths inside 3MF archives (in priority order)
+THREEMF_THUMBNAIL_PATHS = [
+    "Metadata/thumbnail.png",
+    "Metadata/plate_1.png",
+    "thumbnail.png",
+    ".thumbnails/thumbnail.png",
+]
 
 # Configuration
 DEFAULT_RENDER_SIZE = 400
@@ -74,7 +85,38 @@ class RenderWorker(BaseWorker):
         # Find largest STL file (or first one)
         stl_file = self._select_stl_for_render(design_files)
         if not stl_file:
-            return {"design_id": design_id, "renders": 0, "message": "No renderable STL files"}
+            # Fallback: try to extract thumbnail from 3MF file
+            threemf_file = self._select_3mf_for_extraction(design_files)
+            if threemf_file:
+                threemf_path = settings.library_path / threemf_file.relative_path
+                if threemf_path.exists():
+                    extracted = await self._extract_3mf_thumbnail(design_id, threemf_path)
+                    if extracted:
+                        # Auto-select primary preview
+                        async with async_session_maker() as db:
+                            preview_service = PreviewService(db)
+                            await preview_service.auto_select_primary(design_id)
+                            await db.commit()
+                        return {
+                            "design_id": design_id,
+                            "renders": 1,
+                            "source": "3mf_embedded",
+                            "threemf_file": threemf_file.filename,
+                        }
+                    else:
+                        return {
+                            "design_id": design_id,
+                            "renders": 0,
+                            "message": "No thumbnail found in 3MF file",
+                        }
+                else:
+                    logger.warning(
+                        "3mf_file_not_found",
+                        design_id=design_id,
+                        path=str(threemf_path),
+                    )
+                    return {"error": f"3MF file not found: {threemf_path}"}
+            return {"design_id": design_id, "renders": 0, "message": "No renderable STL or 3MF files"}
 
         # Check file size
         stl_path = settings.library_path / stl_file.relative_path
@@ -154,6 +196,92 @@ class RenderWorker(BaseWorker):
         if with_sizes:
             return max(with_sizes, key=lambda f: f.size_bytes or 0)
         return stl_files[0]
+
+    def _select_3mf_for_extraction(self, design_files: list[DesignFile]) -> DesignFile | None:
+        """Select a 3MF file for thumbnail extraction.
+
+        Prefers the largest file, filtered to only .3mf extension.
+        """
+        threemf_files = [
+            f for f in design_files
+            if f.filename.lower().endswith(".3mf")
+        ]
+
+        if not threemf_files:
+            return None
+
+        # Return the largest by size_bytes (or first if no sizes)
+        with_sizes = [f for f in threemf_files if f.size_bytes]
+        if with_sizes:
+            return max(with_sizes, key=lambda f: f.size_bytes or 0)
+        return threemf_files[0]
+
+    async def _extract_3mf_thumbnail(self, design_id: str, threemf_path: Path) -> bool:
+        """Extract embedded thumbnail from a 3MF file.
+
+        Args:
+            design_id: The design ID.
+            threemf_path: Path to the 3MF file.
+
+        Returns:
+            True if thumbnail extracted and saved, False otherwise.
+        """
+        try:
+            with zipfile.ZipFile(threemf_path, "r") as zf:
+                namelist = zf.namelist()
+
+                # Try each known thumbnail path
+                for thumb_path in THREEMF_THUMBNAIL_PATHS:
+                    if thumb_path in namelist:
+                        image_data = zf.read(thumb_path)
+
+                        if len(image_data) == 0:
+                            continue
+
+                        # Save via PreviewService
+                        async with async_session_maker() as db:
+                            preview_service = PreviewService(db)
+                            await preview_service.save_preview(
+                                design_id=design_id,
+                                source=PreviewSource.EMBEDDED,
+                                image_data=image_data,
+                                filename=f"3mf_thumbnail.png",
+                                kind=PreviewKind.THUMBNAIL,
+                            )
+                            await db.commit()
+
+                        logger.info(
+                            "3mf_thumbnail_extracted",
+                            design_id=design_id,
+                            threemf_file=threemf_path.name,
+                            thumbnail_path=thumb_path,
+                        )
+                        return True
+
+                logger.debug(
+                    "3mf_no_thumbnail_found",
+                    design_id=design_id,
+                    threemf_file=threemf_path.name,
+                    checked_paths=THREEMF_THUMBNAIL_PATHS,
+                )
+                return False
+
+        except zipfile.BadZipFile:
+            logger.warning(
+                "3mf_invalid_archive",
+                design_id=design_id,
+                threemf_file=str(threemf_path),
+            )
+            return False
+        except Exception as e:
+            logger.error(
+                "3mf_extraction_error",
+                design_id=design_id,
+                threemf_file=str(threemf_path),
+                error=str(e),
+                exc_info=True,
+            )
+            return False
 
     async def _render_stl(self, design_id: str, stl_path: Path) -> bool:
         """Render an STL file using stl-thumb.
