@@ -45,6 +45,7 @@ from app.services.auto_render import auto_queue_render_for_design
 from app.services.import_profile import ImportProfileService
 from app.services.job_queue import JobQueueService
 from app.services.preview import PreviewService
+from app.services.settings import SettingsService
 from app.utils import compute_file_hash
 
 # Model file extensions for classification
@@ -160,13 +161,16 @@ class UploadService:
         stat = await aiofiles.os.stat(file_path)
         size = stat.st_size
 
-        # Validate size
-        max_size_bytes = settings.upload_max_size_mb * 1024 * 1024
+        # Validate size - use runtime settings from database
+        settings_service = SettingsService(self.db)
+        all_settings = await settings_service.get_all()
+        max_size_mb = all_settings.get("upload_max_size_mb", settings.upload_max_size_mb)
+        max_size_bytes = max_size_mb * 1024 * 1024
         if size > max_size_bytes:
             # Cleanup and raise error
             await self._cleanup_upload(upload_id)
             raise UploadValidationError(
-                f"File size ({size / 1024 / 1024:.1f}MB) exceeds maximum ({settings.upload_max_size_mb}MB)"
+                f"File size ({size / 1024 / 1024:.1f}MB) exceeds maximum ({max_size_mb}MB)"
             )
 
         # Save metadata
