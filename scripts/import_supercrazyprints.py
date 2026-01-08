@@ -224,15 +224,8 @@ def get_design_title(path: Path, is_folder: bool) -> str:
 
 
 def count_model_files(folder: Path) -> int:
-    """Count model files in a folder (non-recursive)."""
-    count = 0
-    try:
-        for f in folder.iterdir():
-            if f.is_file() and (is_model_file(f) or is_archive_file(f)):
-                count += 1
-    except PermissionError:
-        pass
-    return count
+    """Count model files in a folder (recursive)."""
+    return len(get_all_model_files(folder))
 
 
 def get_file_kind(ext: str):
