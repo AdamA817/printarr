@@ -96,7 +96,7 @@ class AutoRenderService:
             job_type=JobType.GENERATE_RENDER,
             design_id=design_id,
             priority=settings.auto_queue_render_priority,
-            payload={"auto_queued": True},
+            payload={"auto_queued": True, "design_id": design_id},
             max_attempts=2,  # Limit retries for auto-queued renders
         )
 

@@ -419,7 +419,7 @@ async def run_import(
                         job_type=JobType.GENERATE_RENDER,
                         design_id=design_id,
                         priority=-1,  # Background priority
-                        payload={"auto_queued": True},
+                        payload={"auto_queued": True, "design_id": design_id},
                         max_attempts=2,
                     )
                     render_queued = True
