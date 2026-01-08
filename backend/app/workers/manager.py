@@ -219,7 +219,8 @@ class WorkerManager:
                 select(ImportSource).where(
                     and_(
                         ImportSource.sync_enabled == True,
-                        ImportSource.status == ImportSourceStatus.ACTIVE,
+                        # Use string value for VARCHAR column compatibility
+                        ImportSource.status == "ACTIVE",
                     )
                 )
             )
