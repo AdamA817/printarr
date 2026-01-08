@@ -327,39 +327,7 @@ function ThangsSection({ designId, thangs, onSearchThangs }: ThangsSectionProps)
   )
 }
 
-interface MetadataFieldProps {
-  label: string
-  value: string
-  authority: MetadataAuthority
-  isOverridden?: boolean
-  onClearOverride?: () => void
-}
-
-function MetadataField({ label, value, authority, isOverridden, onClearOverride }: MetadataFieldProps) {
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-1">
-        <dt className="text-sm text-text-muted">{label}</dt>
-        <MetadataSourceBadge authority={authority} />
-        {isOverridden && <EditedBadge />}
-      </div>
-      <dd className="text-text-primary mt-1 flex items-center gap-2">
-        <span>{value}</span>
-        {isOverridden && onClearOverride && (
-          <button
-            onClick={onClearOverride}
-            className="text-xs text-text-muted hover:text-accent-danger transition-colors"
-            title="Reset to canonical value"
-          >
-            <CloseIcon className="w-4 h-4" />
-          </button>
-        )}
-      </dd>
-    </div>
-  )
-}
-
-// Editable version of MetadataField with inline editing
+// Editable metadata field with inline editing
 interface EditableMetadataFieldProps {
   label: string
   value: string
@@ -577,7 +545,6 @@ function EditableNotesSection({ notes, onSave, isSaving }: EditableNotesSectionP
 
 // Multicolor status selector
 interface MulticolorSelectorProps {
-  value: MulticolorStatus
   displayValue: MulticolorStatus
   hasOverride: boolean
   onSave: (value: MulticolorStatus | null) => Promise<void>
@@ -586,7 +553,6 @@ interface MulticolorSelectorProps {
 }
 
 function MulticolorSelector({
-  value,
   displayValue,
   hasOverride,
   onSave,
@@ -696,13 +662,6 @@ function DesignDetailSkeleton() {
       </div>
     </div>
   )
-}
-
-// Multicolor display helper
-const multicolorDisplay: Record<MulticolorStatus, { label: string; className: string }> = {
-  UNKNOWN: { label: 'Unknown', className: 'text-text-muted' },
-  SINGLE: { label: 'Single Color', className: 'text-text-secondary' },
-  MULTI: { label: 'Multicolor', className: 'text-purple-400' },
 }
 
 export function DesignDetail() {
@@ -1023,7 +982,6 @@ export function DesignDetail() {
                 </dd>
               </div>
               <MulticolorSelector
-                value={design.multicolor}
                 displayValue={design.display_multicolor}
                 hasOverride={design.multicolor_override !== null}
                 onSave={handleSaveMulticolor}
