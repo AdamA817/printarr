@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Type
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
@@ -213,17 +213,13 @@ class WorkerManager:
         async with async_session_maker() as db:
             now = datetime.now(timezone.utc)
 
-            # Find sources that are due for sync
+            # Find sources that might be due for sync
+            # We check the actual due time in Python since SQL interval math varies by DB
             result = await db.execute(
                 select(ImportSource).where(
                     and_(
                         ImportSource.sync_enabled == True,
                         ImportSource.status == ImportSourceStatus.ACTIVE,
-                        or_(
-                            ImportSource.last_sync_at.is_(None),
-                            # Check if last_sync_at + interval < now
-                            # We'll filter in Python since SQL interval math varies by DB
-                        ),
                     )
                 )
             )
