@@ -6,13 +6,23 @@ This script handles the mixed folder structure:
 - Loose STL/3MF files at various levels
 
 Usage:
-    python scripts/import_supercrazyprints.py /path/to/SuperCrazyPrints [--dry-run]
+    # Dry run to preview what will be imported
+    python scripts/import_supercrazyprints.py /library/SuperCrazyPrints --dry-run
+
+    # Live import (source must be inside library path)
+    python scripts/import_supercrazyprints.py /library/SuperCrazyPrints
 
 The script will:
 1. Scan for design folders (folders containing model files)
 2. Detect orphan model files (not inside a design folder)
-3. Create Design records in Printarr database
+3. Create Design records with DesignFile entries
 4. Queue preview render jobs for each design
+5. Queue AI analysis jobs (if AI is enabled)
+
+IMPORTANT: The source_path must be a subdirectory of Printarr's library path.
+Mount your SuperCrazyPrints folder under /library in Docker, e.g.:
+    volumes:
+      - /mnt/user/SuperCrazyPrints:/library/SuperCrazyPrints:ro
 """
 
 from __future__ import annotations
@@ -36,9 +46,11 @@ FORMAT_SUBFOLDERS = {
     "Models", "Files",
 }
 
+
 def is_format_subfolder(folder_name: str) -> bool:
     """Check if a folder name is a format/organization subfolder."""
     return folder_name in FORMAT_SUBFOLDERS
+
 
 def is_short_filename(name: str) -> bool:
     """Check if this looks like a Windows 8.3 short filename."""
@@ -59,6 +71,9 @@ class ImportStats:
         self.orphan_files_found = 0
         self.designs_created = 0
         self.designs_skipped = 0
+        self.files_registered = 0
+        self.render_jobs_queued = 0
+        self.ai_jobs_queued = 0
         self.errors = []
 
 
@@ -77,6 +92,19 @@ def should_ignore(path: Path) -> bool:
     return path.name in IGNORE_FOLDERS or path.name.startswith(".")
 
 
+def get_all_model_files(folder: Path) -> list[Path]:
+    """Get all model files in a folder and its subfolders."""
+    model_files = []
+    try:
+        for f in folder.rglob("*"):
+            if f.is_file() and (is_model_file(f) or is_archive_file(f)):
+                if not should_ignore(f) and not any(should_ignore(p) for p in f.parents):
+                    model_files.append(f)
+    except PermissionError:
+        pass
+    return model_files
+
+
 def find_designs(root_path: Path) -> tuple[list[tuple[Path, str]], list[tuple[Path, str]]]:
     """Find all designs in the folder structure.
 
@@ -93,9 +121,6 @@ def find_designs(root_path: Path) -> tuple[list[tuple[Path, str]], list[tuple[Pa
     """
     design_folders: list[tuple[Path, str]] = []
     orphan_files: list[tuple[Path, str]] = []
-
-    # Format subfolder names to skip (these aren't separate designs)
-    FORMAT_FOLDERS = {"STL", "STLs", "stl", "stls", "3MF", "3mf", "Supported", "Unsupported"}
 
     # First pass: find all folders that contain model files directly
     folders_with_models: dict[Path, list[Path]] = {}  # folder -> list of model files
@@ -199,7 +224,7 @@ def get_design_title(path: Path, is_folder: bool) -> str:
 
 
 def count_model_files(folder: Path) -> int:
-    """Count model files in a folder."""
+    """Count model files in a folder (non-recursive)."""
     count = 0
     try:
         for f in folder.iterdir():
@@ -210,20 +235,50 @@ def count_model_files(folder: Path) -> int:
     return count
 
 
+def get_file_kind(ext: str):
+    """Get FileKind enum for a file extension."""
+    # Import here to avoid import errors in dry-run mode
+    from app.db.models.enums import FileKind
+    ext_lower = ext.lower()
+    if ext_lower in MODEL_EXTENSIONS:
+        return FileKind.MODEL
+    elif ext_lower in ARCHIVE_EXTENSIONS:
+        return FileKind.ARCHIVE
+    return FileKind.OTHER
+
+
+def get_model_kind(ext: str):
+    """Get ModelKind enum for a file extension."""
+    from app.db.models.enums import ModelKind
+    ext_lower = ext.lower()
+    mapping = {
+        ".stl": ModelKind.STL,
+        ".3mf": ModelKind.THREE_MF,
+        ".obj": ModelKind.OBJ,
+        ".step": ModelKind.STEP,
+    }
+    return mapping.get(ext_lower, ModelKind.UNKNOWN)
+
+
 async def run_import(
     source_path: Path,
+    library_path: Path | None = None,
     designer: str = "SuperCrazyPrints",
     dry_run: bool = False,
+    queue_renders: bool = True,
+    queue_ai: bool = True,
 ) -> ImportStats:
     """Run the import process."""
     stats = ImportStats()
 
     print(f"\n{'=' * 60}")
-    print(f"SuperCrazyPrints Import Script")
+    print("SuperCrazyPrints Import Script")
     print(f"{'=' * 60}")
     print(f"Source: {source_path}")
     print(f"Designer: {designer}")
     print(f"Mode: {'DRY RUN' if dry_run else 'LIVE'}")
+    print(f"Queue Renders: {queue_renders}")
+    print(f"Queue AI: {queue_ai}")
     print(f"{'=' * 60}\n")
 
     # Verify source exists
@@ -271,7 +326,7 @@ async def run_import(
 
         total = len(design_folders) + len(orphan_files)
         print(f"\n{'=' * 60}")
-        print(f"SUMMARY")
+        print("SUMMARY")
         print(f"{'=' * 60}")
         print(f"  Design folders: {len(design_folders)}")
         print(f"  Orphan files:   {len(orphan_files)}")
@@ -290,12 +345,39 @@ async def run_import(
     from sqlalchemy.orm import sessionmaker
 
     from app.core.config import settings
-    from app.db.models import Design, DesignStatus, MetadataAuthority
+    from app.db.models import Design, DesignFile, DesignStatus, MetadataAuthority
+    from app.db.models.enums import JobType
+    from app.services.job_queue import JobQueueService
+
+    # Use provided library path or default from settings
+    if library_path is None:
+        library_path = settings.library_path
+
+    # Verify source is inside library
+    try:
+        source_path.relative_to(library_path)
+    except ValueError:
+        print("ERROR: Source path must be inside the library path!")
+        print(f"  Source:  {source_path}")
+        print(f"  Library: {library_path}")
+        print(f"\nMount your SuperCrazyPrints folder under the library, e.g.:")
+        print("  volumes:")
+        print(f"    - /mnt/user/SuperCrazyPrints:{library_path}/SuperCrazyPrints:ro")
+        return stats
+
+    print(f"Library path: {library_path}")
 
     engine = create_async_engine(settings.database_url, echo=False)
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+    # Check if AI is enabled
+    ai_enabled = queue_ai and settings.ai_configured
+    if queue_ai and not ai_enabled:
+        print("NOTE: AI analysis disabled (AI not configured in settings)")
+
     async with async_session() as db:
+        job_queue = JobQueueService(db)
+
         # Helper to check for existing design
         async def check_existing(title: str) -> bool:
             result = await db.execute(
@@ -305,6 +387,66 @@ async def run_import(
                 )
             )
             return result.scalar_one_or_none() is not None
+
+        # Helper to create design files
+        async def create_design_files(design_id: str, model_files: list[Path]) -> int:
+            """Create DesignFile records for model files."""
+            count = 0
+            for model_file in model_files:
+                try:
+                    rel_path = str(model_file.relative_to(library_path))
+                    ext = model_file.suffix.lower()
+                    size = model_file.stat().st_size
+
+                    design_file = DesignFile(
+                        design_id=design_id,
+                        relative_path=rel_path,
+                        filename=model_file.name,
+                        ext=ext,
+                        size_bytes=size,
+                        file_kind=get_file_kind(ext),
+                        model_kind=get_model_kind(ext),
+                        is_primary=(count == 0),  # First file is primary
+                    )
+                    db.add(design_file)
+                    count += 1
+                except Exception as e:
+                    stats.errors.append(f"File {model_file.name}: {e}")
+            return count
+
+        # Helper to queue jobs
+        async def queue_jobs_for_design(design_id: str) -> tuple[bool, bool]:
+            """Queue render and AI jobs. Returns (render_queued, ai_queued)."""
+            render_queued = False
+            ai_queued = False
+
+            if queue_renders:
+                try:
+                    await job_queue.enqueue(
+                        job_type=JobType.GENERATE_RENDER,
+                        design_id=design_id,
+                        priority=-1,  # Background priority
+                        payload={"auto_queued": True},
+                        max_attempts=2,
+                    )
+                    render_queued = True
+                except Exception as e:
+                    stats.errors.append(f"Render job queue failed: {e}")
+
+            if ai_enabled:
+                try:
+                    await job_queue.enqueue(
+                        job_type=JobType.AI_ANALYZE_DESIGN,
+                        design_id=design_id,
+                        priority=-2,  # Lower than render
+                        payload={"design_id": design_id},
+                        display_name="AI Analysis (import)",
+                    )
+                    ai_queued = True
+                except Exception as e:
+                    stats.errors.append(f"AI job queue failed: {e}")
+
+            return render_queued, ai_queued
 
         # Import design folders
         print("\nImporting design folders...")
@@ -319,10 +461,24 @@ async def run_import(
                 design = Design(
                     canonical_title=title,
                     canonical_designer=designer,
-                    status=DesignStatus.DOWNLOADED,
+                    status=DesignStatus.ORGANIZED,  # Already in library
                     metadata_authority=MetadataAuthority.USER,
                 )
                 db.add(design)
+                await db.flush()  # Get the design ID
+
+                # Create DesignFile records for all model files in this folder
+                model_files = get_all_model_files(path)
+                files_created = await create_design_files(design.id, model_files)
+                stats.files_registered += files_created
+
+                # Queue jobs
+                render_q, ai_q = await queue_jobs_for_design(design.id)
+                if render_q:
+                    stats.render_jobs_queued += 1
+                if ai_q:
+                    stats.ai_jobs_queued += 1
+
                 stats.designs_created += 1
 
                 if (i + 1) % 50 == 0:
@@ -346,10 +502,23 @@ async def run_import(
                 design = Design(
                     canonical_title=title,
                     canonical_designer=designer,
-                    status=DesignStatus.DOWNLOADED,
+                    status=DesignStatus.ORGANIZED,
                     metadata_authority=MetadataAuthority.USER,
                 )
                 db.add(design)
+                await db.flush()
+
+                # Create single DesignFile record
+                files_created = await create_design_files(design.id, [path])
+                stats.files_registered += files_created
+
+                # Queue jobs
+                render_q, ai_q = await queue_jobs_for_design(design.id)
+                if render_q:
+                    stats.render_jobs_queued += 1
+                if ai_q:
+                    stats.ai_jobs_queued += 1
+
                 stats.designs_created += 1
 
                 if (i + 1) % 50 == 0:
@@ -373,7 +542,13 @@ def main():
     parser.add_argument(
         "source_path",
         type=Path,
-        help="Path to SuperCrazyPrints folder",
+        help="Path to SuperCrazyPrints folder (must be inside library path)",
+    )
+    parser.add_argument(
+        "--library-path",
+        type=Path,
+        default=None,
+        help="Override library path (default: from PRINTARR_LIBRARY_PATH)",
     )
     parser.add_argument(
         "--designer",
@@ -385,13 +560,26 @@ def main():
         action="store_true",
         help="Show what would be imported without making changes",
     )
+    parser.add_argument(
+        "--no-render",
+        action="store_true",
+        help="Don't queue render jobs",
+    )
+    parser.add_argument(
+        "--no-ai",
+        action="store_true",
+        help="Don't queue AI analysis jobs",
+    )
 
     args = parser.parse_args()
 
     stats = asyncio.run(run_import(
         source_path=args.source_path,
+        library_path=args.library_path,
         designer=args.designer,
         dry_run=args.dry_run,
+        queue_renders=not args.no_render,
+        queue_ai=not args.no_ai,
     ))
 
     print(f"\n{'=' * 60}")
@@ -401,6 +589,9 @@ def main():
     print(f"  Orphan files found: {stats.orphan_files_found}")
     print(f"  Designs created: {stats.designs_created}")
     print(f"  Designs skipped (duplicates): {stats.designs_skipped}")
+    print(f"  Files registered: {stats.files_registered}")
+    print(f"  Render jobs queued: {stats.render_jobs_queued}")
+    print(f"  AI jobs queued: {stats.ai_jobs_queued}")
     print(f"  Errors: {len(stats.errors)}")
 
     if stats.errors:
