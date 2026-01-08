@@ -69,6 +69,9 @@ export function InfiniteDesignGrid({
     const scrollElement = scrollRef.current
     if (!scrollElement) return
 
+    // Don't set up observer while still loading initial data
+    if (isLoading) return
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage) {
@@ -88,7 +91,7 @@ export function InfiniteDesignGrid({
         observer.unobserve(el)
       }
     }
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage, scrollRef])
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, scrollRef, isLoading])
 
   // Calculate columns and row height
   const columns = view === 'grid' ? getColumnCount(containerWidth) : 1
