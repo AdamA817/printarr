@@ -74,6 +74,20 @@ export function UploadModal({ isOpen, onClose, onUploadsComplete }: UploadModalP
               : u
           )
         )
+      } else {
+        // Unexpected status - treat as error
+        console.warn('Unexpected upload status:', processResponse.status)
+        setUploads((prev) =>
+          prev.map((u) =>
+            u.id === id
+              ? {
+                  ...u,
+                  status: 'error' as UploadStatus,
+                  error: `Unexpected status: ${processResponse.status}`,
+                }
+              : u
+          )
+        )
       }
     } catch (error) {
       // Handle upload or processing error
