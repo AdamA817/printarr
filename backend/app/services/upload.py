@@ -22,8 +22,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.db.models import Design, ImportSource
-from app.db.models.enums import DesignStatus, ImportSourceType, MetadataAuthority
+from app.db.models import Design, DesignFile, ImportSource
+from app.db.models.enums import (
+    DesignStatus,
+    FileKind,
+    ImportSourceType,
+    MetadataAuthority,
+    ModelKind,
+)
 from app.schemas.import_profile import ImportProfileConfig
 from app.schemas.upload import (
     ProcessUploadResponse,
@@ -34,6 +40,19 @@ from app.schemas.upload import (
 from app.services.archive import ArchiveExtractor
 from app.services.auto_render import auto_queue_render_for_design
 from app.services.import_profile import ImportProfileService
+from app.utils import compute_file_hash
+
+# Model file extensions for classification
+MODEL_EXTENSIONS = {
+    ".stl": ModelKind.STL,
+    ".3mf": ModelKind.THREE_MF,
+    ".obj": ModelKind.OBJ,
+    ".step": ModelKind.STEP,
+    ".stp": ModelKind.STEP,
+}
+
+# Image extensions
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 
 if TYPE_CHECKING:
     pass
@@ -330,6 +349,66 @@ class UploadService:
             self.db.add(design)
             await self.db.flush()
 
+            # Move files to library and create DesignFile records
+            library_dir = settings.library_path / design.id
+            await aiofiles.os.makedirs(library_dir, exist_ok=True)
+
+            total_size = 0
+            file_types_set: set[str] = set()
+
+            for file_path in extracted_dir.rglob("*"):
+                if not file_path.is_file():
+                    continue
+
+                # Get relative path from extracted_dir
+                rel_path = file_path.relative_to(extracted_dir)
+                dest_path = library_dir / rel_path
+
+                # Ensure destination directory exists
+                await aiofiles.os.makedirs(dest_path.parent, exist_ok=True)
+
+                # Move file to library
+                shutil.move(str(file_path), str(dest_path))
+
+                # Classify file
+                ext_lower = file_path.suffix.lower()
+                if ext_lower in MODEL_EXTENSIONS:
+                    file_kind = FileKind.MODEL
+                    model_kind = MODEL_EXTENSIONS[ext_lower]
+                    file_types_set.add(ext_lower.lstrip(".").upper())
+                elif ext_lower in IMAGE_EXTENSIONS:
+                    file_kind = FileKind.IMAGE
+                    model_kind = ModelKind.UNKNOWN
+                else:
+                    file_kind = FileKind.OTHER
+                    model_kind = ModelKind.UNKNOWN
+
+                # Get file info
+                file_size = dest_path.stat().st_size
+                file_hash = await compute_file_hash(dest_path)
+                total_size += file_size
+
+                # Create DesignFile record
+                design_file = DesignFile(
+                    design_id=design.id,
+                    relative_path=str(rel_path),
+                    filename=file_path.name,
+                    ext=ext_lower,
+                    size_bytes=file_size,
+                    sha256=file_hash,
+                    file_kind=file_kind,
+                    model_kind=model_kind,
+                    is_from_archive=True,
+                )
+                self.db.add(design_file)
+
+            # Update design with totals
+            design.total_size_bytes = total_size
+            design.primary_file_types = list(file_types_set) if file_types_set else None
+            design.status = DesignStatus.ORGANIZED
+
+            await self.db.flush()
+
             # Auto-queue render if no previews detected
             render_job_id = None
             if preview_files == 0:
@@ -341,12 +420,16 @@ class UploadService:
             meta["design_id"] = design.id
             await self._save_meta(upload_id, meta)
 
+            # Cleanup upload staging directory
+            await self._cleanup_upload(upload_id)
+
             logger.info(
                 "upload_processed",
                 upload_id=upload_id,
                 design_id=design.id,
                 title=design_title,
                 files_extracted=files_extracted,
+                total_size=total_size,
             )
 
             return ProcessUploadResponse(
