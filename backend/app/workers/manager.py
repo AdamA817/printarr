@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any, Type
 
-from sqlalchemy import and_, select
+from sqlalchemy import String, and_, cast, select
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
@@ -219,8 +219,8 @@ class WorkerManager:
                 select(ImportSource).where(
                     and_(
                         ImportSource.sync_enabled == True,
-                        # Use string value for VARCHAR column compatibility
-                        ImportSource.status == "ACTIVE",
+                        # Cast column to String to avoid Enum type mismatch with VARCHAR column
+                        cast(ImportSource.status, String) == "ACTIVE",
                     )
                 )
             )
