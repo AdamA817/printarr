@@ -7,6 +7,7 @@ import { UploadZone } from './UploadZone'
 import { UploadQueue } from './UploadQueue'
 import type { UploadItem, UploadStatus } from './UploadQueue'
 import { useImportProfiles } from '@/hooks/useImportProfiles'
+import { useSettings } from '@/hooks/useSettings'
 import { uploadApi } from '@/services/api'
 
 interface UploadModalProps {
@@ -15,12 +16,19 @@ interface UploadModalProps {
   onUploadsComplete?: (count: number) => void
 }
 
+// Default max size fallback (500MB)
+const DEFAULT_MAX_SIZE_MB = 500
+
 export function UploadModal({ isOpen, onClose, onUploadsComplete }: UploadModalProps) {
   const [uploads, setUploads] = useState<UploadItem[]>([])
   const [selectedProfileId, setSelectedProfileId] = useState<string>('')
   const uploadIdCounter = useRef(0)
 
   const { data: profilesData } = useImportProfiles()
+  const { data: settings } = useSettings()
+
+  // Get max upload size from settings (convert MB to bytes)
+  const maxUploadSize = ((settings?.upload_max_size_mb as number) ?? DEFAULT_MAX_SIZE_MB) * 1024 * 1024
 
   // Upload a file using the real API
   const uploadFile = useCallback(async (id: string, file: File, profileId: string) => {
@@ -229,6 +237,7 @@ export function UploadModal({ isOpen, onClose, onUploadsComplete }: UploadModalP
             onFilesSelected={handleFilesSelected}
             disabled={!selectedProfileId}
             accept={['.stl', '.obj', '.3mf', '.step', '.stp', '.zip', '.rar', '.7z']}
+            maxSize={maxUploadSize}
           />
 
           {/* Upload queue */}
