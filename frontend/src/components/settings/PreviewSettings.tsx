@@ -19,26 +19,29 @@ export function PreviewSettings() {
   const [hasChanges, setHasChanges] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
 
+  // Extract nested settings object (API returns { settings: { ... } })
+  const settingsData = (settings as { settings?: Record<string, unknown> })?.settings
+
   // Initialize form with loaded settings
   useEffect(() => {
-    if (settings) {
-      setAutoQueueRender((settings.auto_queue_render_after_import as boolean) ?? DEFAULT_AUTO_QUEUE_RENDER)
-      setRenderPriority((settings.auto_queue_render_priority as number) ?? DEFAULT_RENDER_PRIORITY)
-      setMaxUploadSize((settings.upload_max_size_mb as number) ?? DEFAULT_UPLOAD_MAX_SIZE)
-      setRetentionHours((settings.upload_retention_hours as number) ?? DEFAULT_UPLOAD_RETENTION)
+    if (settingsData) {
+      setAutoQueueRender((settingsData.auto_queue_render_after_import as boolean) ?? DEFAULT_AUTO_QUEUE_RENDER)
+      setRenderPriority((settingsData.auto_queue_render_priority as number) ?? DEFAULT_RENDER_PRIORITY)
+      setMaxUploadSize((settingsData.upload_max_size_mb as number) ?? DEFAULT_UPLOAD_MAX_SIZE)
+      setRetentionHours((settingsData.upload_retention_hours as number) ?? DEFAULT_UPLOAD_RETENTION)
     }
-  }, [settings])
+  }, [settingsData])
 
   // Track changes
   useEffect(() => {
-    if (!settings) return
+    if (!settingsData) return
     setHasChanges(
-      autoQueueRender !== ((settings.auto_queue_render_after_import as boolean) ?? DEFAULT_AUTO_QUEUE_RENDER) ||
-      renderPriority !== ((settings.auto_queue_render_priority as number) ?? DEFAULT_RENDER_PRIORITY) ||
-      maxUploadSize !== ((settings.upload_max_size_mb as number) ?? DEFAULT_UPLOAD_MAX_SIZE) ||
-      retentionHours !== ((settings.upload_retention_hours as number) ?? DEFAULT_UPLOAD_RETENTION)
+      autoQueueRender !== ((settingsData.auto_queue_render_after_import as boolean) ?? DEFAULT_AUTO_QUEUE_RENDER) ||
+      renderPriority !== ((settingsData.auto_queue_render_priority as number) ?? DEFAULT_RENDER_PRIORITY) ||
+      maxUploadSize !== ((settingsData.upload_max_size_mb as number) ?? DEFAULT_UPLOAD_MAX_SIZE) ||
+      retentionHours !== ((settingsData.upload_retention_hours as number) ?? DEFAULT_UPLOAD_RETENTION)
     )
-  }, [autoQueueRender, renderPriority, maxUploadSize, retentionHours, settings])
+  }, [autoQueueRender, renderPriority, maxUploadSize, retentionHours, settingsData])
 
   // Validation
   const priorityError = renderPriority < -10 || renderPriority > 10 ? 'Must be between -10 and 10' : null
