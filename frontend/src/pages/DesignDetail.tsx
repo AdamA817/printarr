@@ -443,9 +443,14 @@ export function DesignDetail() {
 
   const handleDelete = async (deleteFiles: boolean) => {
     if (!design) return
-    await deleteMutation.mutateAsync({ id: design.id, deleteFiles })
-    // Navigate back to designs list after successful deletion
-    navigate('/designs')
+    try {
+      await deleteMutation.mutateAsync({ id: design.id, deleteFiles })
+      // Navigate back to designs list after successful deletion
+      navigate('/designs')
+    } catch (err) {
+      // Re-throw to let the modal display the error
+      throw err
+    }
   }
 
   const toggleSourceSelection = (sourceId: string) => {

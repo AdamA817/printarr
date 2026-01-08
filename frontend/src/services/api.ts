@@ -260,7 +260,7 @@ export const designsApi = {
 
   // Delete operations (#171)
   delete: (id: string, deleteFiles = false) =>
-    api.delete(`/designs/${id}`, { params: { delete_files: deleteFiles } }),
+    api.delete(`/designs/${id}`, { params: { delete_files: deleteFiles } }).then(() => undefined),
 
   bulkDelete: (designIds: string[], deleteFiles = false) =>
     api.delete<BulkDeleteResponse>('/designs/bulk', {

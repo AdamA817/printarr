@@ -407,8 +407,9 @@ export function useDeleteDesign() {
     mutationFn: ({ id, deleteFiles }: { id: string; deleteFiles: boolean }) =>
       designsApi.delete(id, deleteFiles),
     onMutate: async ({ id }) => {
-      // Cancel outgoing refetches
+      // Cancel outgoing refetches for both list and detail
       await queryClient.cancelQueries({ queryKey: ['designs'] })
+      await queryClient.cancelQueries({ queryKey: ['design', id] })
 
       // Snapshot previous value
       const previousDesigns = queryClient.getQueriesData<DesignList>({ queryKey: ['designs'] })
@@ -433,9 +434,16 @@ export function useDeleteDesign() {
         })
       }
     },
-    onSettled: (_, __, { id }) => {
-      // Remove from cache and refetch
+    onSuccess: (_, { id }) => {
+      // Remove the design query immediately on success to prevent refetch attempts
+      // This must happen before onSettled to avoid race conditions
       queryClient.removeQueries({ queryKey: ['design', id] })
+      queryClient.removeQueries({ queryKey: ['designFiles', id] })
+      queryClient.removeQueries({ queryKey: ['designPreviews', id] })
+      queryClient.removeQueries({ queryKey: ['designTags', id] })
+    },
+    onSettled: () => {
+      // Refetch the designs list
       queryClient.invalidateQueries({ queryKey: ['designs'] })
     },
   })
