@@ -50,7 +50,7 @@ export function UploadModal({ isOpen, onClose, onUploadsComplete }: UploadModalP
       })
 
       // Handle processing result
-      if (processResponse.status === 'COMPLETE') {
+      if (processResponse.status === 'COMPLETED') {
         setUploads((prev) =>
           prev.map((u) =>
             u.id === id
