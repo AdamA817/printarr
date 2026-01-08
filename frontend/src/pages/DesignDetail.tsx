@@ -359,6 +359,321 @@ function MetadataField({ label, value, authority, isOverridden, onClearOverride 
   )
 }
 
+// Editable version of MetadataField with inline editing
+interface EditableMetadataFieldProps {
+  label: string
+  value: string
+  canonicalValue: string
+  authority: MetadataAuthority
+  isOverridden?: boolean
+  onSave: (value: string) => Promise<void>
+  onClearOverride?: () => void
+  isSaving?: boolean
+  placeholder?: string
+}
+
+function EditableMetadataField({
+  label,
+  value,
+  canonicalValue,
+  authority,
+  isOverridden,
+  onSave,
+  onClearOverride,
+  isSaving,
+  placeholder,
+}: EditableMetadataFieldProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(value)
+
+  const handleStartEdit = () => {
+    setEditValue(value)
+    setIsEditing(true)
+  }
+
+  const handleSave = async () => {
+    if (editValue.trim() !== value) {
+      await onSave(editValue.trim())
+    }
+    setIsEditing(false)
+  }
+
+  const handleCancel = () => {
+    setEditValue(value)
+    setIsEditing(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave()
+    } else if (e.key === 'Escape') {
+      handleCancel()
+    }
+  }
+
+  if (isEditing) {
+    return (
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <dt className="text-sm text-text-muted">{label}</dt>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            className="flex-1 px-2 py-1 bg-bg-tertiary rounded text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary"
+            placeholder={placeholder || canonicalValue}
+            autoFocus
+            disabled={isSaving}
+          />
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="p-1 text-accent-success hover:bg-accent-success/20 rounded transition-colors disabled:opacity-50"
+            title="Save"
+          >
+            <CheckIcon className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleCancel}
+            disabled={isSaving}
+            className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-tertiary rounded transition-colors"
+            title="Cancel"
+          >
+            <CloseIcon className="w-4 h-4" />
+          </button>
+        </div>
+        {canonicalValue !== value && (
+          <p className="text-xs text-text-muted mt-1">
+            Original: {canonicalValue}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <dt className="text-sm text-text-muted">{label}</dt>
+        <MetadataSourceBadge authority={authority} />
+        {isOverridden && <EditedBadge />}
+      </div>
+      <dd className="text-text-primary mt-1 flex items-center gap-2 group">
+        <span>{value}</span>
+        <button
+          onClick={handleStartEdit}
+          className="p-1 text-text-muted opacity-0 group-hover:opacity-100 hover:text-accent-primary hover:bg-bg-tertiary rounded transition-all"
+          title={`Edit ${label.toLowerCase()}`}
+        >
+          <PencilIcon className="w-3.5 h-3.5" />
+        </button>
+        {isOverridden && onClearOverride && (
+          <button
+            onClick={onClearOverride}
+            className="text-xs text-text-muted hover:text-accent-danger transition-colors"
+            title="Reset to canonical value"
+          >
+            <CloseIcon className="w-4 h-4" />
+          </button>
+        )}
+      </dd>
+    </div>
+  )
+}
+
+// Editable notes section
+interface EditableNotesSectionProps {
+  notes: string | null
+  onSave: (notes: string | null) => Promise<void>
+  isSaving?: boolean
+}
+
+function EditableNotesSection({ notes, onSave, isSaving }: EditableNotesSectionProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editValue, setEditValue] = useState(notes || '')
+
+  const handleStartEdit = () => {
+    setEditValue(notes || '')
+    setIsEditing(true)
+  }
+
+  const handleSave = async () => {
+    const newNotes = editValue.trim() || null
+    if (newNotes !== notes) {
+      await onSave(newNotes)
+    }
+    setIsEditing(false)
+  }
+
+  const handleCancel = () => {
+    setEditValue(notes || '')
+    setIsEditing(false)
+  }
+
+  if (isEditing) {
+    return (
+      <section className="bg-bg-secondary rounded-lg p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium text-text-muted">Notes</h3>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="p-1 text-accent-success hover:bg-accent-success/20 rounded transition-colors disabled:opacity-50"
+              title="Save"
+            >
+              <CheckIcon className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleCancel}
+              disabled={isSaving}
+              className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-tertiary rounded transition-colors"
+              title="Cancel"
+            >
+              <CloseIcon className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <textarea
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="w-full px-3 py-2 bg-bg-tertiary rounded text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary resize-none"
+          rows={4}
+          placeholder="Add notes about this design..."
+          autoFocus
+          disabled={isSaving}
+        />
+      </section>
+    )
+  }
+
+  return (
+    <section className="bg-bg-secondary rounded-lg p-4 group">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-medium text-text-muted">Notes</h3>
+        <button
+          onClick={handleStartEdit}
+          className="p-1 text-text-muted opacity-0 group-hover:opacity-100 hover:text-accent-primary hover:bg-bg-tertiary rounded transition-all"
+          title="Edit notes"
+        >
+          <PencilIcon className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      {notes ? (
+        <p className="text-text-secondary text-sm whitespace-pre-wrap">
+          {notes}
+        </p>
+      ) : (
+        <p className="text-text-muted text-sm italic">
+          No notes yet. Click to add.
+        </p>
+      )}
+    </section>
+  )
+}
+
+// Multicolor status selector
+interface MulticolorSelectorProps {
+  value: MulticolorStatus
+  displayValue: MulticolorStatus
+  hasOverride: boolean
+  onSave: (value: MulticolorStatus | null) => Promise<void>
+  onClear: () => Promise<void>
+  isSaving?: boolean
+}
+
+function MulticolorSelector({
+  value,
+  displayValue,
+  hasOverride,
+  onSave,
+  onClear,
+  isSaving,
+}: MulticolorSelectorProps) {
+  const [isEditing, setIsEditing] = useState(false)
+
+  const options: { value: MulticolorStatus; label: string; className: string }[] = [
+    { value: 'UNKNOWN', label: 'Unknown', className: 'text-text-muted' },
+    { value: 'SINGLE', label: 'Single Color', className: 'text-text-secondary' },
+    { value: 'MULTI', label: 'Multicolor', className: 'text-purple-400' },
+  ]
+
+  const handleChange = async (newValue: MulticolorStatus) => {
+    if (newValue !== displayValue) {
+      await onSave(newValue)
+    }
+    setIsEditing(false)
+  }
+
+  const currentOption = options.find((o) => o.value === displayValue) || options[0]
+
+  if (isEditing) {
+    return (
+      <div>
+        <dt className="text-sm text-text-muted mb-1">Color Type</dt>
+        <div className="flex items-center gap-2">
+          <select
+            value={displayValue}
+            onChange={(e) => handleChange(e.target.value as MulticolorStatus)}
+            disabled={isSaving}
+            className="flex-1 px-2 py-1 bg-bg-tertiary rounded text-text-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary"
+            autoFocus
+          >
+            {options.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setIsEditing(false)}
+            className="p-1 text-text-muted hover:text-text-primary hover:bg-bg-tertiary rounded transition-colors"
+            title="Cancel"
+          >
+            <CloseIcon className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <dt className="text-sm text-text-muted mb-1 flex items-center gap-2">
+        Color Type
+        {hasOverride && <EditedBadge />}
+      </dt>
+      <dd className={`mt-1 flex items-center gap-2 group ${currentOption.className}`}>
+        <span>{currentOption.label}</span>
+        {displayValue === 'MULTI' && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
+            MMU
+          </span>
+        )}
+        <button
+          onClick={() => setIsEditing(true)}
+          className="p-1 text-text-muted opacity-0 group-hover:opacity-100 hover:text-accent-primary hover:bg-bg-tertiary rounded transition-all"
+          title="Edit color type"
+        >
+          <PencilIcon className="w-3.5 h-3.5" />
+        </button>
+        {hasOverride && (
+          <button
+            onClick={onClear}
+            className="text-xs text-text-muted hover:text-accent-danger transition-colors"
+            title="Reset to detected value"
+          >
+            <CloseIcon className="w-4 h-4" />
+          </button>
+        )}
+      </dd>
+    </div>
+  )
+}
+
 function DesignDetailSkeleton() {
   return (
     <div className="animate-pulse space-y-6">
@@ -435,6 +750,31 @@ export function DesignDetail() {
   const handleClearDesignerOverride = async () => {
     if (!design) return
     await updateDesign.mutateAsync({ id: design.id, data: { designer_override: null } })
+  }
+
+  const handleSaveTitle = async (value: string) => {
+    if (!design) return
+    await updateDesign.mutateAsync({ id: design.id, data: { title_override: value } })
+  }
+
+  const handleSaveDesigner = async (value: string) => {
+    if (!design) return
+    await updateDesign.mutateAsync({ id: design.id, data: { designer_override: value } })
+  }
+
+  const handleSaveNotes = async (value: string | null) => {
+    if (!design) return
+    await updateDesign.mutateAsync({ id: design.id, data: { notes: value } })
+  }
+
+  const handleSaveMulticolor = async (value: MulticolorStatus | null) => {
+    if (!design) return
+    await updateDesign.mutateAsync({ id: design.id, data: { multicolor_override: value } })
+  }
+
+  const handleClearMulticolorOverride = async () => {
+    if (!design) return
+    await updateDesign.mutateAsync({ id: design.id, data: { multicolor_override: null } })
   }
 
   const handleSearchThangs = () => {
@@ -640,19 +980,27 @@ export function DesignDetail() {
               Details
             </h2>
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <MetadataField
+              <EditableMetadataField
                 label="Title"
                 value={design.display_title}
+                canonicalValue={design.canonical_title}
                 authority={titleAuthority}
                 isOverridden={hasTitleOverride}
+                onSave={handleSaveTitle}
                 onClearOverride={handleClearTitleOverride}
+                isSaving={updateDesign.isPending}
+                placeholder="Enter title..."
               />
-              <MetadataField
+              <EditableMetadataField
                 label="Designer"
                 value={design.display_designer}
+                canonicalValue={design.canonical_designer}
                 authority={designerAuthority}
                 isOverridden={hasDesignerOverride}
+                onSave={handleSaveDesigner}
                 onClearOverride={handleClearDesignerOverride}
+                isSaving={updateDesign.isPending}
+                placeholder="Enter designer..."
               />
               <div>
                 <dt className="text-sm text-text-muted">File Types</dt>
@@ -674,17 +1022,14 @@ export function DesignDetail() {
                   {formatFileSize(design.total_size_bytes)}
                 </dd>
               </div>
-              <div>
-                <dt className="text-sm text-text-muted">Color Type</dt>
-                <dd className={`mt-1 ${multicolorDisplay[design.display_multicolor as MulticolorStatus]?.className || 'text-text-primary'}`}>
-                  {multicolorDisplay[design.display_multicolor as MulticolorStatus]?.label || design.display_multicolor}
-                  {design.display_multicolor === 'MULTI' && (
-                    <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-medium">
-                      MMU
-                    </span>
-                  )}
-                </dd>
-              </div>
+              <MulticolorSelector
+                value={design.multicolor}
+                displayValue={design.display_multicolor}
+                hasOverride={design.multicolor_override !== null}
+                onSave={handleSaveMulticolor}
+                onClear={handleClearMulticolorOverride}
+                isSaving={updateDesign.isPending}
+              />
               <div>
                 <dt className="text-sm text-text-muted">Added</dt>
                 <dd className="text-text-primary mt-1">
@@ -881,14 +1226,11 @@ export function DesignDetail() {
           )}
 
           {/* Notes */}
-          {design.notes && (
-            <section className="bg-bg-secondary rounded-lg p-4">
-              <h3 className="text-sm font-medium text-text-muted mb-2">Notes</h3>
-              <p className="text-text-secondary text-sm whitespace-pre-wrap">
-                {design.notes}
-              </p>
-            </section>
-          )}
+          <EditableNotesSection
+            notes={design.notes}
+            onSave={handleSaveNotes}
+            isSaving={updateDesign.isPending}
+          />
 
           {/* Metadata Info */}
           <section className="bg-bg-secondary rounded-lg p-4">
@@ -1156,6 +1498,42 @@ function CloseIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M6 18L18 6M6 6l12 12"
+      />
+    </svg>
+  )
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M5 13l4 4L19 7"
+      />
+    </svg>
+  )
+}
+
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
       />
     </svg>
   )
