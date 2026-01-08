@@ -416,11 +416,11 @@ export function useDeleteDesign() {
 
       // Optimistically remove from list
       queryClient.setQueriesData<DesignList>({ queryKey: ['designs'] }, (oldData) => {
-        if (!oldData) return oldData
+        if (!oldData || !oldData.items) return oldData
         return {
           ...oldData,
           items: oldData.items.filter((item: DesignListItem) => item.id !== id),
-          total: oldData.total - 1,
+          total: Math.max(0, (oldData.total || 0) - 1),
         }
       })
 
@@ -466,14 +466,14 @@ export function useBulkDeleteDesigns() {
       // Optimistically remove all selected designs from list
       const designIdsSet = new Set(designIds)
       queryClient.setQueriesData<DesignList>({ queryKey: ['designs'] }, (oldData) => {
-        if (!oldData) return oldData
+        if (!oldData || !oldData.items) return oldData
         const filteredItems = oldData.items.filter(
           (item: DesignListItem) => !designIdsSet.has(item.id)
         )
         return {
           ...oldData,
           items: filteredItems,
-          total: oldData.total - designIds.length,
+          total: Math.max(0, (oldData.total || 0) - designIds.length),
         }
       })
 
