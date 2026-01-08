@@ -172,16 +172,158 @@ export function UploadZone({
     e.stopPropagation()
   }, [])
 
+  /**
+   * Recursively read all files from a directory entry
+   */
+  const readDirectoryEntries = useCallback(
+    async (entry: FileSystemDirectoryEntry): Promise<File[]> => {
+      const files: File[] = []
+      const reader = entry.createReader()
+
+      // readEntries only returns batches, need to call repeatedly until empty
+      const readBatch = (): Promise<FileSystemEntry[]> => {
+        return new Promise((resolve, reject) => {
+          reader.readEntries(resolve, reject)
+        })
+      }
+
+      let batch: FileSystemEntry[]
+      do {
+        batch = await readBatch()
+        for (const childEntry of batch) {
+          if (childEntry.isFile) {
+            const fileEntry = childEntry as FileSystemFileEntry
+            const file = await new Promise<File>((resolve, reject) => {
+              fileEntry.file(resolve, reject)
+            })
+            // Attach the path for zip creation
+            Object.defineProperty(file, 'webkitRelativePath', {
+              value: childEntry.fullPath.slice(1), // Remove leading /
+              writable: false,
+            })
+            files.push(file)
+          } else if (childEntry.isDirectory) {
+            const subFiles = await readDirectoryEntries(childEntry as FileSystemDirectoryEntry)
+            files.push(...subFiles)
+          }
+        }
+      } while (batch.length > 0)
+
+      return files
+    },
+    []
+  )
+
+  /**
+   * Handle dropped items - detects folders and processes appropriately
+   */
   const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+    async (e: React.DragEvent) => {
       e.preventDefault()
       e.stopPropagation()
       setIsDragging(false)
 
-      if (disabled) return
+      if (disabled || isCreatingZip) return
+
+      const items = e.dataTransfer.items
+      if (!items || items.length === 0) {
+        handleFiles(e.dataTransfer.files)
+        return
+      }
+
+      // Check if any item is a directory
+      const entries: FileSystemEntry[] = []
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry?.()
+        if (entry) {
+          entries.push(entry)
+        }
+      }
+
+      // Check if we have a directory
+      const hasDirectory = entries.some((entry) => entry.isDirectory)
+
+      if (hasDirectory && uploadMode === 'folder') {
+        // Find the first directory and process it
+        const dirEntry = entries.find((entry) => entry.isDirectory) as FileSystemDirectoryEntry
+        if (dirEntry) {
+          try {
+            setIsCreatingZip(true)
+            setZipProgress(0)
+            setError(null)
+
+            // Read all files from the directory
+            const files = await readDirectoryEntries(dirEntry)
+            if (files.length === 0) {
+              setError('Folder is empty or contains no files')
+              setIsCreatingZip(false)
+              return
+            }
+
+            // Create a pseudo FileList for createZipFromFolder
+            // Use the directory name as the root
+            const folderName = dirEntry.name
+            for (const file of files) {
+              // Prepend folder name to path
+              const currentPath = (file as File & { webkitRelativePath: string }).webkitRelativePath
+              Object.defineProperty(file, 'webkitRelativePath', {
+                value: `${folderName}/${currentPath.split('/').slice(1).join('/')}`,
+                writable: false,
+                configurable: true,
+              })
+            }
+
+            // Create the zip
+            const zip = new JSZip()
+            let totalSize = 0
+            let processedSize = 0
+
+            for (const file of files) {
+              totalSize += file.size
+            }
+
+            if (totalSize > maxSize) {
+              setError(`Folder size (${formatFileSize(totalSize)}) exceeds maximum (${formatFileSize(maxSize)})`)
+              setIsCreatingZip(false)
+              return
+            }
+
+            for (const file of files) {
+              const fileWithPath = file as File & { webkitRelativePath: string }
+              zip.file(fileWithPath.webkitRelativePath, file)
+              processedSize += file.size
+              setZipProgress(Math.round((processedSize / totalSize) * 50))
+            }
+
+            const blob = await zip.generateAsync(
+              { type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 1 } },
+              (metadata) => {
+                setZipProgress(50 + Math.round(metadata.percent / 2))
+              }
+            )
+
+            const zipFile = new File([blob], `${folderName}.zip`, { type: 'application/zip' })
+            setZipProgress(100)
+            setIsCreatingZip(false)
+            onFilesSelected([zipFile])
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'Failed to process folder'
+            setError(message)
+            setIsCreatingZip(false)
+          }
+          return
+        }
+      } else if (hasDirectory && uploadMode === 'files') {
+        // User dropped a folder in files mode - show helpful error
+        setError('Switch to "Folder" mode to upload folders, or drop individual files')
+        setTimeout(() => setError(null), 5000)
+        return
+      }
+
+      // No directories, handle as normal files
       handleFiles(e.dataTransfer.files)
     },
-    [disabled, handleFiles]
+    [disabled, isCreatingZip, handleFiles, uploadMode, readDirectoryEntries, maxSize, onFilesSelected]
   )
 
   const handleClick = () => {
