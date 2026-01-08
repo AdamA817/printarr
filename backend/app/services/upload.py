@@ -389,9 +389,11 @@ class UploadService:
                 total_size += file_size
 
                 # Create DesignFile record
+                # relative_path must be relative to settings.library_path (includes design folder)
+                full_relative_path = str(dest_path.relative_to(settings.library_path))
                 design_file = DesignFile(
                     design_id=design.id,
-                    relative_path=str(rel_path),
+                    relative_path=full_relative_path,
                     filename=file_path.name,
                     ext=ext_lower,
                     size_bytes=file_size,

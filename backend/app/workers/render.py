@@ -95,7 +95,7 @@ class RenderWorker(BaseWorker):
         # Try to render STL file
         stl_file = self._select_stl_for_render(design_files)
         if stl_file and stl_thumb_available:
-            stl_path = settings.library_path / design_id / stl_file.relative_path
+            stl_path = settings.library_path / stl_file.relative_path
             if stl_path.exists():
                 file_size = stl_path.stat().st_size
                 if file_size <= MAX_STL_SIZE_BYTES:
@@ -119,7 +119,7 @@ class RenderWorker(BaseWorker):
         # Try to extract 3MF thumbnail
         threemf_file = self._select_3mf_for_extraction(design_files)
         if threemf_file:
-            threemf_path = settings.library_path / design_id / threemf_file.relative_path
+            threemf_path = settings.library_path / threemf_file.relative_path
             if threemf_path.exists():
                 threemf_extracted = await self._extract_3mf_thumbnail(design_id, threemf_path)
                 if threemf_extracted:
