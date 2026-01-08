@@ -1,6 +1,10 @@
-"""Worker for generating STL preview renders using stl-thumb.
+"""Worker for generating preview renders from model files.
 
-Also supports extracting embedded thumbnails from 3MF files as a fallback.
+Supports:
+- STL rendering via stl-thumb CLI tool
+- 3MF embedded thumbnail extraction
+
+Both sources are processed when available to maximize preview options.
 """
 
 from __future__ import annotations
@@ -61,15 +65,15 @@ class RenderWorker(BaseWorker):
         if not design_id:
             return {"error": "No design_id in payload"}
 
-        # Check if stl-thumb is available
-        if not await self._check_stl_thumb():
-            logger.warning(
+        # Check if stl-thumb is available (for STL rendering)
+        stl_thumb_available = await self._check_stl_thumb()
+        if not stl_thumb_available:
+            logger.debug(
                 "stl_thumb_not_available",
                 design_id=design_id,
             )
-            return {"error": "stl-thumb not installed", "skipped": True}
 
-        # Find STL files for this design
+        # Find model files for this design
         async with async_session_maker() as db:
             result = await db.execute(
                 select(DesignFile)
@@ -79,91 +83,77 @@ class RenderWorker(BaseWorker):
             design_files = list(result.scalars().all())
 
         if not design_files:
-            logger.debug("no_stl_files", design_id=design_id)
+            logger.debug("no_model_files", design_id=design_id)
             return {"design_id": design_id, "renders": 0, "message": "No model files found"}
 
-        # Find largest STL file (or first one)
+        # Track what we generate
+        stl_rendered = False
+        threemf_extracted = False
+        stl_filename = None
+        threemf_filename = None
+
+        # Try to render STL file
         stl_file = self._select_stl_for_render(design_files)
-        if not stl_file:
-            # Fallback: try to extract thumbnail from 3MF file
-            threemf_file = self._select_3mf_for_extraction(design_files)
-            if threemf_file:
-                threemf_path = settings.library_path / threemf_file.relative_path
-                if threemf_path.exists():
-                    extracted = await self._extract_3mf_thumbnail(design_id, threemf_path)
-                    if extracted:
-                        # Auto-select primary preview
-                        async with async_session_maker() as db:
-                            preview_service = PreviewService(db)
-                            await preview_service.auto_select_primary(design_id)
-                            await db.commit()
-                        return {
-                            "design_id": design_id,
-                            "renders": 1,
-                            "source": "3mf_embedded",
-                            "threemf_file": threemf_file.filename,
-                        }
-                    else:
-                        return {
-                            "design_id": design_id,
-                            "renders": 0,
-                            "message": "No thumbnail found in 3MF file",
-                        }
+        if stl_file and stl_thumb_available:
+            stl_path = settings.library_path / stl_file.relative_path
+            if stl_path.exists():
+                file_size = stl_path.stat().st_size
+                if file_size <= MAX_STL_SIZE_BYTES:
+                    stl_rendered = await self._render_stl(design_id, stl_path)
+                    if stl_rendered:
+                        stl_filename = stl_file.filename
                 else:
                     logger.warning(
-                        "3mf_file_not_found",
+                        "stl_too_large",
                         design_id=design_id,
-                        path=str(threemf_path),
+                        size_mb=file_size / (1024 * 1024),
+                        max_mb=MAX_STL_SIZE_BYTES / (1024 * 1024),
                     )
-                    return {"error": f"3MF file not found: {threemf_path}"}
-            return {"design_id": design_id, "renders": 0, "message": "No renderable STL or 3MF files"}
+            else:
+                logger.warning(
+                    "stl_file_not_found",
+                    design_id=design_id,
+                    path=str(stl_path),
+                )
 
-        # Check file size
-        stl_path = settings.library_path / stl_file.relative_path
-        if not stl_path.exists():
-            logger.warning(
-                "stl_file_not_found",
-                design_id=design_id,
-                path=str(stl_path),
-            )
-            return {"error": f"STL file not found: {stl_path}"}
+        # Try to extract 3MF thumbnail
+        threemf_file = self._select_3mf_for_extraction(design_files)
+        if threemf_file:
+            threemf_path = settings.library_path / threemf_file.relative_path
+            if threemf_path.exists():
+                threemf_extracted = await self._extract_3mf_thumbnail(design_id, threemf_path)
+                if threemf_extracted:
+                    threemf_filename = threemf_file.filename
+            else:
+                logger.warning(
+                    "3mf_file_not_found",
+                    design_id=design_id,
+                    path=str(threemf_path),
+                )
 
-        file_size = stl_path.stat().st_size
-        if file_size > MAX_STL_SIZE_BYTES:
-            logger.warning(
-                "stl_too_large",
-                design_id=design_id,
-                size_mb=file_size / (1024 * 1024),
-                max_mb=MAX_STL_SIZE_BYTES / (1024 * 1024),
-            )
-            return {
-                "design_id": design_id,
-                "renders": 0,
-                "skipped": True,
-                "message": f"STL too large: {file_size / (1024 * 1024):.1f}MB > 100MB limit",
-            }
+        # Count total renders
+        total_renders = (1 if stl_rendered else 0) + (1 if threemf_extracted else 0)
 
-        # Render the preview
-        rendered = await self._render_stl(design_id, stl_path)
-
-        if rendered:
+        if total_renders > 0:
             # Auto-select primary preview
             async with async_session_maker() as db:
                 preview_service = PreviewService(db)
                 await preview_service.auto_select_primary(design_id)
                 await db.commit()
 
-            return {
-                "design_id": design_id,
-                "renders": 1,
-                "stl_file": stl_file.filename,
-            }
-        else:
-            return {
-                "design_id": design_id,
-                "renders": 0,
-                "message": "Render failed",
-            }
+        # Build result
+        result: dict[str, Any] = {
+            "design_id": design_id,
+            "renders": total_renders,
+        }
+        if stl_rendered:
+            result["stl_file"] = stl_filename
+        if threemf_extracted:
+            result["threemf_file"] = threemf_filename
+        if total_renders == 0:
+            result["message"] = "No previews generated"
+
+        return result
 
     async def _check_stl_thumb(self) -> bool:
         """Check if stl-thumb is available on the system."""
