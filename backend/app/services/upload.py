@@ -27,6 +27,7 @@ from app.db.models.enums import (
     DesignStatus,
     FileKind,
     ImportSourceType,
+    JobType,
     MetadataAuthority,
     ModelKind,
     PreviewKind,
@@ -42,6 +43,7 @@ from app.schemas.upload import (
 from app.services.archive import ArchiveExtractor
 from app.services.auto_render import auto_queue_render_for_design
 from app.services.import_profile import ImportProfileService
+from app.services.job_queue import JobQueueService
 from app.services.preview import PreviewService
 from app.utils import compute_file_hash
 
@@ -455,6 +457,30 @@ class UploadService:
             render_job_id = None
             if preview_count == 0:
                 render_job_id = await auto_queue_render_for_design(self.db, design.id)
+
+            # Queue AI analysis if enabled
+            if settings.ai_configured and settings.ai_auto_analyze_on_import:
+                try:
+                    queue = JobQueueService(self.db)
+                    await queue.enqueue(
+                        job_type=JobType.AI_ANALYZE_DESIGN,
+                        design_id=design.id,
+                        payload={"design_id": design.id},
+                        priority=-1,  # Background priority
+                        display_name="AI Analysis (auto)",
+                    )
+                    logger.info(
+                        "ai_analysis_auto_queued",
+                        design_id=design.id,
+                        upload_id=upload_id,
+                    )
+                except Exception as e:
+                    # Don't fail upload if AI queueing fails
+                    logger.warning(
+                        "ai_analysis_queue_failed",
+                        design_id=design.id,
+                        error=str(e),
+                    )
 
             # Update metadata
             meta["status"] = UploadStatus.COMPLETED.value
