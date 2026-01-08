@@ -403,8 +403,9 @@ class UploadService:
                 self.db.add(design_file)
 
             # Update design with totals
+            import json
             design.total_size_bytes = total_size
-            design.primary_file_types = list(file_types_set) if file_types_set else None
+            design.primary_file_types = json.dumps(list(file_types_set)) if file_types_set else None
             design.status = DesignStatus.ORGANIZED
 
             await self.db.flush()
