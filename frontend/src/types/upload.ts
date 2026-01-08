@@ -1,7 +1,7 @@
 // Upload API types (#179)
 // Must match backend/app/schemas/upload.py
 
-export type UploadStatusType = 'PENDING' | 'PROCESSING' | 'COMPLETE' | 'FAILED'
+export type UploadStatusType = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'EXPIRED'
 
 // Response from POST /api/v1/upload/files
 export interface UploadResponse {
