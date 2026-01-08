@@ -40,9 +40,9 @@ export function useUpdateDesign() {
       const previousDesigns = queryClient.getQueriesData<DesignList>({ queryKey: ['designs'] })
       const previousDesign = queryClient.getQueryData<DesignDetail>(['design', id])
 
-      // Optimistically update in list
+      // Optimistically update in list (guard against infinite query format which has pages instead of items)
       queryClient.setQueriesData<DesignList>({ queryKey: ['designs'] }, (oldData) => {
-        if (!oldData) return oldData
+        if (!oldData || !oldData.items) return oldData
         return {
           ...oldData,
           items: oldData.items.map((item: DesignListItem) =>
@@ -85,9 +85,9 @@ function updateThangslinkInCache(
   designId: string,
   hasLink: boolean
 ) {
-  // Update in list queries
+  // Update in list queries (guard against infinite query format)
   queryClient.setQueriesData<DesignList>({ queryKey: ['designs'] }, (oldData) => {
-    if (!oldData) return oldData
+    if (!oldData || !oldData.items) return oldData
     return {
       ...oldData,
       items: oldData.items.map((item: DesignListItem) =>
@@ -257,11 +257,11 @@ function updateDesignStatusInCache(
   designId: string,
   newStatus: DesignStatus
 ) {
-  // Update in list queries
+  // Update in list queries (guard against infinite query format)
   queryClient.setQueriesData<DesignList>(
     { queryKey: ['designs'] },
     (oldData) => {
-      if (!oldData) return oldData
+      if (!oldData || !oldData.items) return oldData
       return {
         ...oldData,
         items: oldData.items.map((item: DesignListItem) =>
