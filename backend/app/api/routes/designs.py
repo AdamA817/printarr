@@ -529,6 +529,120 @@ async def get_design(
     )
 
 
+class DesignUpdateRequest(BaseModel):
+    """Request body for updating design fields."""
+
+    title_override: str | None = None
+    designer_override: str | None = None
+    notes: str | None = None
+    multicolor_override: MulticolorStatus | None = None
+    status: DesignStatus | None = None
+
+    class Config:
+        use_enum_values = True
+
+
+@router.patch("/{design_id}", response_model=DesignDetail)
+async def update_design(
+    design_id: str,
+    update_data: DesignUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> DesignDetail:
+    """Update design fields (title override, designer override, notes, multicolor, status).
+
+    Any field not provided will not be updated. Set a field to null to clear an override.
+    """
+    # Get design with all related data
+    query = (
+        select(Design)
+        .options(
+            selectinload(Design.sources).selectinload(DesignSource.channel),
+            selectinload(Design.external_metadata_sources),
+        )
+        .where(Design.id == design_id)
+    )
+    result = await db.execute(query)
+    design = result.scalar_one_or_none()
+
+    if design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Update only the fields that were explicitly provided
+    update_fields = update_data.model_dump(exclude_unset=True)
+
+    if update_fields:
+        for field, value in update_fields.items():
+            setattr(design, field, value)
+
+        design.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(design)
+
+    # Transform sources
+    sources = []
+    for source in design.sources:
+        channel_summary = None
+        if source.channel:
+            channel_summary = ChannelSummary(
+                id=source.channel.id,
+                title=source.channel.title,
+            )
+        sources.append(
+            DesignSourceResponse(
+                id=source.id,
+                channel_id=source.channel_id,
+                message_id=source.message_id,
+                source_rank=source.source_rank,
+                is_preferred=source.is_preferred,
+                caption_snapshot=source.caption_snapshot,
+                created_at=source.created_at,
+                channel=channel_summary,
+            )
+        )
+
+    # Transform external metadata
+    external_metadata = [
+        ExternalMetadataResponse(
+            id=em.id,
+            source_type=em.source_type,
+            external_id=em.external_id,
+            external_url=em.external_url,
+            confidence_score=em.confidence_score,
+            match_method=em.match_method,
+            is_user_confirmed=em.is_user_confirmed,
+            fetched_title=em.fetched_title,
+            fetched_designer=em.fetched_designer,
+            fetched_tags=em.fetched_tags,
+            last_fetched_at=em.last_fetched_at,
+            created_at=em.created_at,
+        )
+        for em in design.external_metadata_sources
+    ]
+
+    return DesignDetail(
+        id=design.id,
+        canonical_title=design.canonical_title,
+        canonical_designer=design.canonical_designer,
+        status=design.status,
+        multicolor=design.multicolor,
+        primary_file_types=design.primary_file_types,
+        total_size_bytes=design.total_size_bytes,
+        title_override=design.title_override,
+        designer_override=design.designer_override,
+        multicolor_override=design.multicolor_override,
+        notes=design.notes,
+        metadata_authority=design.metadata_authority,
+        metadata_confidence=design.metadata_confidence,
+        display_title=design.display_title,
+        display_designer=design.display_designer,
+        display_multicolor=design.display_multicolor,
+        created_at=design.created_at,
+        updated_at=design.updated_at,
+        sources=sources,
+        external_metadata=external_metadata,
+    )
+
+
 @router.post("/{design_id}/refresh-metadata", response_model=RefreshMetadataResponse)
 async def refresh_metadata(
     design_id: str,
