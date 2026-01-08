@@ -82,6 +82,9 @@ RUN pip install --no-cache /wheels/* && rm -rf /wheels
 # Copy backend code
 COPY backend/ ./backend/
 
+# Copy utility scripts (one-time imports, maintenance tools)
+COPY scripts/ ./scripts/
+
 # Copy frontend build to be served by FastAPI
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist/
 
