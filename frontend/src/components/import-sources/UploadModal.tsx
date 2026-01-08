@@ -28,7 +28,9 @@ export function UploadModal({ isOpen, onClose, onUploadsComplete }: UploadModalP
   const { data: settings } = useSettings()
 
   // Get max upload size from settings (convert MB to bytes)
-  const maxUploadSize = ((settings?.upload_max_size_mb as number) ?? DEFAULT_MAX_SIZE_MB) * 1024 * 1024
+  // Note: settings API returns { settings: { ... } } so we need to access the nested object
+  const settingsData = (settings as { settings?: Record<string, unknown> })?.settings
+  const maxUploadSize = ((settingsData?.upload_max_size_mb as number) ?? DEFAULT_MAX_SIZE_MB) * 1024 * 1024
 
   // Upload a file using the real API
   const uploadFile = useCallback(async (id: string, file: File, profileId: string) => {
