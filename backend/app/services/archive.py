@@ -264,10 +264,20 @@ class ArchiveExtractor:
             extracted_files=all_extracted_files,
         )
 
-        # PHASE 4: Update design status (brief session)
+        # PHASE 4: Update design status and file types (brief session)
         async with async_session_maker() as db:
             design = await db.get(Design, design_id)
             if design:
+                # Compute actual file types from extracted model files
+                file_types_set: set[str] = set()
+                for file_info in all_extracted_files:
+                    if file_info.file_kind == FileKind.MODEL and file_info.ext:
+                        file_types_set.add(file_info.ext.lstrip(".").upper())
+
+                # Update primary_file_types with actual content types (not archive type)
+                if file_types_set:
+                    design.primary_file_types = ",".join(sorted(file_types_set))
+
                 design.status = DesignStatus.EXTRACTED
                 await db.commit()
 

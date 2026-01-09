@@ -719,6 +719,200 @@ async def get_design(
     )
 
 
+class AdjacentDesignsResponse(BaseModel):
+    """Response for adjacent designs (prev/next navigation)."""
+
+    prev_id: str | None = None
+    next_id: str | None = None
+
+
+@router.get("/{design_id}/adjacent", response_model=AdjacentDesignsResponse)
+async def get_adjacent_designs(
+    design_id: str,
+    status: DesignStatus | None = Query(None, description="Filter by status"),
+    channel_id: str | None = Query(None, description="Filter by channel ID"),
+    file_type: str | None = Query(None, description="Filter by primary file type"),
+    multicolor: MulticolorStatus | None = Query(None, description="Filter by multicolor status"),
+    has_thangs_link: bool | None = Query(None, description="Filter by Thangs link status"),
+    designer: str | None = Query(None, description="Filter by designer (partial match)"),
+    import_source_id: str | None = Query(None, description="Filter by import source ID"),
+    import_source_folder_id: str | None = Query(None, description="Filter by import source folder ID"),
+    tags: list[str] | None = Query(None, description="Filter by tag IDs"),
+    tag_match: TagMatch = Query(TagMatch.ANY, description="Tag matching mode"),
+    q: str | None = Query(None, description="Full-text search on title and designer"),
+    sort_by: SortField = Query(SortField.CREATED_AT, description="Field to sort by"),
+    sort_order: SortOrder = Query(SortOrder.DESC, description="Sort order"),
+    db: AsyncSession = Depends(get_db),
+) -> AdjacentDesignsResponse:
+    """Get previous and next design IDs given current filters and sort order.
+
+    This endpoint enables prev/next navigation on the design detail page
+    while respecting the current filter state from the designs list view.
+    """
+    # First, get the current design to know its sort value
+    current_design = await db.get(Design, design_id)
+    if current_design is None:
+        raise HTTPException(status_code=404, detail="Design not found")
+
+    # Build base query with filters (same as list_designs)
+    def build_filtered_query():
+        query = select(Design.id)
+
+        if status:
+            query = query.where(Design.status == status)
+
+        if channel_id:
+            from app.db.models import Channel
+            query = query.where(
+                or_(
+                    Design.id.in_(
+                        select(DesignSource.design_id).where(DesignSource.channel_id == channel_id)
+                    ),
+                    Design.import_source_id.in_(
+                        select(ImportSource.id).where(
+                            ImportSource.id.in_(
+                                select(Channel.import_source_id).where(Channel.id == channel_id)
+                            )
+                        )
+                    ),
+                )
+            )
+
+        if file_type:
+            query = query.where(Design.primary_file_types.ilike(f"%{file_type}%"))
+
+        if multicolor:
+            query = query.where(Design.multicolor == multicolor)
+
+        if designer:
+            query = query.where(Design.canonical_designer.ilike(f"%{designer}%"))
+
+        if import_source_id:
+            query = query.where(Design.import_source_id == import_source_id)
+
+        if import_source_folder_id:
+            from app.db.models.import_record import ImportRecord
+            designs_from_folder = select(ImportRecord.design_id).where(
+                ImportRecord.import_source_folder_id == import_source_folder_id,
+                ImportRecord.design_id.isnot(None),
+            )
+            query = query.where(Design.id.in_(designs_from_folder))
+
+        if has_thangs_link is not None:
+            designs_with_thangs = select(ExternalMetadataSource.design_id).where(
+                ExternalMetadataSource.source_type == ExternalSourceType.THANGS
+            )
+            if has_thangs_link:
+                query = query.where(Design.id.in_(designs_with_thangs))
+            else:
+                query = query.where(Design.id.notin_(designs_with_thangs))
+
+        if tags:
+            if tag_match == TagMatch.ALL:
+                for tag_id in tags:
+                    designs_with_tag = select(DesignTag.design_id).where(
+                        DesignTag.tag_id == tag_id
+                    )
+                    query = query.where(Design.id.in_(designs_with_tag))
+            else:
+                designs_with_any_tag = select(DesignTag.design_id).where(
+                    DesignTag.tag_id.in_(tags)
+                )
+                query = query.where(Design.id.in_(designs_with_any_tag))
+
+        if q:
+            search_pattern = f"%{q}%"
+            designs_with_matching_tag = (
+                select(DesignTag.design_id)
+                .join(Tag, DesignTag.tag_id == Tag.id)
+                .where(Tag.name.ilike(search_pattern))
+            )
+
+            if len(q) >= 3:
+                search_condition = or_(
+                    text("search_vector @@ plainto_tsquery('english', :q)"),
+                    Design.canonical_title.ilike(search_pattern),
+                    Design.id.in_(designs_with_matching_tag),
+                )
+                query = query.where(search_condition).params(q=q)
+            else:
+                query = query.where(
+                    or_(
+                        Design.canonical_title.ilike(search_pattern),
+                        Design.canonical_designer.ilike(search_pattern),
+                        Design.id.in_(designs_with_matching_tag),
+                    )
+                )
+
+        return query
+
+    # Get the sort column value for the current design
+    sort_column = getattr(Design, sort_by.value)
+    current_sort_value = getattr(current_design, sort_by.value)
+
+    prev_id = None
+    next_id = None
+
+    # For DESC order: prev has higher value, next has lower value
+    # For ASC order: prev has lower value, next has higher value
+    if sort_order == SortOrder.DESC:
+        # Previous design: higher sort value (or same value with smaller id for tie-breaking)
+        prev_query = build_filtered_query().where(
+            or_(
+                sort_column > current_sort_value,
+                and_(
+                    sort_column == current_sort_value,
+                    Design.id < design_id,  # Tie-breaker using ID
+                ),
+            )
+        ).order_by(sort_column.asc(), Design.id.desc()).limit(1)
+
+        # Next design: lower sort value (or same value with larger id for tie-breaking)
+        next_query = build_filtered_query().where(
+            or_(
+                sort_column < current_sort_value,
+                and_(
+                    sort_column == current_sort_value,
+                    Design.id > design_id,  # Tie-breaker using ID
+                ),
+            )
+        ).order_by(sort_column.desc(), Design.id.asc()).limit(1)
+    else:
+        # ASC order - opposite logic
+        prev_query = build_filtered_query().where(
+            or_(
+                sort_column < current_sort_value,
+                and_(
+                    sort_column == current_sort_value,
+                    Design.id < design_id,
+                ),
+            )
+        ).order_by(sort_column.desc(), Design.id.desc()).limit(1)
+
+        next_query = build_filtered_query().where(
+            or_(
+                sort_column > current_sort_value,
+                and_(
+                    sort_column == current_sort_value,
+                    Design.id > design_id,
+                ),
+            )
+        ).order_by(sort_column.asc(), Design.id.asc()).limit(1)
+
+    # Execute queries
+    prev_result = await db.execute(prev_query)
+    prev_row = prev_result.scalar_one_or_none()
+    if prev_row:
+        prev_id = prev_row
+
+    next_result = await db.execute(next_query)
+    next_row = next_result.scalar_one_or_none()
+    if next_row:
+        next_id = next_row
+
+    return AdjacentDesignsResponse(prev_id=prev_id, next_id=next_id)
+
+
 class DesignUpdateRequest(BaseModel):
     """Request body for updating design fields."""
 

@@ -211,12 +211,21 @@ export const statsApi = {
   getStats: () => api.get<StatsResponse>('/stats/').then((r) => r.data),
 }
 
+export interface AdjacentDesignsResponse {
+  prev_id: string | null
+  next_id: string | null
+}
+
 export const designsApi = {
   list: (params?: DesignListParams) =>
     api.get<DesignList>('/designs/', { params }).then((r) => r.data),
 
   get: (id: string) =>
     api.get<DesignDetail>(`/designs/${id}`).then((r) => r.data),
+
+  // Get adjacent (prev/next) design IDs given current filters
+  getAdjacent: (id: string, params?: Partial<DesignListParams>) =>
+    api.get<AdjacentDesignsResponse>(`/designs/${id}/adjacent`, { params }).then((r) => r.data),
 
   update: (id: string, data: DesignUpdateRequest) =>
     api.patch<DesignDetail>(`/designs/${id}`, data).then((r) => r.data),

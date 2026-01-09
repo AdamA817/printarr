@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useCallback, useMemo } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   useDesign,
   useUnlinkFromThangs,
@@ -8,7 +8,9 @@ import {
   useUpdateDesign,
   useUnmergeDesign,
   useDeleteDesign,
+  useAdjacentDesigns,
 } from '@/hooks/useDesigns'
+import type { DesignListParams } from '@/types/design'
 import { useDesignPreviews, useSetPrimaryPreview, useDeletePreview } from '@/hooks/usePreviews'
 import { useDesignTags } from '@/hooks/useTags'
 import { useAiAnalyze, useAiStatus } from '@/hooks/useAi'
@@ -667,6 +669,7 @@ function DesignDetailSkeleton() {
 export function DesignDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { data: design, isLoading, error } = useDesign(id || '')
   const { data: previewsData, isLoading: previewsLoading } = useDesignPreviews(id || '')
   const { data: tagsData } = useDesignTags(id || '')
@@ -682,6 +685,50 @@ export function DesignDetail() {
   const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(new Set())
   const [showUnmergeConfirm, setShowUnmergeConfirm] = useState(false)
   const [unmergeError, setUnmergeError] = useState<string | null>(null)
+
+  // Parse filter params from URL for prev/next navigation
+  const filterParams = useMemo((): DesignListParams => {
+    const params: DesignListParams = {}
+    const status = searchParams.get('status')
+    const channelId = searchParams.get('channel_id')
+    const fileType = searchParams.get('file_type')
+    const multicolor = searchParams.get('multicolor')
+    const hasThangsLink = searchParams.get('has_thangs_link')
+    const designer = searchParams.get('designer')
+    const importSourceId = searchParams.get('import_source_id')
+    const importSourceFolderId = searchParams.get('import_source_folder_id')
+    const tags = searchParams.get('tags')
+    const q = searchParams.get('q')
+    const sortBy = searchParams.get('sort_by')
+    const sortOrder = searchParams.get('sort_order')
+
+    if (status) params.status = status as DesignListParams['status']
+    if (channelId) params.channel_id = channelId
+    if (fileType) params.file_type = fileType
+    if (multicolor) params.multicolor = multicolor as DesignListParams['multicolor']
+    if (hasThangsLink) params.has_thangs_link = hasThangsLink === 'true'
+    if (designer) params.designer = designer
+    if (importSourceId) params.import_source_id = importSourceId
+    if (importSourceFolderId) params.import_source_folder_id = importSourceFolderId
+    if (tags) params.tags = tags.split(',')
+    if (q) params.q = q
+    if (sortBy) params.sort_by = sortBy as DesignListParams['sort_by']
+    if (sortOrder) params.sort_order = sortOrder as DesignListParams['sort_order']
+
+    return params
+  }, [searchParams])
+
+  // Fetch adjacent designs for prev/next navigation
+  const { data: adjacentData } = useAdjacentDesigns(id || '', filterParams)
+
+  // Build URL with current filter params for navigation
+  const buildNavUrl = useCallback((designId: string) => {
+    const params = new URLSearchParams()
+    searchParams.forEach((value, key) => {
+      params.set(key, value)
+    })
+    return `/designs/${designId}?${params.toString()}`
+  }, [searchParams])
 
   // Navigate back to designs list, preserving filters via browser history
   const handleBack = useCallback(() => {
@@ -853,14 +900,50 @@ export function DesignDetail() {
 
   return (
     <div className="space-y-6">
-      {/* Back Button */}
-      <button
-        onClick={handleBack}
-        className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
-      >
-        <BackIcon className="w-4 h-4" />
-        Back to Designs
-      </button>
+      {/* Navigation Bar */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={handleBack}
+          className="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
+        >
+          <BackIcon className="w-4 h-4" />
+          Back to Designs
+        </button>
+
+        {/* Prev/Next Navigation */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => adjacentData?.prev_id && navigate(buildNavUrl(adjacentData.prev_id))}
+            disabled={!adjacentData?.prev_id}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded text-sm transition-colors ${
+              adjacentData?.prev_id
+                ? 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'
+                : 'text-text-muted cursor-not-allowed opacity-50'
+            }`}
+            title={adjacentData?.prev_id ? 'Previous design' : 'No previous design'}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Prev
+          </button>
+          <button
+            onClick={() => adjacentData?.next_id && navigate(buildNavUrl(adjacentData.next_id))}
+            disabled={!adjacentData?.next_id}
+            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded text-sm transition-colors ${
+              adjacentData?.next_id
+                ? 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'
+                : 'text-text-muted cursor-not-allowed opacity-50'
+            }`}
+            title={adjacentData?.next_id ? 'Next design' : 'No next design'}
+          >
+            Next
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">

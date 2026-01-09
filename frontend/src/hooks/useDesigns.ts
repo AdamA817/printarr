@@ -25,6 +25,20 @@ export function useDesign(id: string) {
   })
 }
 
+/**
+ * Fetch adjacent (prev/next) design IDs given current filters.
+ * Used for prev/next navigation on the design detail page.
+ */
+export function useAdjacentDesigns(designId: string, params?: DesignListParams) {
+  return useQuery({
+    queryKey: ['design', designId, 'adjacent', params],
+    queryFn: () => designsApi.getAdjacent(designId, params),
+    enabled: !!designId,
+    // Don't refetch frequently - navigation doesn't change that often
+    staleTime: 30000,
+  })
+}
+
 export function useUpdateDesign() {
   const queryClient = useQueryClient()
 

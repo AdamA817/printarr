@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useMergeDesigns, useBulkDeleteDesigns } from '@/hooks/useDesigns'
 import { useDesignFilters } from '@/hooks/useDesignFilters'
 import {
@@ -6,7 +6,7 @@ import {
   flattenInfiniteDesigns,
   getInfiniteDesignsTotal,
 } from '@/hooks/useInfiniteDesigns'
-import { useSavedFilters } from '@/hooks/useSavedFilters'
+import { useSavedFilters, PREDEFINED_FILTERS } from '@/hooks/useSavedFilters'
 import { useAiBulkAnalyze, useAiStatus } from '@/hooks/useAi'
 import {
   DesignToolbar,
@@ -18,7 +18,6 @@ import {
 import type { SortField, SortOrder, DesignListItem, DesignListParams } from '@/types/design'
 
 const VIEW_STORAGE_KEY = 'printarr-designs-view'
-const ACTIVE_FILTER_KEY = 'printarr-active-filter'
 const SCROLL_POSITION_KEY = 'printarr-designs-scroll'
 
 function getStoredView(): ViewMode {
@@ -36,22 +35,6 @@ function getStoredView(): ViewMode {
 function setStoredView(view: ViewMode) {
   try {
     localStorage.setItem(VIEW_STORAGE_KEY, view)
-  } catch {
-    // localStorage not available
-  }
-}
-
-function getStoredActiveFilter(): string {
-  try {
-    return localStorage.getItem(ACTIVE_FILTER_KEY) || 'all'
-  } catch {
-    return 'all'
-  }
-}
-
-function setStoredActiveFilter(id: string) {
-  try {
-    localStorage.setItem(ACTIVE_FILTER_KEY, id)
   } catch {
     // localStorage not available
   }
@@ -82,12 +65,61 @@ function clearStoredScrollPosition() {
   }
 }
 
+/**
+ * Compare current filters with a saved/predefined filter definition.
+ * Ignores pagination and sorting fields - only compares actual filter values.
+ */
+function filtersMatch(
+  current: Partial<DesignListParams>,
+  saved: Partial<DesignListParams>
+): boolean {
+  const filterKeys: (keyof DesignListParams)[] = [
+    'status',
+    'channel_id',
+    'file_type',
+    'multicolor',
+    'has_thangs_link',
+    'designer',
+    'tags',
+    'import_source_id',
+    'import_source_folder_id',
+    'q',
+  ]
+
+  for (const key of filterKeys) {
+    const currentVal = current[key]
+    const savedVal = saved[key]
+
+    // Both undefined/null/empty = match
+    const currentEmpty = currentVal === undefined || currentVal === null || currentVal === ''
+    const savedEmpty = savedVal === undefined || savedVal === null || savedVal === ''
+
+    if (currentEmpty && savedEmpty) continue
+
+    // One empty, one not = no match
+    if (currentEmpty !== savedEmpty) return false
+
+    // Handle arrays (tags)
+    if (Array.isArray(currentVal) && Array.isArray(savedVal)) {
+      if (currentVal.length !== savedVal.length) return false
+      const sortedCurrent = [...currentVal].sort()
+      const sortedSaved = [...savedVal].sort()
+      if (!sortedCurrent.every((v, i) => v === sortedSaved[i])) return false
+      continue
+    }
+
+    // Direct comparison
+    if (currentVal !== savedVal) return false
+  }
+
+  return true
+}
+
 export function Designs() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastSelectedIdRef = useRef<string | null>(null)
   const scrollRestoredRef = useRef(false)
   const [view, setView] = useState<ViewMode>(getStoredView)
-  const [activeFilterId, setActiveFilterId] = useState<string | null>(getStoredActiveFilter)
   const [showCustomFilterModal, setShowCustomFilterModal] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [showMergeModal, setShowMergeModal] = useState(false)
@@ -99,6 +131,27 @@ export function Designs() {
 
   // Get filters from URL params
   const { filters, setFilters, clearFilters } = useDesignFilters()
+
+  // Derive activeFilterId from URL params by comparing against predefined/saved filters
+  // This fixes the bug where localStorage-stored activeFilterId gets out of sync with URL
+  const activeFilterId = useMemo(() => {
+    // Check predefined filters first
+    for (const pf of PREDEFINED_FILTERS) {
+      if (filtersMatch(filters, pf.filters)) {
+        return pf.id
+      }
+    }
+
+    // Check saved filters
+    for (const sf of savedFilters) {
+      if (filtersMatch(filters, sf.filters)) {
+        return sf.id
+      }
+    }
+
+    // No matching filter - custom or unrecognized
+    return null
+  }, [filters, savedFilters])
 
   // AI status and bulk analyze
   const { data: aiStatus } = useAiStatus()
@@ -147,18 +200,16 @@ export function Designs() {
 
   const handleSearchChange = useCallback((q: string) => {
     setFilters({ q: q || undefined })
-    // Reset to custom filter when searching
-    setActiveFilterId(q ? null : activeFilterId)
-  }, [setFilters, activeFilterId])
+    // activeFilterId is derived from URL - no need to set it manually
+  }, [setFilters])
 
   const handleSortChange = useCallback((sortBy: SortField, sortOrder: SortOrder) => {
     setFilters({ sort_by: sortBy, sort_order: sortOrder })
   }, [setFilters])
 
-  const handleSelectFilter = useCallback((filterId: string, filterParams: Partial<DesignListParams>) => {
-    setActiveFilterId(filterId)
-    setStoredActiveFilter(filterId)
+  const handleSelectFilter = useCallback((_filterId: string, filterParams: Partial<DesignListParams>) => {
     // Clear existing filters and apply new ones
+    // activeFilterId is derived from URL - it will auto-update when filters change
     clearFilters()
     if (Object.keys(filterParams).length > 0) {
       setFilters(filterParams)
@@ -166,24 +217,23 @@ export function Designs() {
   }, [clearFilters, setFilters])
 
   const handleApplyCustomFilter = useCallback((filterParams: Partial<DesignListParams>) => {
-    setActiveFilterId(null)
+    // activeFilterId is derived from URL - will show as null/Custom if no match
     clearFilters()
     setFilters(filterParams)
   }, [clearFilters, setFilters])
 
   const handleSaveCustomFilter = useCallback((label: string, filterParams: Partial<DesignListParams>) => {
-    const saved = saveFilter(label, filterParams)
-    setActiveFilterId(saved.id)
-    setStoredActiveFilter(saved.id)
+    // Save the filter - activeFilterId will auto-match it when URL params are set
+    saveFilter(label, filterParams)
     clearFilters()
     setFilters(filterParams)
   }, [saveFilter, clearFilters, setFilters])
 
   const handleDeleteSavedFilter = useCallback((id: string) => {
     deleteFilter(id)
+    // If deleting the currently active filter, clear URL params
+    // activeFilterId will auto-update to 'all' when filters are empty
     if (activeFilterId === id) {
-      setActiveFilterId('all')
-      setStoredActiveFilter('all')
       clearFilters()
     }
   }, [deleteFilter, activeFilterId, clearFilters])
