@@ -538,13 +538,21 @@ JSON only:
                 loop = asyncio.get_event_loop()
                 image_data = await loop.run_in_executor(None, _read_file)
 
-                # Determine mime type
+                # Determine mime type - only include formats supported by Gemini
+                # Gemini does NOT support GIF images
                 ext = file_path.suffix.lower()
+                if ext == ".gif":
+                    logger.debug(
+                        "skipping_gif_for_ai",
+                        preview_id=preview.id,
+                        path=str(file_path),
+                    )
+                    continue
+
                 mime_types = {
                     ".jpg": "image/jpeg",
                     ".jpeg": "image/jpeg",
                     ".png": "image/png",
-                    ".gif": "image/gif",
                     ".webp": "image/webp",
                 }
                 mime_type = mime_types.get(ext, "image/jpeg")
