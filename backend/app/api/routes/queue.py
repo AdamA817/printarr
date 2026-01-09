@@ -360,6 +360,100 @@ async def retry_job(
     )
 
 
+@router.get("/diagnostics")
+async def get_queue_diagnostics(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get diagnostic information about the job queue.
+
+    Useful for debugging why jobs aren't being processed.
+    Shows jobs blocked by next_retry_at and other potential issues.
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+
+    # Count jobs by status
+    status_counts = {}
+    for status in JobStatus:
+        result = await db.execute(
+            select(func.count()).where(Job.status == status)
+        )
+        status_counts[status.value] = result.scalar() or 0
+
+    # Count jobs blocked by next_retry_at (scheduled for future)
+    blocked_result = await db.execute(
+        select(func.count()).where(
+            Job.status == JobStatus.QUEUED,
+            Job.next_retry_at > now,
+        )
+    )
+    blocked_count = blocked_result.scalar() or 0
+
+    # Count jobs ready to run (QUEUED with next_retry_at NULL or in past)
+    ready_result = await db.execute(
+        select(func.count()).where(
+            Job.status == JobStatus.QUEUED,
+            or_(Job.next_retry_at.is_(None), Job.next_retry_at <= now),
+        )
+    )
+    ready_count = ready_result.scalar() or 0
+
+    # Get sample of blocked jobs
+    blocked_jobs_query = (
+        select(Job.id, Job.type, Job.next_retry_at, Job.attempts, Job.last_error)
+        .where(
+            Job.status == JobStatus.QUEUED,
+            Job.next_retry_at > now,
+        )
+        .order_by(Job.next_retry_at.asc())
+        .limit(5)
+    )
+    blocked_jobs_result = await db.execute(blocked_jobs_query)
+    blocked_samples = [
+        {
+            "id": row[0],
+            "type": row[1].value,
+            "next_retry_at": row[2].isoformat() if row[2] else None,
+            "attempts": row[3],
+            "last_error": row[4][:100] if row[4] else None,
+        }
+        for row in blocked_jobs_result.all()
+    ]
+
+    # Get sample of ready jobs
+    ready_jobs_query = (
+        select(Job.id, Job.type, Job.created_at, Job.attempts)
+        .where(
+            Job.status == JobStatus.QUEUED,
+            or_(Job.next_retry_at.is_(None), Job.next_retry_at <= now),
+        )
+        .order_by(Job.priority.desc(), Job.created_at.asc())
+        .limit(5)
+    )
+    ready_jobs_result = await db.execute(ready_jobs_query)
+    ready_samples = [
+        {
+            "id": row[0],
+            "type": row[1].value,
+            "created_at": row[2].isoformat() if row[2] else None,
+            "attempts": row[3],
+        }
+        for row in ready_jobs_result.all()
+    ]
+
+    return {
+        "current_time": now.isoformat(),
+        "status_counts": status_counts,
+        "queued_breakdown": {
+            "ready_to_run": ready_count,
+            "blocked_by_retry": blocked_count,
+        },
+        "ready_job_samples": ready_samples,
+        "blocked_job_samples": blocked_samples,
+    }
+
+
 def _format_bytes(size: int) -> str:
     """Format bytes to human-readable string."""
     for unit in ["B", "KB", "MB", "GB"]:

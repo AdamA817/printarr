@@ -156,6 +156,14 @@ class BaseWorker(ABC):
                     )
                 except TimeoutError:
                     pass
+                # Log periodic heartbeat (every 60 polls = ~1 minute at 1s interval)
+                self._poll_count = getattr(self, '_poll_count', 0) + 1
+                if self._poll_count % 60 == 0:
+                    logger.debug(
+                        "worker_heartbeat",
+                        worker_id=self.worker_id,
+                        poll_count=self._poll_count,
+                    )
                 return
 
             # CRITICAL: Commit the job claim BEFORE processing to release

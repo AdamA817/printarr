@@ -143,10 +143,39 @@ class JobQueueService:
             .with_for_update(skip_locked=True)
         )
 
-        result = await self.db.execute(query)
-        job = result.scalar_one_or_none()
+        try:
+            result = await self.db.execute(query)
+            job = result.scalar_one_or_none()
+        except Exception as e:
+            logger.error(
+                "dequeue_query_error",
+                error=str(e),
+                job_types=[jt.value for jt in job_types] if job_types else None,
+                exc_info=True,
+            )
+            return None
 
         if job is None:
+            # Diagnostic: check if there are queued jobs blocked by next_retry_at
+            blocked_query = (
+                select(func.count(Job.id))
+                .where(
+                    Job.status == JobStatus.QUEUED,
+                    Job.next_retry_at > now,
+                )
+            )
+            if job_types:
+                blocked_query = blocked_query.where(Job.type.in_(job_types))
+
+            blocked_result = await self.db.execute(blocked_query)
+            blocked_count = blocked_result.scalar() or 0
+
+            if blocked_count > 0:
+                logger.debug(
+                    "dequeue_jobs_blocked_by_retry",
+                    blocked_count=blocked_count,
+                    job_types=[jt.value for jt in job_types] if job_types else "all",
+                )
             return None
 
         # Claim the job
