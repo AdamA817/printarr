@@ -331,7 +331,7 @@ class SyncService:
                 # Perform catch-up sync
                 await self._catch_up_sync()
                 self._last_sync_at = datetime.now(timezone.utc)
-                logger.debug(
+                logger.info(
                     "sync_cycle_complete",
                     subscribed_channels=len(self._subscribed_channel_ids),
                 )
@@ -374,6 +374,11 @@ class SyncService:
             )
             channels = result.scalars().all()
 
+        logger.info(
+            "sync_catch_up_starting",
+            channel_count=len(channels),
+        )
+
         # Process each channel (release db session during Telegram calls)
         for channel in channels:
             if not self._running:
@@ -394,11 +399,21 @@ class SyncService:
         """Catch up a single channel by fetching messages since last sync."""
         # Skip virtual channels (#237) - they don't have Telegram peer IDs
         if channel.is_virtual or not channel.telegram_peer_id:
+            logger.debug(
+                "sync_skip_virtual_channel",
+                channel_id=channel.id,
+                title=channel.title,
+            )
             return
 
         telegram = TelegramService.get_instance()
 
         if not telegram.is_connected() or not await telegram.is_authenticated():
+            logger.warning(
+                "sync_telegram_not_ready",
+                channel_id=channel.id,
+                is_connected=telegram.is_connected(),
+            )
             return
 
         last_id = channel.last_ingested_message_id or 0
