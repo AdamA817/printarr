@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import String, cast, func, or_, select, text, update
+from sqlalchemy import String, and_, cast, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -203,6 +203,9 @@ async def list_designers(
 # Telegram Image Download Backfill
 # --------------------------------------------------------------------------
 
+# Time window for finding nearby photo messages (matches ingest service)
+NEARBY_PHOTO_WINDOW_MINUTES = 30
+
 
 class QueueTelegramImagesResponse(BaseModel):
     """Response for queueing telegram image downloads."""
@@ -210,6 +213,7 @@ class QueueTelegramImagesResponse(BaseModel):
     designs_found: int
     jobs_queued: int
     already_have_telegram_previews: int
+    total_photo_messages_found: int
     errors: list[str]
 
 
@@ -218,8 +222,12 @@ class QueueTelegramImagesResponse(BaseModel):
     response_model=QueueTelegramImagesResponse,
     summary="Queue telegram image downloads for existing designs",
     description="""
-    Queue DOWNLOAD_TELEGRAM_IMAGES jobs for designs that have PHOTO attachments
+    Queue DOWNLOAD_TELEGRAM_IMAGES jobs for designs that have nearby PHOTO messages
     but don't yet have TELEGRAM source preview assets.
+
+    This looks for photo messages posted in the same channel within 30 minutes
+    before the design message, since designers often post preview photos
+    separately from the design files.
 
     This is useful for backfilling telegram preview images for designs that
     were created before the automatic image download feature was added.
@@ -227,23 +235,13 @@ class QueueTelegramImagesResponse(BaseModel):
 )
 async def queue_telegram_image_backfill(
     limit: int = Query(100, ge=1, le=1000, description="Maximum designs to process"),
+    window_minutes: int = Query(NEARBY_PHOTO_WINDOW_MINUTES, ge=1, le=1440, description="Minutes before design message to look for photos"),
     dry_run: bool = Query(True, description="If true, only count - don't queue jobs"),
     db: AsyncSession = Depends(get_db),
 ) -> QueueTelegramImagesResponse:
     """Queue telegram image download jobs for designs missing telegram previews."""
 
-    # Find designs that have PHOTO attachments
-    # Subquery for designs with PHOTO attachments
-    # Cast enum to string for PostgreSQL compatibility
-    designs_with_photos = (
-        select(Design.id)
-        .join(Design.sources)
-        .join(DesignSource.message)
-        .join(Attachment, Attachment.message_id == TelegramMessage.id)
-        .where(cast(Attachment.media_type, String) == MediaType.PHOTO.value)
-        .distinct()
-    )
-
+    # Get all designs that don't have TELEGRAM previews yet
     # Subquery for designs that already have TELEGRAM previews
     designs_with_telegram_previews = (
         select(PreviewAsset.design_id)
@@ -251,7 +249,7 @@ async def queue_telegram_image_backfill(
         .distinct()
     )
 
-    # Find designs with photos but no telegram previews
+    # Find designs without telegram previews that have a Telegram source
     result = await db.execute(
         select(Design)
         .options(
@@ -260,8 +258,9 @@ async def queue_telegram_image_backfill(
             .selectinload(TelegramMessage.channel)
         )
         .where(
-            Design.id.in_(designs_with_photos),
             Design.id.notin_(designs_with_telegram_previews),
+            # Only designs with at least one Telegram source
+            Design.sources.any(DesignSource.message_id.isnot(None)),
         )
         .limit(limit)
     )
@@ -275,6 +274,7 @@ async def queue_telegram_image_backfill(
     already_have_telegram = already_count_result.scalar() or 0
 
     jobs_queued = 0
+    total_photo_messages = 0
     errors: list[str] = []
     queue = JobQueueService(db)
 
@@ -288,11 +288,40 @@ async def queue_telegram_image_backfill(
                     break
 
             if not source_with_message:
-                errors.append(f"Design {design.id}: no message with channel found")
-                continue
+                continue  # Skip designs without Telegram message
 
             message = source_with_message.message
             channel = message.channel
+
+            if not channel.telegram_peer_id:
+                continue  # Skip if no peer ID
+
+            # Find nearby photo messages (within the time window BEFORE the design message)
+            # Only from the same author to avoid grabbing unrelated photos
+            window_start = message.date_posted - timedelta(minutes=window_minutes)
+
+            # Build conditions - filter by same author if known
+            conditions = [
+                TelegramMessage.channel_id == channel.id,
+                TelegramMessage.date_posted >= window_start,
+                TelegramMessage.date_posted <= message.date_posted,
+                cast(Attachment.media_type, String) == MediaType.PHOTO.value,
+            ]
+            if message.author_name:
+                conditions.append(TelegramMessage.author_name == message.author_name)
+
+            nearby_photo_result = await db.execute(
+                select(TelegramMessage.telegram_message_id)
+                .join(Attachment, Attachment.message_id == TelegramMessage.id)
+                .where(and_(*conditions))
+                .distinct()
+            )
+            nearby_message_ids = [row[0] for row in nearby_photo_result.all()]
+
+            if not nearby_message_ids:
+                continue  # No photo messages found nearby
+
+            total_photo_messages += len(nearby_message_ids)
 
             if not dry_run:
                 await queue.enqueue(
@@ -301,8 +330,10 @@ async def queue_telegram_image_backfill(
                     priority=5,
                     payload={
                         "design_id": design.id,
-                        "message_id": message.telegram_message_id,
+                        "message_ids": nearby_message_ids,
                         "channel_peer_id": channel.telegram_peer_id,
+                        # Legacy field for backwards compatibility
+                        "message_id": message.telegram_message_id,
                     },
                 )
 
@@ -325,6 +356,7 @@ async def queue_telegram_image_backfill(
         designs_found=len(designs),
         jobs_queued=jobs_queued,
         already_have_telegram=already_have_telegram,
+        total_photo_messages=total_photo_messages,
         errors=len(errors),
     )
 
@@ -332,6 +364,7 @@ async def queue_telegram_image_backfill(
         designs_found=len(designs),
         jobs_queued=jobs_queued,
         already_have_telegram_previews=already_have_telegram,
+        total_photo_messages_found=total_photo_messages,
         errors=errors,
     )
 

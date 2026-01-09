@@ -3,6 +3,9 @@
 Per DEC-030, Telegram images are downloaded via background jobs to keep
 ingestion fast. When a design is created from a message with photos,
 we queue a DOWNLOAD_TELEGRAM_IMAGES job to download them separately.
+
+Updated to support downloading from multiple messages - designers often
+post preview photos in a separate message before posting the design files.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ from io import BytesIO
 from typing import Any
 
 from app.core.logging import get_logger
-from app.db.models import Attachment, Design, Job, JobType, MediaType, PreviewAsset
+from app.db.models import Attachment, Design, Job, JobType, MediaType, PreviewAsset, TelegramMessage
 from app.db.models.enums import PreviewKind, PreviewSource
 from app.db.session import async_session_maker
 from app.services.preview import PreviewService
@@ -23,16 +26,16 @@ from sqlalchemy.orm import selectinload
 
 logger = get_logger(__name__)
 
-# Maximum images to download per message (Telegram limit)
-MAX_IMAGES_PER_MESSAGE = 10
+# Maximum total images to download per job
+MAX_IMAGES_PER_JOB = 20
 
 
 class ImageWorker(BaseWorker):
     """Worker for downloading preview images from Telegram.
 
     Processes DOWNLOAD_TELEGRAM_IMAGES jobs by:
-    1. Fetching the Telegram message
-    2. Downloading photo attachments
+    1. Fetching Telegram messages (supports multiple message IDs)
+    2. Downloading photo attachments from all messages
     3. Saving to /cache/previews/telegram/{design_id}/
     4. Creating PreviewAsset records
     5. Auto-selecting primary preview
@@ -64,12 +67,13 @@ class ImageWorker(BaseWorker):
     ) -> dict[str, Any] | None:
         """Process an image download job.
 
-        Downloads all photos from the Telegram message and creates
-        PreviewAsset records.
+        Downloads all photos from the specified Telegram messages and creates
+        PreviewAsset records. Supports both single message_id (legacy) and
+        multiple message_ids (new format for nearby photo support).
 
         Args:
             job: The Job instance to process.
-            payload: Parsed payload dict with design_id, message_id, channel_peer_id.
+            payload: Parsed payload dict with design_id, message_ids (or message_id), channel_peer_id.
 
         Returns:
             Result dict with images_downloaded count.
@@ -82,38 +86,49 @@ class ImageWorker(BaseWorker):
             raise NonRetryableError("Job missing payload")
 
         design_id = payload.get("design_id") or job.design_id
-        message_id = payload.get("message_id")
         channel_peer_id = payload.get("channel_peer_id")
 
-        if not all([design_id, message_id, channel_peer_id]):
+        # Support both new format (message_ids list) and legacy format (single message_id)
+        message_ids = payload.get("message_ids")
+        if message_ids is None:
+            legacy_message_id = payload.get("message_id")
+            if legacy_message_id:
+                message_ids = [legacy_message_id]
+            else:
+                message_ids = []
+
+        if not design_id or not channel_peer_id or not message_ids:
             raise NonRetryableError(
                 f"Missing required payload fields: design_id={design_id}, "
-                f"message_id={message_id}, channel_peer_id={channel_peer_id}"
+                f"channel_peer_id={channel_peer_id}, message_ids={message_ids}"
             )
 
         logger.info(
             "image_download_starting",
             job_id=job.id,
             design_id=design_id,
-            message_id=message_id,
+            message_ids=message_ids,
+            message_count=len(message_ids),
         )
 
-        # Verify design exists and get photo attachments
+        # Verify design exists and get photo attachments from all specified messages
         async with async_session_maker() as db:
             design = await db.get(Design, design_id)
             if not design:
                 raise NonRetryableError(f"Design not found: {design_id}")
 
-            # Get photo attachments for this design's message
+            # Get photo attachments from all specified messages
+            # We need to map attachments to their message's telegram_message_id for downloading
             result = await db.execute(
-                select(Attachment)
+                select(Attachment, TelegramMessage.telegram_message_id)
                 .join(Attachment.message)
                 .where(
-                    Attachment.message.has(telegram_message_id=message_id),
+                    TelegramMessage.telegram_message_id.in_(message_ids),
                     Attachment.media_type == MediaType.PHOTO,
                 )
             )
-            photo_attachments = list(result.scalars().all())
+            # Store as list of (attachment, telegram_message_id) tuples
+            photo_attachments_with_msg = [(row[0], row[1]) for row in result.all()]
 
             # Check which photos we already have (by telegram_file_id)
             existing_result = await db.execute(
@@ -127,7 +142,7 @@ class ImageWorker(BaseWorker):
 
         # Filter out already downloaded photos
         attachments_to_download = [
-            att for att in photo_attachments
+            (att, msg_id) for att, msg_id in photo_attachments_with_msg
             if att.telegram_file_id not in existing_file_ids
         ]
 
@@ -137,7 +152,7 @@ class ImageWorker(BaseWorker):
                 design_id=design_id,
                 existing_count=len(existing_file_ids),
             )
-            return {"images_downloaded": 0, "images_skipped": len(photo_attachments)}
+            return {"images_downloaded": 0, "images_skipped": len(photo_attachments_with_msg)}
 
         # Ensure Telegram is connected and authenticated
         try:
@@ -148,11 +163,11 @@ class ImageWorker(BaseWorker):
         # Download images (NO database session held during downloads)
         downloaded = []
         try:
-            for i, attachment in enumerate(attachments_to_download[:MAX_IMAGES_PER_MESSAGE]):
+            for i, (attachment, msg_id) in enumerate(attachments_to_download[:MAX_IMAGES_PER_JOB]):
                 try:
                     image_data = await self._download_photo(
                         channel_peer_id=channel_peer_id,
-                        message_id=message_id,
+                        message_id=msg_id,
                         attachment=attachment,
                     )
 
@@ -162,6 +177,7 @@ class ImageWorker(BaseWorker):
                             "telegram_file_id": attachment.telegram_file_id,
                             "filename": attachment.filename,
                             "data": image_data,
+                            "source_message_id": msg_id,
                         })
 
                     # Update progress
@@ -172,6 +188,7 @@ class ImageWorker(BaseWorker):
                         "image_download_failed",
                         design_id=design_id,
                         attachment_id=attachment.id,
+                        message_id=msg_id,
                         error=str(e),
                     )
                     continue
@@ -219,11 +236,13 @@ class ImageWorker(BaseWorker):
             job_id=job.id,
             design_id=design_id,
             images_downloaded=images_saved,
+            messages_processed=len(message_ids),
         )
 
         return {
             "images_downloaded": images_saved,
             "images_attempted": len(attachments_to_download),
+            "messages_processed": len(message_ids),
         }
 
     async def _ensure_telegram(self) -> None:

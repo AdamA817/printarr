@@ -63,6 +63,10 @@ SPLIT_RAR_VOLUME_PATTERN = re.compile(r"^(.+)\.r(\d{2})$", re.IGNORECASE)
 # Time window for matching split archives (24 hours)
 SPLIT_ARCHIVE_MATCH_WINDOW = timedelta(hours=24)
 
+# Time window for finding nearby photo messages (30 minutes before design message)
+# Designers often post preview photos shortly before posting the design files
+NEARBY_PHOTO_WINDOW_MINUTES = 30
+
 
 @dataclass
 class SplitArchiveInfo:
@@ -726,16 +730,67 @@ class IngestService:
                 error=str(e),
             )
 
+    async def _find_nearby_photo_messages(
+        self,
+        channel_id: str,
+        reference_message: TelegramMessage,
+        window_minutes: int = NEARBY_PHOTO_WINDOW_MINUTES,
+    ) -> list[TelegramMessage]:
+        """Find messages with photos posted near the reference message.
+
+        Looks for photo messages in the same channel within the time window
+        BEFORE the reference message (designers typically post photos first,
+        then design files). Only includes messages from the same author to
+        avoid grabbing unrelated photos from other users.
+
+        Args:
+            channel_id: The channel ID to search in.
+            reference_message: The message to search around.
+            window_minutes: Minutes before reference message to search.
+
+        Returns:
+            List of TelegramMessage records that have photo attachments.
+        """
+        window_start = reference_message.date_posted - timedelta(minutes=window_minutes)
+
+        # Build base conditions
+        conditions = [
+            TelegramMessage.channel_id == channel_id,
+            TelegramMessage.id != reference_message.id,
+            TelegramMessage.date_posted >= window_start,
+            TelegramMessage.date_posted <= reference_message.date_posted,
+            Attachment.media_type == MediaType.PHOTO,
+        ]
+
+        # Filter by same author if the reference message has an author
+        # This avoids grabbing unrelated photos from other users
+        if reference_message.author_name:
+            conditions.append(TelegramMessage.author_name == reference_message.author_name)
+
+        # Find messages with photos in the time window
+        result = await self.db.execute(
+            select(TelegramMessage)
+            .join(Attachment, Attachment.message_id == TelegramMessage.id)
+            .where(and_(*conditions))
+            .distinct()
+            .order_by(TelegramMessage.date_posted.desc())
+        )
+        return list(result.scalars().all())
+
     async def _queue_image_download_if_needed(
         self,
         design: Design,
         channel: Channel,
         message: TelegramMessage,
     ) -> None:
-        """Queue image download job if message has photo attachments (v0.7).
+        """Queue image download job if message or nearby messages have photos.
 
         Per DEC-030, Telegram images are downloaded via background jobs to
         keep ingestion fast.
+
+        Updated to also check nearby messages in the same channel, since
+        designers often post preview photos in a separate message before
+        posting the design files.
 
         Args:
             design: The newly created Design record.
@@ -743,7 +798,7 @@ class IngestService:
             message: The TelegramMessage record.
         """
         try:
-            # Check if message has any photo attachments
+            # Check if the design message itself has photos
             result = await self.db.execute(
                 select(Attachment.id)
                 .where(
@@ -752,10 +807,23 @@ class IngestService:
                 )
                 .limit(1)
             )
-            has_photos = result.scalar_one_or_none() is not None
+            same_message_has_photos = result.scalar_one_or_none() is not None
 
-            if not has_photos:
+            # Also look for photos in nearby messages
+            nearby_photo_messages = await self._find_nearby_photo_messages(
+                channel_id=channel.id,
+                reference_message=message,
+            )
+
+            if not same_message_has_photos and not nearby_photo_messages:
                 return
+
+            # Build list of message IDs with photos to download
+            photo_message_ids = []
+            if same_message_has_photos:
+                photo_message_ids.append(message.telegram_message_id)
+            for nearby_msg in nearby_photo_messages:
+                photo_message_ids.append(nearby_msg.telegram_message_id)
 
             # Queue the image download job
             queue = JobQueueService(self.db)
@@ -765,8 +833,10 @@ class IngestService:
                 priority=5,  # Lower priority than file downloads
                 payload={
                     "design_id": design.id,
-                    "message_id": message.telegram_message_id,
+                    "message_ids": photo_message_ids,  # List of all message IDs with photos
                     "channel_peer_id": channel.telegram_peer_id,
+                    # Keep legacy field for backwards compatibility
+                    "message_id": message.telegram_message_id,
                 },
             )
 
@@ -774,7 +844,8 @@ class IngestService:
                 "image_download_job_queued",
                 design_id=design.id,
                 job_id=job.id,
-                message_id=message.telegram_message_id,
+                message_ids=photo_message_ids,
+                nearby_count=len(nearby_photo_messages),
             )
 
         except Exception as e:
