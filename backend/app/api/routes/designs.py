@@ -7,7 +7,7 @@ from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select, text, update
+from sqlalchemy import String, cast, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -234,19 +234,20 @@ async def queue_telegram_image_backfill(
 
     # Find designs that have PHOTO attachments
     # Subquery for designs with PHOTO attachments
+    # Cast enum to string for PostgreSQL compatibility
     designs_with_photos = (
         select(Design.id)
         .join(Design.sources)
         .join(DesignSource.message)
         .join(Attachment, Attachment.message_id == TelegramMessage.id)
-        .where(Attachment.media_type == MediaType.PHOTO)
+        .where(cast(Attachment.media_type, String) == MediaType.PHOTO.value)
         .distinct()
     )
 
     # Subquery for designs that already have TELEGRAM previews
     designs_with_telegram_previews = (
         select(PreviewAsset.design_id)
-        .where(PreviewAsset.source == PreviewSource.TELEGRAM)
+        .where(cast(PreviewAsset.source, String) == PreviewSource.TELEGRAM.value)
         .distinct()
     )
 
@@ -269,7 +270,7 @@ async def queue_telegram_image_backfill(
     # Count designs that already have telegram previews
     already_count_result = await db.execute(
         select(func.count(func.distinct(PreviewAsset.design_id)))
-        .where(PreviewAsset.source == PreviewSource.TELEGRAM)
+        .where(cast(PreviewAsset.source, String) == PreviewSource.TELEGRAM.value)
     )
     already_have_telegram = already_count_result.scalar() or 0
 
