@@ -271,10 +271,10 @@ class DownloadWorker(BaseWorker):
                     attachments = attach_result.scalars().all()
 
                     for att in attachments:
-                        if att.file_name and att.file_size:
+                        if att.filename and att.size_bytes:
                             files.append({
-                                "filename": att.file_name,
-                                "size": att.file_size,
+                                "filename": att.filename,
+                                "size": att.size_bytes,
                             })
 
             # Check for duplicates
