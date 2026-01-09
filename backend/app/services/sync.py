@@ -11,7 +11,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Callable
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from telethon import events
 from telethon.errors import FloodWaitError
 
@@ -487,6 +487,15 @@ class SyncService:
                         await self._queue_download(db, telegram_msg)
 
                 await db.commit()
+
+        # Always update last_sync_at when channel is successfully checked
+        async with async_session_maker() as db:
+            await db.execute(
+                update(Channel)
+                .where(Channel.id == channel.id)
+                .values(last_sync_at=datetime.now(timezone.utc))
+            )
+            await db.commit()
 
         # Always log completion, even if no new messages
         logger.info(
