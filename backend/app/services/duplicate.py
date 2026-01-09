@@ -678,8 +678,9 @@ class DuplicateService:
                     Design.canonical_designer == designer,
                     Design.status != DesignStatus.DELETED,
                 )
+                .limit(1)
             )
-            exact_match = result.scalar_one_or_none()
+            exact_match = result.scalars().first()
 
             if exact_match:
                 return exact_match, True
