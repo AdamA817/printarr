@@ -425,6 +425,8 @@ async def list_designs(
                 file_types=file_types,
                 created_at=design.created_at,
                 updated_at=design.updated_at,
+                display_title=design.display_title,
+                display_designer=design.display_designer,
                 channel=channel,
                 has_thangs_link=has_thangs,
                 tags=design_tags,
