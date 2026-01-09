@@ -418,6 +418,13 @@ class SyncService:
 
         last_id = channel.last_ingested_message_id or 0
 
+        logger.info(
+            "sync_checking_channel",
+            channel_id=channel.id,
+            channel_title=channel.title,
+            last_ingested_id=last_id,
+        )
+
         # Fetch messages since last_id
         try:
             entity = await telegram.client.get_entity(int(channel.telegram_peer_id))
@@ -481,14 +488,14 @@ class SyncService:
 
                 await db.commit()
 
-        if messages_fetched > 0:
-            logger.info(
-                "sync_catch_up_complete",
-                channel_id=channel.id,
-                channel_title=channel.title,
-                messages_fetched=messages_fetched,
-                designs_created=designs_created,
-            )
+        # Always log completion, even if no new messages
+        logger.info(
+            "sync_catch_up_complete",
+            channel_id=channel.id,
+            channel_title=channel.title,
+            messages_fetched=messages_fetched,
+            designs_created=designs_created,
+        )
 
     def _uptime_seconds(self) -> int:
         """Calculate service uptime in seconds."""
