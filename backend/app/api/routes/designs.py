@@ -15,9 +15,26 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.db import get_db
 from app.services.count_cache import get_approximate_count, count_cache
-from app.db.models import Design, DesignSource, ExternalMetadataSource, ExternalSourceType, ImportSource
+from app.db.models import (
+    Attachment,
+    Channel,
+    Design,
+    DesignSource,
+    ExternalMetadataSource,
+    ExternalSourceType,
+    ImportSource,
+    TelegramMessage,
+)
 from app.db.models.design_tag import DesignTag
-from app.db.models.enums import DesignStatus, JobType, MatchMethod, MetadataAuthority, MulticolorStatus
+from app.db.models.enums import (
+    DesignStatus,
+    JobType,
+    MatchMethod,
+    MediaType,
+    MetadataAuthority,
+    MulticolorStatus,
+    PreviewSource,
+)
 from app.db.models.preview_asset import PreviewAsset
 from app.db.models.tag import Tag
 from app.schemas.design import (
@@ -30,6 +47,7 @@ from app.schemas.design import (
     PreviewSummary,
     TagSummary,
 )
+from app.services.job_queue import JobQueueService
 from app.services.preview import PreviewService
 from app.services.tag import TagService
 from app.services.thangs import ThangsAdapter
@@ -2434,5 +2452,141 @@ async def auto_merge_duplicates(
     return AutoMergeDuplicatesResponse(
         groups_processed=groups_processed,
         designs_merged=designs_merged,
+        errors=errors,
+    )
+
+
+# --------------------------------------------------------------------------
+# Telegram Image Download Backfill
+# --------------------------------------------------------------------------
+
+
+class QueueTelegramImagesResponse(BaseModel):
+    """Response for queueing telegram image downloads."""
+
+    designs_found: int
+    jobs_queued: int
+    already_have_telegram_previews: int
+    errors: list[str]
+
+
+@router.post(
+    "/telegram-images/queue-backfill",
+    response_model=QueueTelegramImagesResponse,
+    summary="Queue telegram image downloads for existing designs",
+    description="""
+    Queue DOWNLOAD_TELEGRAM_IMAGES jobs for designs that have PHOTO attachments
+    but don't yet have TELEGRAM source preview assets.
+
+    This is useful for backfilling telegram preview images for designs that
+    were created before the automatic image download feature was added.
+    """,
+)
+async def queue_telegram_image_backfill(
+    limit: int = Query(100, ge=1, le=1000, description="Maximum designs to process"),
+    dry_run: bool = Query(True, description="If true, only count - don't queue jobs"),
+    db: AsyncSession = Depends(get_db),
+) -> QueueTelegramImagesResponse:
+    """Queue telegram image download jobs for designs missing telegram previews."""
+
+    # Find designs that have PHOTO attachments
+    # Subquery for designs with PHOTO attachments
+    designs_with_photos = (
+        select(Design.id)
+        .join(Design.sources)
+        .join(DesignSource.message)
+        .join(Attachment, Attachment.message_id == TelegramMessage.id)
+        .where(Attachment.media_type == MediaType.PHOTO)
+        .distinct()
+    )
+
+    # Subquery for designs that already have TELEGRAM previews
+    designs_with_telegram_previews = (
+        select(PreviewAsset.design_id)
+        .where(PreviewAsset.source == PreviewSource.TELEGRAM)
+        .distinct()
+    )
+
+    # Find designs with photos but no telegram previews
+    result = await db.execute(
+        select(Design)
+        .options(
+            selectinload(Design.sources)
+            .selectinload(DesignSource.message)
+            .selectinload(TelegramMessage.channel)
+        )
+        .where(
+            Design.id.in_(designs_with_photos),
+            Design.id.notin_(designs_with_telegram_previews),
+        )
+        .limit(limit)
+    )
+    designs = result.scalars().all()
+
+    # Count designs that already have telegram previews
+    already_count_result = await db.execute(
+        select(func.count(func.distinct(PreviewAsset.design_id)))
+        .where(PreviewAsset.source == PreviewSource.TELEGRAM)
+    )
+    already_have_telegram = already_count_result.scalar() or 0
+
+    jobs_queued = 0
+    errors: list[str] = []
+    queue = JobQueueService(db)
+
+    for design in designs:
+        try:
+            # Find a source with message and channel info
+            source_with_message = None
+            for source in design.sources:
+                if source.message and source.message.channel:
+                    source_with_message = source
+                    break
+
+            if not source_with_message:
+                errors.append(f"Design {design.id}: no message with channel found")
+                continue
+
+            message = source_with_message.message
+            channel = message.channel
+
+            if not dry_run:
+                await queue.enqueue(
+                    JobType.DOWNLOAD_TELEGRAM_IMAGES,
+                    design_id=design.id,
+                    priority=5,
+                    payload={
+                        "design_id": design.id,
+                        "message_id": message.telegram_message_id,
+                        "channel_peer_id": channel.telegram_peer_id,
+                    },
+                )
+
+            jobs_queued += 1
+
+        except Exception as e:
+            errors.append(f"Design {design.id}: {str(e)}")
+            logger.error(
+                "telegram_image_queue_error",
+                design_id=design.id,
+                error=str(e),
+            )
+
+    if not dry_run:
+        await db.commit()
+
+    logger.info(
+        "telegram_image_backfill_complete",
+        dry_run=dry_run,
+        designs_found=len(designs),
+        jobs_queued=jobs_queued,
+        already_have_telegram=already_have_telegram,
+        errors=len(errors),
+    )
+
+    return QueueTelegramImagesResponse(
+        designs_found=len(designs),
+        jobs_queued=jobs_queued,
+        already_have_telegram_previews=already_have_telegram,
         errors=errors,
     )
