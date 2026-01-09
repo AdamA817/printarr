@@ -277,12 +277,13 @@ class DownloadWorker(BaseWorker):
                                 "size": att.size_bytes,
                             })
 
-            # Check for duplicates
+            # Check for duplicates (exclude self to prevent self-matching)
             dup_service = DuplicateService(db)
             match, match_type, confidence = await dup_service.check_pre_download(
                 title=design.canonical_title or "",
                 designer=design.canonical_designer or "",
                 files=files,
+                exclude_design_id=design_id,
             )
 
             if match and confidence >= AUTO_MERGE_THRESHOLD:

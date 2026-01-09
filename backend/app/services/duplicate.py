@@ -274,6 +274,7 @@ class DuplicateService:
         designer: str,
         files: list[dict],
         thangs_id: str | None = None,
+        exclude_design_id: str | None = None,
     ) -> tuple[Design | None, DuplicateMatchType | None, float]:
         """Check for duplicates before download using heuristics.
 
@@ -284,6 +285,7 @@ class DuplicateService:
             designer: The designer name.
             files: List of file info dicts with 'filename' and 'size'.
             thangs_id: Optional Thangs model ID for exact matching.
+            exclude_design_id: Design ID to exclude from results (prevents self-match).
 
         Returns:
             Tuple of (matched_design, match_type, confidence).
@@ -292,7 +294,7 @@ class DuplicateService:
         # Try Thangs ID match first (highest confidence)
         if thangs_id:
             match = await self._find_by_thangs_id(thangs_id)
-            if match:
+            if match and match.id != exclude_design_id:
                 logger.info(
                     "pre_download_match_thangs_id",
                     thangs_id=thangs_id,
@@ -302,7 +304,7 @@ class DuplicateService:
 
         # Try title + designer match
         match, is_exact = await self._find_by_title_designer(title, designer)
-        if match:
+        if match and match.id != exclude_design_id:
             # Exact title+designer match gets 1.0 confidence, fuzzy gets 0.7
             confidence = 1.0 if is_exact else 0.7
             logger.info(
@@ -322,7 +324,7 @@ class DuplicateService:
 
             if filename and size:
                 match = await self._find_by_filename_size(filename, size)
-                if match:
+                if match and match.id != exclude_design_id:
                     logger.info(
                         "pre_download_match_filename_size",
                         filename=filename,
