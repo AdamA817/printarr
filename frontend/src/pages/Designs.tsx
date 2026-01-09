@@ -19,6 +19,7 @@ import type { SortField, SortOrder, DesignListItem, DesignListParams } from '@/t
 
 const VIEW_STORAGE_KEY = 'printarr-designs-view'
 const ACTIVE_FILTER_KEY = 'printarr-active-filter'
+const SCROLL_POSITION_KEY = 'printarr-designs-scroll'
 
 function getStoredView(): ViewMode {
   try {
@@ -56,9 +57,35 @@ function setStoredActiveFilter(id: string) {
   }
 }
 
+function getStoredScrollPosition(): number {
+  try {
+    const stored = sessionStorage.getItem(SCROLL_POSITION_KEY)
+    return stored ? parseInt(stored, 10) : 0
+  } catch {
+    return 0
+  }
+}
+
+function setStoredScrollPosition(position: number) {
+  try {
+    sessionStorage.setItem(SCROLL_POSITION_KEY, String(position))
+  } catch {
+    // sessionStorage not available
+  }
+}
+
+function clearStoredScrollPosition() {
+  try {
+    sessionStorage.removeItem(SCROLL_POSITION_KEY)
+  } catch {
+    // sessionStorage not available
+  }
+}
+
 export function Designs() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastSelectedIdRef = useRef<string | null>(null)
+  const scrollRestoredRef = useRef(false)
   const [view, setView] = useState<ViewMode>(getStoredView)
   const [activeFilterId, setActiveFilterId] = useState<string | null>(getStoredActiveFilter)
   const [showCustomFilterModal, setShowCustomFilterModal] = useState(false)
@@ -232,6 +259,51 @@ export function Designs() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectAll, clearSelection, selectedIds.size])
+
+  // Restore scroll position after data loads
+  useEffect(() => {
+    if (!isLoading && designs.length > 0 && !scrollRestoredRef.current) {
+      const savedPosition = getStoredScrollPosition()
+      if (savedPosition > 0 && scrollRef.current) {
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+          if (scrollRef.current) {
+            scrollRef.current.scrollTop = savedPosition
+          }
+        })
+      }
+      scrollRestoredRef.current = true
+      // Clear the saved position after restoring
+      clearStoredScrollPosition()
+    }
+  }, [isLoading, designs.length])
+
+  // Save scroll position when scrolling (debounced)
+  useEffect(() => {
+    const scrollElement = scrollRef.current
+    if (!scrollElement) return
+
+    let timeoutId: number | null = null
+
+    const handleScroll = () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+      timeoutId = window.setTimeout(() => {
+        if (scrollElement) {
+          setStoredScrollPosition(scrollElement.scrollTop)
+        }
+      }, 100)
+    }
+
+    scrollElement.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId)
+      }
+      scrollElement.removeEventListener('scroll', handleScroll)
+    }
+  }, [])
 
   // Handle AI bulk analyze
   const handleAiBulkAnalyze = useCallback(async () => {
