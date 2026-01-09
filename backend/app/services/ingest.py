@@ -479,20 +479,40 @@ class IngestService:
         return result.scalar_one_or_none()
 
     def _strip_extension(self, filename: str) -> str:
-        """Strip file extension from filename for use as title."""
+        """Strip file extension from filename for use as title.
+
+        Also strips split archive suffixes like .part1, .part01, etc.
+        """
         if not filename:
             return ""
         # Handle double extensions like .tar.gz
         lower = filename.lower()
         if lower.endswith(".tar.gz"):
-            return filename[:-7]
-        if lower.endswith(".tgz"):
-            return filename[:-4]
-        # Regular extension
-        dot_idx = filename.rfind(".")
-        if dot_idx > 0:
-            return filename[:dot_idx]
-        return filename
+            result = filename[:-7]
+        elif lower.endswith(".tgz"):
+            result = filename[:-4]
+        else:
+            # Regular extension
+            dot_idx = filename.rfind(".")
+            if dot_idx > 0:
+                result = filename[:dot_idx]
+            else:
+                result = filename
+
+        # Strip split archive suffixes: .part1, .part01, .part001, etc.
+        # Pattern: .partN or .part0N or .part00N (any number of zero-padding)
+        part_pattern = re.compile(r"\.part0*\d+$", re.IGNORECASE)
+        result = part_pattern.sub("", result)
+
+        # Also strip 7z split suffixes: .001, .002, etc.
+        sevenz_pattern = re.compile(r"\.\d{3}$")
+        result = sevenz_pattern.sub("", result)
+
+        # And legacy RAR split suffixes: .r00, .r01, etc.
+        rar_legacy_pattern = re.compile(r"\.r\d{2}$", re.IGNORECASE)
+        result = rar_legacy_pattern.sub("", result)
+
+        return result
 
     async def _get_file_types(self, message_id: str) -> list[str]:
         """Get distinct file extensions for a message's attachments."""

@@ -2109,3 +2109,330 @@ async def split_design(
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==================== Duplicate Scanning & Cleanup Endpoints ====================
+
+
+class DuplicateGroup(BaseModel):
+    """A group of designs with the same canonical title."""
+
+    canonical_title: str
+    count: int
+    design_ids: list[str]
+    statuses: list[str]
+
+
+class ScanDuplicatesResponse(BaseModel):
+    """Response for duplicate scan."""
+
+    total_duplicate_groups: int
+    total_duplicate_designs: int
+    groups: list[DuplicateGroup]
+
+
+@router.get("/duplicates/scan", response_model=ScanDuplicatesResponse)
+async def scan_duplicates(
+    db: AsyncSession = Depends(get_db),
+    min_group_size: int = 2,
+    limit: int = 100,
+) -> ScanDuplicatesResponse:
+    """Scan for duplicate designs by canonical title.
+
+    Finds designs with identical canonical_title values that may need merging.
+    Only includes non-deleted designs.
+
+    Args:
+        min_group_size: Minimum number of designs to consider a group (default 2).
+        limit: Maximum number of groups to return (default 100).
+
+    Returns:
+        List of duplicate groups with design IDs and counts.
+    """
+    from sqlalchemy import func
+
+    # Find titles that appear more than once
+    subquery = (
+        select(
+            Design.canonical_title,
+            func.count(Design.id).label("count"),
+        )
+        .where(
+            Design.status != DesignStatus.DELETED,
+            Design.canonical_title.isnot(None),
+            Design.canonical_title != "",
+        )
+        .group_by(Design.canonical_title)
+        .having(func.count(Design.id) >= min_group_size)
+        .order_by(func.count(Design.id).desc())
+        .limit(limit)
+        .subquery()
+    )
+
+    # Get the actual designs for each duplicate title
+    result = await db.execute(
+        select(Design)
+        .where(
+            Design.canonical_title.in_(
+                select(subquery.c.canonical_title)
+            ),
+            Design.status != DesignStatus.DELETED,
+        )
+        .order_by(Design.canonical_title, Design.created_at)
+    )
+    designs = result.scalars().all()
+
+    # Group designs by title
+    groups_dict: dict[str, list[Design]] = {}
+    for design in designs:
+        title = design.canonical_title or ""
+        if title not in groups_dict:
+            groups_dict[title] = []
+        groups_dict[title].append(design)
+
+    # Convert to response format
+    groups = []
+    total_duplicates = 0
+    for title, design_list in groups_dict.items():
+        if len(design_list) >= min_group_size:
+            groups.append(
+                DuplicateGroup(
+                    canonical_title=title,
+                    count=len(design_list),
+                    design_ids=[d.id for d in design_list],
+                    statuses=[d.status.value for d in design_list],
+                )
+            )
+            total_duplicates += len(design_list)
+
+    # Sort by count descending
+    groups.sort(key=lambda g: g.count, reverse=True)
+
+    logger.info(
+        "duplicate_scan_complete",
+        total_groups=len(groups),
+        total_duplicates=total_duplicates,
+    )
+
+    return ScanDuplicatesResponse(
+        total_duplicate_groups=len(groups),
+        total_duplicate_designs=total_duplicates,
+        groups=groups,
+    )
+
+
+class MergeDuplicateGroupRequest(BaseModel):
+    """Request to merge a duplicate group."""
+
+    design_ids: list[str]
+    keep_design_id: str | None = None  # If None, keep the oldest or first organized
+
+
+class MergeDuplicateGroupResponse(BaseModel):
+    """Response for merging a duplicate group."""
+
+    merged_into_design_id: str
+    merged_count: int
+    deleted_design_ids: list[str]
+
+
+@router.post("/duplicates/merge-group", response_model=MergeDuplicateGroupResponse)
+async def merge_duplicate_group(
+    request: MergeDuplicateGroupRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MergeDuplicateGroupResponse:
+    """Merge a group of duplicate designs into a single design.
+
+    Merges all specified designs into one, preserving all sources.
+    By default keeps the first ORGANIZED design, or the oldest if none are organized.
+
+    Args:
+        request: Design IDs to merge and optional target design ID.
+
+    Returns:
+        Information about the merge operation.
+    """
+    from app.services.duplicate import DuplicateService
+
+    if len(request.design_ids) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="At least 2 designs are required for merging",
+        )
+
+    # Load all designs
+    result = await db.execute(
+        select(Design)
+        .options(selectinload(Design.sources))
+        .where(Design.id.in_(request.design_ids))
+    )
+    designs = list(result.scalars().all())
+
+    if len(designs) != len(request.design_ids):
+        raise HTTPException(
+            status_code=404,
+            detail="One or more designs not found",
+        )
+
+    # Determine which design to keep
+    if request.keep_design_id:
+        target = next((d for d in designs if d.id == request.keep_design_id), None)
+        if not target:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Keep design {request.keep_design_id} not found in design list",
+            )
+    else:
+        # Prefer ORGANIZED designs, then oldest
+        organized = [d for d in designs if d.status == DesignStatus.ORGANIZED]
+        if organized:
+            target = min(organized, key=lambda d: d.created_at)
+        else:
+            target = min(designs, key=lambda d: d.created_at)
+
+    # Merge all other designs into target
+    duplicate_service = DuplicateService(db)
+    deleted_ids = []
+
+    for design in designs:
+        if design.id != target.id:
+            await duplicate_service.merge_designs(source=design, target=target)
+            deleted_ids.append(design.id)
+
+    await db.commit()
+
+    logger.info(
+        "duplicate_group_merged",
+        target_id=target.id,
+        merged_count=len(deleted_ids),
+        deleted_ids=deleted_ids,
+    )
+
+    return MergeDuplicateGroupResponse(
+        merged_into_design_id=target.id,
+        merged_count=len(deleted_ids),
+        deleted_design_ids=deleted_ids,
+    )
+
+
+class AutoMergeDuplicatesResponse(BaseModel):
+    """Response for auto-merge duplicates."""
+
+    groups_processed: int
+    designs_merged: int
+    errors: list[str]
+
+
+@router.post("/duplicates/auto-merge", response_model=AutoMergeDuplicatesResponse)
+async def auto_merge_duplicates(
+    db: AsyncSession = Depends(get_db),
+    dry_run: bool = True,
+    max_groups: int = 50,
+) -> AutoMergeDuplicatesResponse:
+    """Automatically merge duplicate designs with exact title matches.
+
+    Processes duplicate groups and merges designs with identical titles.
+    Prefers ORGANIZED designs as merge targets.
+
+    Args:
+        dry_run: If True, only report what would be merged (default True for safety).
+        max_groups: Maximum number of groups to process (default 50).
+
+    Returns:
+        Summary of merge operations.
+    """
+    from sqlalchemy import func
+    from app.services.duplicate import DuplicateService
+
+    # Find duplicate groups
+    subquery = (
+        select(
+            Design.canonical_title,
+            func.count(Design.id).label("count"),
+        )
+        .where(
+            Design.status != DesignStatus.DELETED,
+            Design.canonical_title.isnot(None),
+            Design.canonical_title != "",
+        )
+        .group_by(Design.canonical_title)
+        .having(func.count(Design.id) >= 2)
+        .order_by(func.count(Design.id).desc())
+        .limit(max_groups)
+        .subquery()
+    )
+
+    result = await db.execute(
+        select(Design)
+        .options(selectinload(Design.sources))
+        .where(
+            Design.canonical_title.in_(
+                select(subquery.c.canonical_title)
+            ),
+            Design.status != DesignStatus.DELETED,
+        )
+        .order_by(Design.canonical_title, Design.created_at)
+    )
+    designs = result.scalars().all()
+
+    # Group by title
+    groups_dict: dict[str, list[Design]] = {}
+    for design in designs:
+        title = design.canonical_title or ""
+        if title not in groups_dict:
+            groups_dict[title] = []
+        groups_dict[title].append(design)
+
+    groups_processed = 0
+    designs_merged = 0
+    errors: list[str] = []
+
+    duplicate_service = DuplicateService(db)
+
+    for title, design_list in groups_dict.items():
+        if len(design_list) < 2:
+            continue
+
+        groups_processed += 1
+
+        try:
+            # Find target (prefer ORGANIZED, then oldest)
+            organized = [d for d in design_list if d.status == DesignStatus.ORGANIZED]
+            if organized:
+                target = min(organized, key=lambda d: d.created_at)
+            else:
+                target = min(design_list, key=lambda d: d.created_at)
+
+            if not dry_run:
+                for design in design_list:
+                    if design.id != target.id:
+                        await duplicate_service.merge_designs(source=design, target=target)
+                        designs_merged += 1
+            else:
+                # Dry run - just count
+                designs_merged += len(design_list) - 1
+
+        except Exception as e:
+            errors.append(f"Error merging '{title}': {str(e)}")
+            logger.error(
+                "auto_merge_error",
+                title=title,
+                error=str(e),
+            )
+
+    if not dry_run:
+        await db.commit()
+
+    logger.info(
+        "auto_merge_complete",
+        dry_run=dry_run,
+        groups_processed=groups_processed,
+        designs_merged=designs_merged,
+        errors=len(errors),
+    )
+
+    return AutoMergeDuplicatesResponse(
+        groups_processed=groups_processed,
+        designs_merged=designs_merged,
+        errors=errors,
+    )
