@@ -88,6 +88,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     sync_task = None
     if settings.sync_enabled and telegram_authenticated:
         sync_task = asyncio.create_task(sync_service.start())
+        # Add exception callback to catch silent failures
+        def sync_task_exception_handler(task: asyncio.Task) -> None:
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if exc:
+                logger.error(
+                    "sync_service_crashed",
+                    error=str(exc),
+                    exc_info=exc,
+                )
+        sync_task.add_done_callback(sync_task_exception_handler)
         logger.info("sync_service_starting")
     elif not settings.sync_enabled:
         logger.info("sync_service_disabled_by_config")

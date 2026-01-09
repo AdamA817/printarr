@@ -325,11 +325,16 @@ class SyncService:
 
     async def _run_sync_loop(self) -> None:
         """Main sync loop for catch-up polling."""
+        logger.info("sync_loop_started")
         while self._running and not self._shutdown_event.is_set():
             try:
                 # Perform catch-up sync
                 await self._catch_up_sync()
                 self._last_sync_at = datetime.now(timezone.utc)
+                logger.debug(
+                    "sync_cycle_complete",
+                    subscribed_channels=len(self._subscribed_channel_ids),
+                )
 
                 # Wait for poll interval or shutdown
                 try:
