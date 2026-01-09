@@ -102,7 +102,9 @@ logger = get_logger(__name__)
 
 # URL patterns for external model platforms
 THANGS_PATTERNS = [
-    # thangs.com/designer/model-slug-123456
+    # thangs.com/designer/DesignerName/3d-model/model-slug-123456 (modern format)
+    re.compile(r"thangs\.com/designer/[^/]+/3d-model/[^/\s]+-(\d+)(?:\?|$|/|\s)", re.IGNORECASE),
+    # thangs.com/designer/model-slug-123456 (legacy format)
     re.compile(r"thangs\.com/([^/]+)/([^/\s]+)-(\d+)(?:\?|$|/|\s)", re.IGNORECASE),
     # thangs.com/m/123456
     re.compile(r"thangs\.com/m/(\d+)(?:\?|$|/|\s)", re.IGNORECASE),

@@ -452,8 +452,8 @@ class AiService:
         caption_text = ""
         if design.sources and len(design.sources) > 0:
             first_source = design.sources[0]
-            if first_source.original_caption:
-                caption_text = first_source.original_caption[:1000]  # Limit length
+            if first_source.caption_snapshot:
+                caption_text = first_source.caption_snapshot[:1000]  # Limit length
 
         # Format image sources
         image_sources = ", ".join(
