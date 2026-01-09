@@ -75,7 +75,7 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, 
             )}
             <img
               src={previewUrl}
-              alt={design.canonical_title}
+              alt={design.display_title}
               className={`w-full h-full object-cover transition-opacity ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
               loading="lazy"
               onLoad={() => setImageLoaded(true)}
@@ -169,13 +169,13 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, 
       {/* Card content */}
       <div className="p-3">
         {/* Title */}
-        <h3 className="text-text-primary font-medium truncate text-sm" title={design.canonical_title}>
-          {design.canonical_title}
+        <h3 className="text-text-primary font-medium truncate text-sm" title={design.display_title}>
+          {design.display_title}
         </h3>
 
         {/* Designer */}
-        <p className="text-text-secondary text-xs truncate mt-0.5" title={design.canonical_designer}>
-          {design.canonical_designer}
+        <p className="text-text-secondary text-xs truncate mt-0.5" title={design.display_designer}>
+          {design.display_designer}
         </p>
 
         {/* Tags */}

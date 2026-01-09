@@ -170,11 +170,11 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
                 )}
                 <div className={`px-4 py-3 ${COLUMN_WIDTHS.title}`}>
                   <span className="text-text-primary font-medium truncate block">
-                    {design.canonical_title}
+                    {design.display_title}
                   </span>
                 </div>
                 <div className={`px-4 py-3 text-text-secondary truncate ${COLUMN_WIDTHS.designer}`}>
-                  {design.canonical_designer}
+                  {design.display_designer}
                 </div>
                 <div className={`px-4 py-3 text-text-secondary truncate ${COLUMN_WIDTHS.channel}`}>
                   {design.channel?.title || '—'}

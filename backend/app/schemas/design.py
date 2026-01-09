@@ -97,6 +97,10 @@ class DesignListItem(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Computed display values (use overrides if present)
+    display_title: str
+    display_designer: str
+
     # Summary of first source channel
     channel: ChannelSummary | None = None
 

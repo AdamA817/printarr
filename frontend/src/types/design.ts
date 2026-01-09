@@ -108,6 +108,9 @@ export interface DesignListItem {
   file_types: string[]
   created_at: string
   updated_at: string
+  // Computed display values (use overrides if present)
+  display_title: string
+  display_designer: string
   channel: ChannelSummary | null
   has_thangs_link: boolean
   // v0.7 additions

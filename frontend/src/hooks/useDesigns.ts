@@ -45,9 +45,18 @@ export function useUpdateDesign() {
         if (!oldData || !oldData.items) return oldData
         return {
           ...oldData,
-          items: oldData.items.map((item: DesignListItem) =>
-            item.id === id ? { ...item, ...data } : item
-          ),
+          items: oldData.items.map((item: DesignListItem) => {
+            if (item.id !== id) return item
+            // Compute display values from overrides or fallback to canonical
+            const updatedItem = { ...item, ...data }
+            if ('title_override' in data) {
+              updatedItem.display_title = data.title_override || item.canonical_title
+            }
+            if ('designer_override' in data) {
+              updatedItem.display_designer = data.designer_override || item.canonical_designer
+            }
+            return updatedItem
+          }),
         }
       })
 
