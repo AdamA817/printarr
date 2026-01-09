@@ -9,7 +9,7 @@ import {
   useUnmergeDesign,
   useDeleteDesign,
 } from '@/hooks/useDesigns'
-import { useDesignPreviews, useSetPrimaryPreview } from '@/hooks/usePreviews'
+import { useDesignPreviews, useSetPrimaryPreview, useDeletePreview } from '@/hooks/usePreviews'
 import { useDesignTags } from '@/hooks/useTags'
 import { useAiAnalyze, useAiStatus } from '@/hooks/useAi'
 import {
@@ -674,6 +674,7 @@ export function DesignDetail() {
   const unmergeMutation = useUnmergeDesign()
   const deleteMutation = useDeleteDesign()
   const setPrimaryMutation = useSetPrimaryPreview()
+  const deletePreviewMutation = useDeletePreview()
   const { data: aiStatus } = useAiStatus()
   const aiAnalyzeMutation = useAiAnalyze()
   const [showThangsModal, setShowThangsModal] = useState(false)
@@ -698,6 +699,14 @@ export function DesignDetail() {
       await setPrimaryMutation.mutateAsync(previewId)
     } catch (err) {
       console.error('Failed to set primary preview:', err)
+    }
+  }
+
+  const handleDeletePreview = async (previewId: string) => {
+    try {
+      await deletePreviewMutation.mutateAsync(previewId)
+    } catch (err) {
+      console.error('Failed to delete preview:', err)
     }
   }
 
@@ -911,7 +920,9 @@ export function DesignDetail() {
               <PreviewGallery
                 previews={previewsData?.items || []}
                 onSetPrimary={handleSetPrimary}
+                onDelete={handleDeletePreview}
                 isSettingPrimary={setPrimaryMutation.isPending}
+                isDeleting={deletePreviewMutation.isPending}
               />
             )}
           </section>

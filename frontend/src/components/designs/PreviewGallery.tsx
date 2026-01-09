@@ -19,7 +19,9 @@ interface PreviewGalleryProps {
   previews: Preview[]
   primaryId?: string
   onSetPrimary?: (previewId: string) => void
+  onDelete?: (previewId: string) => void
   isSettingPrimary?: boolean
+  isDeleting?: boolean
 }
 
 // Source badge labels and colors
@@ -55,7 +57,9 @@ export function PreviewGallery({
   previews,
   primaryId,
   onSetPrimary,
+  onDelete,
   isSettingPrimary = false,
+  isDeleting = false,
 }: PreviewGalleryProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState(0)
@@ -112,9 +116,23 @@ export function PreviewGallery({
             loading="lazy"
           />
 
-          {/* Source badge */}
-          <div className="absolute top-2 right-2">
+          {/* Source badge and delete button */}
+          <div className="absolute top-2 right-2 flex items-center gap-1">
             <SourceBadge source={primaryPreview.source} />
+            {onDelete && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDelete(primaryPreview.id)
+                }}
+                disabled={isDeleting}
+                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded bg-black/70 text-white hover:bg-accent-danger disabled:opacity-50"
+                title="Delete preview"
+              >
+                <TrashIcon className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {/* Hover overlay */}
@@ -167,21 +185,37 @@ export function PreviewGallery({
                   <SourceBadge source={preview.source} size="sm" />
                 </div>
 
-                {/* Set as Primary button */}
-                {onSetPrimary && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onSetPrimary(preview.id)
-                    }}
-                    disabled={isSettingPrimary}
-                    className="absolute bottom-1 left-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-[9px] px-1 py-0.5 rounded bg-black/70 text-white hover:bg-black/90 disabled:opacity-50"
-                    title="Set as primary preview"
-                  >
-                    {isSettingPrimary ? '...' : 'Set Primary'}
-                  </button>
-                )}
+                {/* Action buttons on hover */}
+                <div className="absolute bottom-1 left-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                  {onSetPrimary && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onSetPrimary(preview.id)
+                      }}
+                      disabled={isSettingPrimary}
+                      className="flex-1 text-[9px] px-1 py-0.5 rounded bg-black/70 text-white hover:bg-black/90 disabled:opacity-50"
+                      title="Set as primary preview"
+                    >
+                      {isSettingPrimary ? '...' : 'Primary'}
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDelete(preview.id)
+                      }}
+                      disabled={isDeleting}
+                      className="p-0.5 rounded bg-black/70 text-white hover:bg-accent-danger disabled:opacity-50"
+                      title="Delete preview"
+                    >
+                      <TrashIcon className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               </div>
             )
           })}
@@ -247,6 +281,19 @@ function ExpandIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+      />
+    </svg>
+  )
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
       />
     </svg>
   )
