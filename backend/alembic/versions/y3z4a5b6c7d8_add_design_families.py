@@ -82,11 +82,14 @@ def upgrade() -> None:
 
     # For PostgreSQL, alter the column to use the enum type
     if dialect == "postgresql":
+        # Drop default, alter type, re-add default
+        op.execute("ALTER TABLE design_families ALTER COLUMN detection_method DROP DEFAULT")
         op.execute(
             "ALTER TABLE design_families "
             "ALTER COLUMN detection_method TYPE familydetectionmethod "
             "USING detection_method::familydetectionmethod"
         )
+        op.execute("ALTER TABLE design_families ALTER COLUMN detection_method SET DEFAULT 'MANUAL'")
     # Create indexes
     op.create_index("ix_design_families_canonical_name", "design_families", ["canonical_name"])
     op.create_index("ix_design_families_canonical_designer", "design_families", ["canonical_designer"])
@@ -116,11 +119,14 @@ def upgrade() -> None:
 
     # For PostgreSQL, alter the column to use the existing tagsource enum
     if dialect == "postgresql":
+        # Drop default, alter type, re-add default
+        op.execute("ALTER TABLE family_tags ALTER COLUMN source DROP DEFAULT")
         op.execute(
             "ALTER TABLE family_tags "
             "ALTER COLUMN source TYPE tagsource "
             "USING source::tagsource"
         )
+        op.execute("ALTER TABLE family_tags ALTER COLUMN source SET DEFAULT 'USER'")
     # Create indexes
     op.create_index("ix_family_tags_family_id", "family_tags", ["family_id"])
     op.create_index("ix_family_tags_tag_id", "family_tags", ["tag_id"])
