@@ -1,6 +1,7 @@
-import { useRef, useCallback, useState, useEffect, type RefObject } from 'react'
+import { useRef, useCallback, useState, useEffect, useMemo, type RefObject } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { DesignCard, DesignCardSkeleton } from './DesignCard'
+import { FamilyCard } from './FamilyCard'
 import { DesignList, DesignListSkeleton } from './DesignList'
 import type { DesignListItem } from '@/types/design'
 import type { ViewMode } from './ViewToggle'
@@ -15,6 +16,62 @@ interface InfiniteDesignGridProps {
   scrollRef: RefObject<HTMLDivElement | null>
   selectedIds?: Set<string>
   onToggleSelect?: (id: string, event?: React.MouseEvent) => void
+}
+
+// Represents either a batch of standalone designs or a family group
+type GridItem =
+  | { type: 'designs'; designs: DesignListItem[] }
+  | { type: 'family'; familyId: string; designs: DesignListItem[] }
+
+// Group designs by family_id, batching consecutive standalone designs
+function groupDesignsByFamily(designs: DesignListItem[]): GridItem[] {
+  const items: GridItem[] = []
+  const familyMap = new Map<string, DesignListItem[]>()
+  const seenFamilies = new Set<string>()
+  let standaloneBuffer: DesignListItem[] = []
+
+  const flushStandalone = () => {
+    if (standaloneBuffer.length > 0) {
+      items.push({ type: 'designs', designs: [...standaloneBuffer] })
+      standaloneBuffer = []
+    }
+  }
+
+  for (const design of designs) {
+    if (design.family_id) {
+      // Flush standalone designs before processing family
+      flushStandalone()
+
+      // Add to family group
+      if (!familyMap.has(design.family_id)) {
+        familyMap.set(design.family_id, [])
+      }
+      familyMap.get(design.family_id)!.push(design)
+
+      // If this is the first time seeing this family, we'll add it when complete
+      if (!seenFamilies.has(design.family_id)) {
+        seenFamilies.add(design.family_id)
+      }
+    } else {
+      // Flush any complete families before adding standalone
+      for (const [familyId, familyDesigns] of familyMap) {
+        items.push({ type: 'family', familyId, designs: familyDesigns })
+      }
+      familyMap.clear()
+
+      standaloneBuffer.push(design)
+    }
+  }
+
+  // Flush remaining families
+  for (const [familyId, familyDesigns] of familyMap) {
+    items.push({ type: 'family', familyId, designs: familyDesigns })
+  }
+
+  // Flush remaining standalone designs
+  flushStandalone()
+
+  return items
 }
 
 // Constants for grid layout
@@ -42,7 +99,23 @@ export function InfiniteDesignGrid({
 }: InfiniteDesignGridProps) {
   const contentRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  const [expandedFamilies, setExpandedFamilies] = useState<Set<string>>(new Set())
   const selectionMode = selectedIds && selectedIds.size > 0
+
+  // Group designs by family
+  const gridItems = useMemo(() => groupDesignsByFamily(designs), [designs])
+
+  const toggleFamilyExpanded = useCallback((familyId: string) => {
+    setExpandedFamilies(prev => {
+      const next = new Set(prev)
+      if (next.has(familyId)) {
+        next.delete(familyId)
+      } else {
+        next.add(familyId)
+      }
+      return next
+    })
+  }, [])
 
   // Track container width for responsive columns
   useEffect(() => {
@@ -100,8 +173,12 @@ export function InfiniteDesignGrid({
     ? Math.round(cardWidth + CARD_CONTENT_HEIGHT) + GAP
     : 80 + GAP // List item height
 
-  // Group designs into rows
-  const rowCount = Math.ceil(designs.length / columns)
+  // Check if we have any families (need different rendering approach)
+  const hasFamilies = gridItems.some(item => item.type === 'family')
+
+  // For virtualization, we need to count items (collapsed families count as 1)
+  const itemCount = gridItems.length
+  const rowCount = Math.ceil(itemCount / columns)
 
   const virtualizer = useVirtualizer({
     count: rowCount,
@@ -154,50 +231,116 @@ export function InfiniteDesignGrid({
   return (
     <div ref={contentRef} className="px-4">
       {view === 'grid' ? (
-        // Virtualized Grid View
-        <div
-          style={{
-            height: virtualizer.getTotalSize(),
-            width: '100%',
-            position: 'relative',
-          }}
-        >
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const rowStartIndex = virtualRow.index * columns
-            const rowDesigns = designs.slice(rowStartIndex, rowStartIndex + columns)
+        hasFamilies ? (
+          // Family-aware grid (non-virtualized due to variable heights)
+          <div className="space-y-4">
+            {gridItems.map((item) => {
+              if (item.type === 'family') {
+                const isExpanded = expandedFamilies.has(item.familyId)
+                return (
+                  <div key={`family-${item.familyId}`}>
+                    {isExpanded ? (
+                      // Expanded family takes full width
+                      <FamilyCard
+                        familyId={item.familyId}
+                        designs={item.designs}
+                        isExpanded={true}
+                        onToggleExpand={() => toggleFamilyExpanded(item.familyId)}
+                        selectedIds={selectedIds}
+                        onToggleSelect={onToggleSelect}
+                        selectionMode={selectionMode}
+                      />
+                    ) : (
+                      // Collapsed family - render inline with grid
+                      <div
+                        className="grid gap-4"
+                        style={{
+                          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                        }}
+                      >
+                        <FamilyCard
+                          familyId={item.familyId}
+                          designs={item.designs}
+                          isExpanded={false}
+                          onToggleExpand={() => toggleFamilyExpanded(item.familyId)}
+                          selectedIds={selectedIds}
+                          onToggleSelect={onToggleSelect}
+                          selectionMode={selectionMode}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              } else {
+                // Batch of standalone designs
+                return (
+                  <div
+                    key={`designs-${item.designs[0].id}`}
+                    className="grid gap-4"
+                    style={{
+                      gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {item.designs.map((design) => (
+                      <DesignCard
+                        key={design.id}
+                        design={design}
+                        isSelected={selectedIds?.has(design.id)}
+                        onToggleSelect={onToggleSelect}
+                        selectionMode={selectionMode}
+                      />
+                    ))}
+                  </div>
+                )
+              }
+            })}
+          </div>
+        ) : (
+          // Virtualized Grid View (no families - use original fast path)
+          <div
+            style={{
+              height: virtualizer.getTotalSize(),
+              width: '100%',
+              position: 'relative',
+            }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const rowStartIndex = virtualRow.index * columns
+              const rowDesigns = designs.slice(rowStartIndex, rowStartIndex + columns)
 
-            return (
-              <div
-                key={virtualRow.key}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: virtualRow.size,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
+              return (
                 <div
-                  className="grid gap-4"
+                  key={virtualRow.key}
                   style={{
-                    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: virtualRow.size,
+                    transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
-                  {rowDesigns.map((design) => (
-                    <DesignCard
-                      key={design.id}
-                      design={design}
-                      isSelected={selectedIds?.has(design.id)}
-                      onToggleSelect={onToggleSelect}
-                      selectionMode={selectionMode}
-                    />
-                  ))}
+                  <div
+                    className="grid gap-4"
+                    style={{
+                      gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    {rowDesigns.map((design) => (
+                      <DesignCard
+                        key={design.id}
+                        design={design}
+                        isSelected={selectedIds?.has(design.id)}
+                        onToggleSelect={onToggleSelect}
+                        selectionMode={selectionMode}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+        )
       ) : (
         // List View (not virtualized for simplicity - could be added later)
         <DesignList
