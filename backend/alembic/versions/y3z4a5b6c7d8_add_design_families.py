@@ -48,6 +48,23 @@ def upgrade() -> None:
         op.execute("ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'DETECT_FAMILY_OVERLAP'")
 
     # 2. Create design_families table
+    # Use VARCHAR for detection_method to avoid SQLAlchemy trying to create the enum
+    # The enum constraint is enforced by PostgreSQL via the type we created above
+    if dialect == "postgresql":
+        detection_method_col = sa.Column(
+            "detection_method",
+            sa.VARCHAR(32),
+            nullable=False,
+            server_default="MANUAL",
+        )
+    else:
+        detection_method_col = sa.Column(
+            "detection_method",
+            sa.String(32),
+            nullable=False,
+            server_default="MANUAL",
+        )
+
     op.create_table(
         "design_families",
         sa.Column("id", sa.String(36), nullable=False),
@@ -56,21 +73,20 @@ def upgrade() -> None:
         sa.Column("name_override", sa.String(512), nullable=True),
         sa.Column("designer_override", sa.String(255), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column(
-            "detection_method",
-            sa.Enum(
-                "NAME_PATTERN", "FILE_HASH_OVERLAP", "AI_DETECTED", "MANUAL",
-                name="familydetectionmethod",
-                create_type=False,  # Already created above for PostgreSQL
-            ),
-            nullable=False,
-            server_default="MANUAL",
-        ),
+        detection_method_col,
         sa.Column("detection_confidence", sa.Float(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
+
+    # For PostgreSQL, alter the column to use the enum type
+    if dialect == "postgresql":
+        op.execute(
+            "ALTER TABLE design_families "
+            "ALTER COLUMN detection_method TYPE familydetectionmethod "
+            "USING detection_method::familydetectionmethod"
+        )
     # Create indexes
     op.create_index("ix_design_families_canonical_name", "design_families", ["canonical_name"])
     op.create_index("ix_design_families_canonical_designer", "design_families", ["canonical_designer"])
@@ -78,20 +94,12 @@ def upgrade() -> None:
     op.create_index("ix_design_families_created_at", "design_families", ["created_at"])
 
     # 3. Create family_tags table
+    # Use VARCHAR for source to avoid SQLAlchemy enum creation issues
     op.create_table(
         "family_tags",
         sa.Column("family_id", sa.String(36), nullable=False),
         sa.Column("tag_id", sa.String(36), nullable=False),
-        sa.Column(
-            "source",
-            sa.Enum(
-                "AUTO_CAPTION", "AUTO_FILENAME", "AUTO_THANGS", "AUTO_AI", "USER",
-                name="tagsource",
-                create_type=False,  # Enum already exists
-            ),
-            nullable=False,
-            server_default="USER",
-        ),
+        sa.Column("source", sa.String(32), nullable=False, server_default="USER"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.PrimaryKeyConstraint("family_id", "tag_id"),
         sa.ForeignKeyConstraint(
@@ -105,6 +113,14 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
     )
+
+    # For PostgreSQL, alter the column to use the existing tagsource enum
+    if dialect == "postgresql":
+        op.execute(
+            "ALTER TABLE family_tags "
+            "ALTER COLUMN source TYPE tagsource "
+            "USING source::tagsource"
+        )
     # Create indexes
     op.create_index("ix_family_tags_family_id", "family_tags", ["family_id"])
     op.create_index("ix_family_tags_tag_id", "family_tags", ["tag_id"])
