@@ -404,6 +404,9 @@ class IngestService:
             message=message,
         )
 
+        # Family detection (v1.0 - DEC-044)
+        await self._process_family_detection(design)
+
         return design
 
     async def _process_external_urls(self, design: Design, caption: str) -> None:
@@ -570,6 +573,80 @@ class IngestService:
             # Non-blocking - don't fail ingestion for tagging errors
             logger.warning(
                 "auto_tagging_failed",
+                design_id=design.id,
+                error=str(e),
+            )
+
+    async def _process_family_detection(self, design: Design) -> None:
+        """Process family detection for a newly ingested design.
+
+        Attempts to find or create a family for the design based on
+        name pattern matching. This is non-blocking.
+
+        Per DEC-044: Run name pattern matching on ingest.
+        File hash overlap detection runs post-download in a background job.
+        """
+        try:
+            from app.services.family import FamilyService, FamilyDetectionMethod
+
+            service = FamilyService(self.db)
+
+            # Extract family info from title
+            info = service.extract_family_info(design.canonical_title)
+
+            if not info.variant_name:
+                # No variant pattern detected - not a candidate for family grouping
+                return
+
+            # Check if family already exists
+            existing_family = await service.find_existing_family(
+                info.base_name,
+                design.canonical_designer,
+            )
+
+            if existing_family:
+                # Add to existing family
+                await service.add_to_family(design, existing_family, info.variant_name)
+                logger.info(
+                    "design_added_to_existing_family",
+                    design_id=design.id,
+                    family_id=existing_family.id,
+                    family_name=existing_family.canonical_name,
+                )
+                return
+
+            # Look for other designs that could form a family
+            candidates = await service.find_family_candidates_by_name(design)
+
+            if candidates:
+                # Create new family with this design and candidates
+                family = await service.create_family(
+                    name=info.base_name,
+                    designer=design.canonical_designer,
+                    detection_method=FamilyDetectionMethod.NAME_PATTERN,
+                    detection_confidence=0.8,
+                )
+
+                # Add this design
+                await service.add_to_family(design, family, info.variant_name)
+
+                # Add candidates
+                for candidate, variant in candidates:
+                    if not candidate.family_id:  # Only if not already in a family
+                        await service.add_to_family(candidate, family, variant)
+
+                logger.info(
+                    "family_created_on_ingest",
+                    design_id=design.id,
+                    family_id=family.id,
+                    family_name=info.base_name,
+                    variants_count=len(candidates) + 1,
+                )
+
+        except Exception as e:
+            # Non-blocking - don't fail ingestion for family detection errors
+            logger.warning(
+                "family_detection_failed",
                 design_id=design.id,
                 error=str(e),
             )

@@ -19,6 +19,7 @@ from app.db.models.enums import (
 )
 
 if TYPE_CHECKING:
+    from app.db.models.design_family import DesignFamily
     from app.db.models.design_file import DesignFile
     from app.db.models.design_source import DesignSource
     from app.db.models.design_tag import DesignTag
@@ -88,6 +89,14 @@ class Design(Base):
         String(36), ForeignKey("import_sources.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Family grouping (v1.0 - DEC-044)
+    family_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("design_families.id", ondelete="SET NULL"), nullable=True
+    )
+    variant_name: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )  # e.g., "4Color", "v2", "Remix", "With Supports"
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(
@@ -122,6 +131,9 @@ class Design(Base):
     import_records: Mapped[list[ImportRecord]] = relationship(
         "ImportRecord", back_populates="design"
     )
+    family: Mapped[DesignFamily | None] = relationship(
+        "DesignFamily", back_populates="designs", foreign_keys=[family_id]
+    )
 
     # Indexes
     __table_args__ = (
@@ -129,6 +141,7 @@ class Design(Base):
         Index("ix_designs_designer", "canonical_designer"),
         Index("ix_designs_multicolor", "multicolor"),
         Index("ix_designs_created_at", "created_at"),
+        Index("ix_designs_family_id", "family_id"),
     )
 
     @property

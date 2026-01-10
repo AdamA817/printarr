@@ -148,6 +148,7 @@ class JobType(str, enum.Enum):
     SYNC_IMPORT_SOURCE = "SYNC_IMPORT_SOURCE"  # v0.8: Async import source sync
     DOWNLOAD_IMPORT_RECORD = "DOWNLOAD_IMPORT_RECORD"  # v0.8: Per-design import download (DEC-040)
     AI_ANALYZE_DESIGN = "AI_ANALYZE_DESIGN"  # v1.0: AI-powered design analysis (DEC-043)
+    DETECT_FAMILY_OVERLAP = "DETECT_FAMILY_OVERLAP"  # v1.0: Post-download family detection (DEC-044)
 
 
 class JobStatus(str, enum.Enum):
@@ -256,3 +257,12 @@ class DuplicateCandidateStatus(str, enum.Enum):
     PENDING = "PENDING"  # Awaiting review/auto-merge
     MERGED = "MERGED"  # Designs were merged
     REJECTED = "REJECTED"  # User rejected the match
+
+
+class FamilyDetectionMethod(str, enum.Enum):
+    """How a design family was detected (DEC-044)."""
+
+    NAME_PATTERN = "NAME_PATTERN"  # Detected via title pattern matching
+    FILE_HASH_OVERLAP = "FILE_HASH_OVERLAP"  # Detected via shared file hashes
+    AI_DETECTED = "AI_DETECTED"  # Detected by AI analysis
+    MANUAL = "MANUAL"  # Manually grouped by user

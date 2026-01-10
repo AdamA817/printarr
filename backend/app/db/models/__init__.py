@@ -4,6 +4,7 @@ from app.db.models.app_setting import AppSetting
 from app.db.models.attachment import Attachment
 from app.db.models.channel import Channel
 from app.db.models.design import Design
+from app.db.models.design_family import DesignFamily
 from app.db.models.design_file import DesignFile
 from app.db.models.design_source import DesignSource
 from app.db.models.design_tag import DesignTag
@@ -21,6 +22,7 @@ from app.db.models.enums import (
     DuplicateCandidateStatus,
     DuplicateMatchType,
     ExternalSourceType,
+    FamilyDetectionMethod,
     FileKind,
     ImportRecordStatus,
     ImportSourceStatus,
@@ -39,6 +41,7 @@ from app.db.models.enums import (
     TitleSource,
 )
 from app.db.models.external_metadata_source import ExternalMetadataSource
+from app.db.models.family_tag import FamilyTag
 from app.db.models.google_credentials import GoogleCredentials
 from app.db.models.import_profile import ImportProfile
 from app.db.models.phpbb_credentials import PhpbbCredentials
@@ -56,12 +59,14 @@ __all__ = [
     "Attachment",
     "Channel",
     "Design",
+    "DesignFamily",
     "DesignFile",
     "DesignSource",
     "DesignTag",
     "DiscoveredChannel",
     "DuplicateCandidate",
     "ExternalMetadataSource",
+    "FamilyTag",
     "GoogleCredentials",
     "ImportProfile",
     "PhpbbCredentials",
@@ -84,6 +89,7 @@ __all__ = [
     "DuplicateCandidateStatus",
     "DuplicateMatchType",
     "ExternalSourceType",
+    "FamilyDetectionMethod",
     "FileKind",
     "ImportRecordStatus",
     "ImportSourceStatus",

@@ -107,8 +107,22 @@ class ExtractArchiveWorker(BaseWorker):
             # This needs a session, so we open one briefly
             if result["files_created"] > 0:
                 async with async_session_maker() as db:
+                    from app.services.job_queue import JobQueueService
+
                     extractor_with_db = ArchiveExtractor(db)
                     import_job_id = await extractor_with_db.queue_import(design_id)
+
+                    # Queue family overlap detection job (DEC-044)
+                    # This runs after extraction when file hashes are available
+                    queue = JobQueueService(db)
+                    await queue.enqueue(
+                        job_type=JobType.DETECT_FAMILY_OVERLAP,
+                        design_id=design_id,
+                        payload={"design_id": design_id},
+                        priority=8,  # Lower priority than import
+                        display_name=f"Detect family overlap",
+                    )
+
                     await db.commit()
 
                     logger.info(
