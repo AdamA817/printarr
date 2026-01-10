@@ -253,7 +253,7 @@ class WorkerManager:
                     job_type=JobType.SYNC_IMPORT_SOURCE,
                     payload={
                         "source_id": source.id,
-                        "auto_import": False,  # Just detect, don't auto-import
+                        "auto_import": True,  # Queue downloads for new designs
                     },
                     priority=0,  # Normal priority
                     display_name=f"Scheduled sync: {source.name}",
