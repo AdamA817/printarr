@@ -56,6 +56,12 @@ class Settings(BaseSettings):
         default=2,
         description="Maximum concurrent download workers",
     )
+    download_timeout_seconds: int = Field(
+        default=600,
+        ge=60,
+        le=3600,
+        description="Timeout for individual file downloads in seconds (60-3600, default 10 minutes)",
+    )
 
     # Sync settings (v0.6)
     sync_poll_interval: int = Field(

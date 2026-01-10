@@ -422,19 +422,38 @@ class DownloadService:
         file_path: Path,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> str:
-        """Download media from Telegram message. No database access here."""
+        """Download media from Telegram message. No database access here.
+
+        Uses asyncio.wait_for to enforce a timeout and prevent indefinite hangs
+        when Telegram needs to transfer files across datacenters.
+        """
         client = self.telegram.client
 
         def telethon_progress(current: int, total: int) -> None:
             if progress_callback:
                 progress_callback(current, total)
 
-        result = await client.download_media(
-            message,
-            file=str(file_path),
-            progress_callback=telethon_progress if progress_callback else None,
-        )
-        return result
+        try:
+            result = await asyncio.wait_for(
+                client.download_media(
+                    message,
+                    file=str(file_path),
+                    progress_callback=telethon_progress if progress_callback else None,
+                ),
+                timeout=settings.download_timeout_seconds,
+            )
+            return result
+        except asyncio.TimeoutError:
+            # Clean up partial file if it exists
+            if file_path.exists():
+                try:
+                    file_path.unlink()
+                except OSError:
+                    pass
+            raise DownloadError(
+                f"Download timed out after {settings.download_timeout_seconds} seconds. "
+                "This may happen when Telegram transfers files between datacenters."
+            )
 
     async def _compute_file_hash(self, file_path: Path) -> str:
         """Compute SHA256 hash of file. No database access here."""

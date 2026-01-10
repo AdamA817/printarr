@@ -169,8 +169,14 @@ class DownloadWorker(BaseWorker):
                 error=error_msg,
             )
 
+            # Reset design status so it can be retried
+            await self._reset_design_status(design_id)
+
             # Check if this is a retryable error
             if "Rate limited" in error_msg:
+                raise RetryableError(error_msg)
+            elif "timed out" in error_msg.lower():
+                # Timeout errors are retryable - DC transfers may succeed on retry
                 raise RetryableError(error_msg)
             elif "not found" in error_msg.lower():
                 raise NonRetryableError(error_msg)
@@ -318,3 +324,29 @@ class DownloadWorker(BaseWorker):
                 )
 
             return None
+
+    async def _reset_design_status(self, design_id: str) -> None:
+        """Reset design status to WANTED so it can be retried.
+
+        Called when a download fails, to prevent the design from being stuck
+        in DOWNLOADING status indefinitely.
+        """
+        from app.db.models import DesignStatus
+
+        try:
+            async with async_session_maker() as db:
+                design = await db.get(Design, design_id)
+                if design and design.status == DesignStatus.DOWNLOADING:
+                    design.status = DesignStatus.WANTED
+                    await db.commit()
+                    logger.info(
+                        "design_status_reset",
+                        design_id=design_id,
+                        new_status="WANTED",
+                    )
+        except Exception as e:
+            logger.error(
+                "design_status_reset_failed",
+                design_id=design_id,
+                error=str(e),
+            )
