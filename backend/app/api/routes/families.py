@@ -332,6 +332,9 @@ async def group_designs(
         )
         await db.commit()
 
+        # Reload family with relationships for accurate variant_count
+        family = await service.get_family(family.id)
+
         logger.info(
             "designs_grouped_via_api",
             family_id=family.id,
