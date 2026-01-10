@@ -52,6 +52,17 @@ VARIANT_PATTERNS = [
 
     # Part variants: Assembly_PartA -> ("Assembly", "PartA")
     re.compile(r"^(.+?)_(part\s*\d+|part\s*[a-z])$", re.IGNORECASE),
+
+    # Single letter/number variant suffix: Model_R -> ("Model", "R")
+    re.compile(r"^(.+?)_([A-Z])$", re.IGNORECASE),
+]
+
+# Common prefixes from Telegram channels to strip when comparing names
+CHANNEL_PREFIXES = [
+    "MMM_",  # MatMire Makes
+    "ZOU3D_",
+    "FF_",  # Flexi Factory
+    "CW_",  # Cinderwing
 ]
 
 
@@ -128,6 +139,7 @@ class FamilyService:
 
         Extracts the base name from the design title and searches for other
         designs with matching base names and compatible designers.
+        Handles channel prefixes (MMM_, ZOU3D_, etc.) by normalizing names.
 
         Args:
             design: The design to find family candidates for.
@@ -136,15 +148,15 @@ class FamilyService:
         Returns:
             List of (Design, variant_name) tuples for potential family members.
         """
-        info = self.extract_family_info(design.canonical_title)
+        # Get normalized base name for this design
+        normalized_base = self._normalize_for_comparison(design.canonical_title)
 
-        if not info.variant_name:
-            # No variant pattern detected - not a candidate for family grouping
+        if not normalized_base:
             return []
 
-        # Search for other designs with matching base name
+        # Search for designs containing the base name (handles prefix variations)
         query = select(Design).where(
-            Design.canonical_title.ilike(f"{info.base_name}%"),
+            Design.canonical_title.ilike(f"%{normalized_base}%"),
             Design.id != design.id,
         )
 
@@ -160,11 +172,11 @@ class FamilyService:
             if not self._designers_match(design.canonical_designer, candidate.canonical_designer):
                 continue
 
-            # Extract candidate's variant info
-            candidate_info = self.extract_family_info(candidate.canonical_title)
-
-            # Only include if base names match
-            if candidate_info.base_name.lower() == info.base_name.lower():
+            # Use normalized comparison
+            if self._names_match_for_family(design.canonical_title, candidate.canonical_title):
+                # Extract candidate's variant info for display
+                stripped_name = self._strip_channel_prefix(candidate.canonical_title)
+                candidate_info = self.extract_family_info(stripped_name)
                 matches.append((candidate, candidate_info.variant_name or "Original"))
 
         return matches
@@ -646,3 +658,50 @@ class FamilyService:
         if designer_a == "Unknown" or designer_b == "Unknown":
             return True
         return False
+
+    def _strip_channel_prefix(self, name: str) -> str:
+        """Strip common channel prefixes from a design name.
+
+        Args:
+            name: The design name.
+
+        Returns:
+            Name with channel prefix removed if present.
+        """
+        for prefix in CHANNEL_PREFIXES:
+            if name.upper().startswith(prefix.upper()):
+                return name[len(prefix):]
+        return name
+
+    def _normalize_for_comparison(self, name: str) -> str:
+        """Normalize a name for family comparison.
+
+        Strips channel prefixes and extracts the base name.
+
+        Args:
+            name: The design name.
+
+        Returns:
+            Normalized name for comparison.
+        """
+        # Strip channel prefix first
+        name = self._strip_channel_prefix(name)
+        # Extract base name from variant pattern
+        info = self.extract_family_info(name)
+        return info.base_name.lower()
+
+    def _names_match_for_family(self, name_a: str, name_b: str) -> bool:
+        """Check if two design names should be in the same family.
+
+        Compares normalized names (stripped of prefixes and variant suffixes).
+
+        Args:
+            name_a: First design name.
+            name_b: Second design name.
+
+        Returns:
+            True if names match for family grouping.
+        """
+        norm_a = self._normalize_for_comparison(name_a)
+        norm_b = self._normalize_for_comparison(name_b)
+        return norm_a == norm_b

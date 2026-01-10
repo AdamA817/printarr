@@ -67,12 +67,29 @@ class FamilyWorker(BaseWorker):
 
             service = FamilyService(db)
 
-            # Find designs with overlapping file hashes
+            # Try file hash overlap first (most reliable for variants)
             candidates = await service.detect_family_by_file_overlap(design)
+            detection_method = FamilyDetectionMethod.FILE_HASH_OVERLAP
+
+            # If no file overlap found, try name-based detection as fallback
+            # This handles cases like 3MF vs STL of the same model
+            if not candidates:
+                name_candidates = await service.find_family_candidates_by_name(design)
+                if name_candidates:
+                    # Convert name candidates to same format as file overlap
+                    # (Design, confidence) - use 0.5 confidence for name matches
+                    candidates = [(d, 0.5) for d, _ in name_candidates]
+                    detection_method = FamilyDetectionMethod.NAME_PATTERN
+                    logger.debug(
+                        "name_pattern_candidates_found",
+                        job_id=job.id,
+                        design_id=design_id,
+                        count=len(candidates),
+                    )
 
             if not candidates:
                 logger.debug(
-                    "no_file_overlap_candidates",
+                    "no_candidates_found",
                     job_id=job.id,
                     design_id=design_id,
                 )
@@ -112,9 +129,10 @@ class FamilyWorker(BaseWorker):
                 }
 
             # Create new family from candidates
-            # Use the design title as base for family name
-            info = service.extract_family_info(design.canonical_title)
-            family_name = info.base_name if info.variant_name else design.canonical_title
+            # Use the design title as base for family name (strip channel prefixes)
+            stripped_title = service._strip_channel_prefix(design.canonical_title)
+            info = service.extract_family_info(stripped_title)
+            family_name = info.base_name if info.variant_name else stripped_title
 
             # Find average confidence from overlaps
             avg_confidence = sum(ratio for _, ratio in candidates) / len(candidates)
@@ -122,7 +140,7 @@ class FamilyWorker(BaseWorker):
             family = await service.create_family(
                 name=family_name,
                 designer=design.canonical_designer,
-                detection_method=FamilyDetectionMethod.FILE_HASH_OVERLAP,
+                detection_method=detection_method,
                 detection_confidence=avg_confidence,
             )
 
