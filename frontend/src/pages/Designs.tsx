@@ -13,6 +13,7 @@ import {
   CustomFilterModal,
   InfiniteDesignGrid,
   ScrollToTopButton,
+  GroupFamilyModal,
   type ViewMode,
 } from '@/components/designs'
 import type { SortField, SortOrder, DesignListItem, DesignListParams } from '@/types/design'
@@ -125,6 +126,7 @@ export function Designs() {
   const [showMergeModal, setShowMergeModal] = useState(false)
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
   const [bulkDeleteWithFiles, setBulkDeleteWithFiles] = useState(false)
+  const [showGroupFamilyModal, setShowGroupFamilyModal] = useState(false)
 
   // Saved filters management
   const { savedFilters, saveFilter, deleteFilter } = useSavedFilters()
@@ -457,6 +459,15 @@ export function Designs() {
               Delete Selected
             </button>
             <button
+              onClick={() => setShowGroupFamilyModal(true)}
+              disabled={selectedIds.size < 2}
+              className="px-3 py-1.5 text-sm rounded bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              title="Group selected designs into a family"
+            >
+              <FamilyIcon className="w-4 h-4" />
+              Group Family
+            </button>
+            <button
               onClick={() => setShowMergeModal(true)}
               disabled={selectedIds.size < 2}
               className="px-3 py-1.5 text-sm rounded bg-accent-primary text-white hover:bg-accent-primary/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -510,6 +521,18 @@ export function Designs() {
             setBulkDeleteWithFiles(false)
           }}
           isPending={bulkDeleteMutation.isPending}
+        />
+      )}
+
+      {/* Group Family Modal (DEC-044) */}
+      {showGroupFamilyModal && selectedDesigns.length >= 2 && (
+        <GroupFamilyModal
+          designs={selectedDesigns}
+          onClose={() => setShowGroupFamilyModal(false)}
+          onSuccess={() => {
+            clearSelection()
+            setShowGroupFamilyModal(false)
+          }}
         />
       )}
     </div>
@@ -806,6 +829,14 @@ function SparklesIcon({ className }: { className?: string }) {
         strokeWidth={2}
         d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
       />
+    </svg>
+  )
+}
+
+function FamilyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
     </svg>
   )
 }

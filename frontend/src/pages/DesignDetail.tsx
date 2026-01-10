@@ -21,6 +21,7 @@ import {
   PreviewGallerySkeleton,
   TagManager,
   DeleteConfirmModal,
+  FamilySection,
 } from '@/components/designs'
 import type {
   DesignStatus,
@@ -1237,6 +1238,13 @@ export function DesignDetail() {
           <DownloadSection
             designId={design.id}
             status={design.status}
+          />
+
+          {/* Family Section (DEC-044) */}
+          <FamilySection
+            designId={design.id}
+            familyId={design.family_id ?? null}
+            variantName={design.variant_name ?? null}
           />
 
           {/* Thangs Section */}

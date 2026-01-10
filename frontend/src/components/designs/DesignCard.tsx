@@ -122,6 +122,17 @@ export function DesignCard({ design, isSelected, onToggleSelect, selectionMode, 
 
         {/* Top-right badges container */}
         <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+          {/* Family badge (DEC-044) */}
+          {design.family_id && (
+            <span
+              className="bg-purple-600/80 text-white text-[9px] px-1.5 py-0.5 rounded font-medium flex items-center gap-1"
+              title={design.variant_name ? `Variant: ${design.variant_name}` : 'Part of a family'}
+            >
+              <FamilyIcon className="w-2.5 h-2.5" />
+              {design.variant_name || 'Family'}
+            </span>
+          )}
+
           {/* Multicolor badge */}
           {design.multicolor === 'MULTI' && (
             <span
@@ -214,5 +225,14 @@ export function DesignCardSkeleton() {
         </div>
       </div>
     </div>
+  )
+}
+
+// Family icon (DEC-044)
+function FamilyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    </svg>
   )
 }

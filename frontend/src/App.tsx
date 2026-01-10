@@ -3,6 +3,7 @@ import { Layout } from '@/components/layout/Layout'
 import { Dashboard } from '@/pages/Dashboard'
 import { Designs } from '@/pages/Designs'
 import { DesignDetail } from '@/pages/DesignDetail'
+import { FamilyDetail } from '@/pages/FamilyDetail'
 import { Channels } from '@/pages/Channels'
 import { Activity } from '@/pages/Activity'
 import { Settings } from '@/pages/Settings'
@@ -20,6 +21,7 @@ function App() {
         <Route index element={<Dashboard />} />
         <Route path="designs" element={<Designs />} />
         <Route path="designs/:id" element={<DesignDetail />} />
+        <Route path="families/:id" element={<FamilyDetail />} />
         <Route path="channels" element={<Channels />} />
         <Route path="activity" element={<Activity />} />
         <Route path="settings" element={<Settings />} />

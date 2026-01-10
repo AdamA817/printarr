@@ -50,6 +50,21 @@ import type {
   ProcessUploadResponse,
 } from '@/types/upload'
 import type {
+  Family,
+  FamilyDetail,
+  FamilyList,
+  FamilyListParams,
+  CreateFamilyRequest,
+  UpdateFamilyRequest,
+  GroupDesignsRequest,
+  UngroupDesignRequest,
+  DetectionResultResponse,
+  AddDesignToFamilyResponse,
+  RemoveDesignFromFamilyResponse,
+  DissolveFamilyResponse,
+  DetectFamilyForDesignResponse,
+} from '@/types/family'
+import type {
   AuthStatusResponse,
   AuthStartRequest,
   AuthStartResponse,
@@ -643,6 +658,62 @@ export const phpbbApi = {
   // Delete credentials
   deleteCredentials: (id: string) =>
     api.delete(`/import-sources/phpbb/credentials/${id}`),
+}
+
+// =============================================================================
+// Families API (v1.0 - DEC-044)
+// =============================================================================
+
+export const familiesApi = {
+  // List families with pagination and optional designer filter
+  list: (params?: FamilyListParams) =>
+    api.get<FamilyList>('/families', { params }).then((r) => r.data),
+
+  // Get a single family with its variants
+  get: (id: string) =>
+    api.get<FamilyDetail>(`/families/${id}`).then((r) => r.data),
+
+  // Create a new family
+  create: (data: CreateFamilyRequest) =>
+    api.post<Family>('/families', data).then((r) => r.data),
+
+  // Update a family's metadata
+  update: (id: string, data: UpdateFamilyRequest) =>
+    api.patch<Family>(`/families/${id}`, data).then((r) => r.data),
+
+  // Delete a family (orphans its designs)
+  delete: (id: string) =>
+    api.delete(`/families/${id}`).then((r) => r.data),
+
+  // Group designs into a new or existing family
+  groupDesigns: (data: GroupDesignsRequest) =>
+    api.post<Family>('/families/group', data).then((r) => r.data),
+
+  // Remove a design from a family
+  ungroupDesign: (familyId: string, data: UngroupDesignRequest) =>
+    api.post<RemoveDesignFromFamilyResponse>(`/families/${familyId}/ungroup`, data).then((r) => r.data),
+
+  // Dissolve a family (remove all designs)
+  dissolve: (id: string) =>
+    api.delete<DissolveFamilyResponse>(`/families/${id}/dissolve`).then((r) => r.data),
+
+  // Run auto-detection on all designs without families
+  runDetection: () =>
+    api.post<DetectionResultResponse>('/families/detect').then((r) => r.data),
+
+  // Detect family for a specific design
+  detectForDesign: (designId: string) =>
+    api.post<DetectFamilyForDesignResponse>(`/families/designs/${designId}/detect-family`).then((r) => r.data),
+
+  // Add a design to a family
+  addDesign: (familyId: string, designId: string, variantName?: string) =>
+    api.post<AddDesignToFamilyResponse>(`/families/${familyId}/designs`, null, {
+      params: { design_id: designId, variant_name: variantName },
+    }).then((r) => r.data),
+
+  // Remove a design from a family
+  removeDesign: (familyId: string, designId: string) =>
+    api.delete<RemoveDesignFromFamilyResponse>(`/families/${familyId}/designs/${designId}`).then((r) => r.data),
 }
 
 // =============================================================================

@@ -116,6 +116,9 @@ export interface DesignListItem {
   // v0.7 additions
   tags: TagSummary[]
   primary_preview: PreviewSummary | null
+  // v1.0 additions - Design Families (DEC-044)
+  family_id: string | null
+  variant_name: string | null
 }
 
 // Design detail (from GET /api/v1/designs/{id})
@@ -140,6 +143,9 @@ export interface DesignDetail {
   updated_at: string
   sources: DesignSource[]
   external_metadata: ExternalMetadata[]
+  // v1.0 additions - Design Families (DEC-044)
+  family_id: string | null
+  variant_name: string | null
 }
 
 // Paginated design list response

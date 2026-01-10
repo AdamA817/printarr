@@ -169,9 +169,20 @@ export function DesignList({ designs, sortBy, sortOrder, onSort, selectedIds, on
                   </div>
                 )}
                 <div className={`px-4 py-3 ${COLUMN_WIDTHS.title}`}>
-                  <span className="text-text-primary font-medium truncate block">
-                    {design.display_title}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-text-primary font-medium truncate">
+                      {design.display_title}
+                    </span>
+                    {/* Family badge (DEC-044) */}
+                    {design.family_id && (
+                      <span
+                        className="flex-shrink-0 bg-purple-600/80 text-white text-[9px] px-1.5 py-0.5 rounded font-medium"
+                        title={design.variant_name ? `Variant: ${design.variant_name}` : 'Part of a family'}
+                      >
+                        {design.variant_name || 'Family'}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className={`px-4 py-3 text-text-secondary truncate ${COLUMN_WIDTHS.designer}`}>
                   {design.display_designer}

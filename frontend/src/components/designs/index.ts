@@ -21,3 +21,6 @@ export { CustomFilterModal } from './CustomFilterModal'
 export { FilterRow } from './FilterRow'
 export { InfiniteDesignGrid } from './InfiniteDesignGrid'
 export { ScrollToTopButton } from './ScrollToTopButton'
+// v1.0 additions - Design Families (DEC-044)
+export { FamilySection } from './FamilySection'
+export { GroupFamilyModal } from './GroupFamilyModal'
