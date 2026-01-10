@@ -113,6 +113,10 @@ class DesignListItem(BaseModel):
     # Primary preview image (for catalog display)
     primary_preview: PreviewSummary | None = None
 
+    # Design family info (DEC-044)
+    family_id: str | None = None
+    variant_name: str | None = None
+
     model_config = {"from_attributes": True}
 
 
@@ -149,6 +153,10 @@ class DesignDetail(BaseModel):
     # Related data
     sources: list[DesignSourceResponse] = []
     external_metadata: list[ExternalMetadataResponse] = []
+
+    # Design family info (DEC-044)
+    family_id: str | None = None
+    variant_name: str | None = None
 
     model_config = {"from_attributes": True}
 
