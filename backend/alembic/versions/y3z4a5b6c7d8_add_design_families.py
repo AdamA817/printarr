@@ -33,10 +33,17 @@ def upgrade() -> None:
 
     # 1. Create FamilyDetectionMethod enum (PostgreSQL only)
     if dialect == "postgresql":
-        op.execute(
-            "CREATE TYPE familydetectionmethod AS ENUM "
-            "('NAME_PATTERN', 'FILE_HASH_OVERLAP', 'AI_DETECTED', 'MANUAL')"
-        )
+        # Use DO block to check if type exists before creating
+        op.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'familydetectionmethod') THEN
+                    CREATE TYPE familydetectionmethod AS ENUM
+                        ('NAME_PATTERN', 'FILE_HASH_OVERLAP', 'AI_DETECTED', 'MANUAL');
+                END IF;
+            END
+            $$;
+        """)
         # Add DETECT_FAMILY_OVERLAP to jobtype enum
         op.execute("ALTER TYPE jobtype ADD VALUE IF NOT EXISTS 'DETECT_FAMILY_OVERLAP'")
 
