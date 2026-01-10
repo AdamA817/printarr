@@ -1606,6 +1606,71 @@ JSON only:
 
 ---
 
+### DEC-044: Design Families for Variant Grouping
+**Date**: 2026-01-09
+**Status**: Accepted
+
+**Context**
+Users encounter designs that are variations of the same base design (e.g., "RoboTortoise_2Color", "RoboTortoise_4Color"). Currently these appear as completely separate catalog entries with no indication of their relationship. Users want visual grouping while maintaining individual download capability.
+
+This is distinct from deduplication (DEC-041) which merges identical designs. Families group *related but different* designs.
+
+**Decisions Made**
+
+1. **New Entity: DesignFamily**
+   - Groups related variants under a canonical name
+   - Design gains `family_id` and `variant_name` fields
+   - Tags at family level inherit to all variants
+
+2. **Detection Strategies**
+   - **On ingest**: Name pattern matching (e.g., `_2Color`, `_v2`, `_remix`)
+   - **Post-download**: File hash overlap detection (30-90% shared files = variant)
+   - **Future**: AI-assisted classification (optional enhancement)
+
+3. **Designer Matching Rule**
+   - Designers must match to be grouped as variants
+   - Exception: "Unknown" can match any known designer (takes the known one)
+   - Different known designers = NOT variants, even if names match
+
+4. **Tag Inheritance**
+   - Manual and Telegram-sourced tags collected from all variants
+   - AI tags regenerated at family level using best previews
+   - No user-created tags are lost during grouping
+
+5. **UI Behavior**
+   - Collapsed by default in list view, click to expand
+   - Multi-select enables "Group as Family" action
+   - Family detail page for managing variants
+   - Manual group/ungroup always available
+
+6. **Migration**
+   - Auto-detect families in existing catalog when feature is enabled
+   - Users can ungroup incorrect matches
+
+**API Endpoints**
+```
+GET/POST/PATCH/DELETE /api/v1/families        # Family CRUD
+POST /api/v1/families/group                    # Create family from designs
+POST /api/v1/families/{id}/ungroup             # Remove design from family
+DELETE /api/v1/families/{id}/dissolve          # Dissolve entire family
+POST /api/v1/families/detect                   # Run auto-detection
+```
+
+**Implementation Notes**
+- See `docs/arch/DESIGN_FAMILIES.md` for full architecture
+- New `FamilyService` handles detection and grouping logic
+- Background job for file hash overlap detection
+- UI requires multi-select capability in designs list
+
+**Consequences**
+- Cleaner library organization for variant-heavy collections
+- Reduces visual clutter without losing individual design access
+- Designer filtering works at family level
+- Search can return families or individual variants
+- Additional database entity and relationships to maintain
+
+---
+
 ## Pending Decisions
 
 *No pending decisions at this time.*
