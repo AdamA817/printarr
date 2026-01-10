@@ -619,6 +619,8 @@ async def list_designs(
                 has_thangs_link=has_thangs,
                 tags=design_tags,
                 primary_preview=primary_preview,
+                family_id=design.family_id,
+                variant_name=design.variant_name,
             )
         )
 
@@ -716,6 +718,8 @@ async def get_design(
         updated_at=design.updated_at,
         sources=sources,
         external_metadata=external_metadata,
+        family_id=design.family_id,
+        variant_name=design.variant_name,
     )
 
 
@@ -1024,6 +1028,8 @@ async def update_design(
         updated_at=design.updated_at,
         sources=sources,
         external_metadata=external_metadata,
+        family_id=design.family_id,
+        variant_name=design.variant_name,
     )
 
 
